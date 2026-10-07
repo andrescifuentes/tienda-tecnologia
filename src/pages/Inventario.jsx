@@ -1,0 +1,141 @@
+import { useEffect, useState } from 'react'
+import AppShell from '../components/AppShell'
+import Modal from '../components/Modal'
+import Scanner from '../components/Scanner'
+import ProductoForm from '../components/ProductoForm'
+import CompraForm from '../components/CompraForm'
+import { SearchBar, Empty, Loader, Badge, Chips, Input, Select, ErrorBox } from '../components/ui'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
+import { money, fechaHora, limpiarBusqueda, mensajeError } from '../lib/format'
+import { toast } from '../lib/toast'
+
+export default function Inventario() {
+  const { can } = useAuth()
+  const editar = can('editar_inventario')
+  const costos = can('ver_costos')
+  const [q, setQ] = useState('')
+  const [filtro, setFiltro] = useState('todos')
+  const [lista, setLista] = useState(null)
+  const [scan, setScan] = useState(false)
+  const [sel, setSel] = useState(null)
+  const [form, setForm] = useState(null)
+  const [compra, setCompra] = useState(false)
+  const [tick, setTick] = useState(0)
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const s = limpiarBusqueda(q)
+      const tabla = costos || editar ? 'productos' : 'productos_venta'
+      let qq = supabase.from(tabla).select(tabla === 'productos' ? '*, categorias(nombre)' : '*').order('nombre').limit(80)
+      if (tabla === 'productos') qq = qq.eq('activo', true)
+      if (s) qq = qq.or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,codigo_barras.ilike.%${s}%,marca.ilike.%${s}%`)
+      const { data } = await qq
+      setLista((data || []).map((p) => ({ ...p, categoria: p.categoria || p.categorias?.nombre })))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [q, tick, costos, editar])
+
+  const visible = (lista || []).filter((p) => (filtro === 'bajo' ? p.stock <= p.stock_min : filtro === 'agotado' ? p.stock === 0 : true))
+  const refrescar = () => { setTick((t) => t + 1); setSel(null) }
+
+  return (
+    <AppShell title={editar ? 'Inventario' : 'Productos'} sub={editar ? 'Control de stock' : 'Consulta de stock y precios'} right={editar && <button className="btn sm !bg-white !text-brand" onClick={() => setForm({})}>+ Nuevo</button>}>
+      <SearchBar value={q} onChange={setQ} onScan={() => setScan(true)} placeholder="Buscar nombre, código o marca" />
+      <div className="flex gap-2 items-start">
+        <div className="flex-1"><Chips value={filtro} onChange={setFiltro} options={[{ value: 'todos', label: 'Todos' }, { value: 'bajo', label: 'Stock bajo' }, { value: 'agotado', label: 'Agotados' }]} /></div>
+        {can('registrar_compras') && <button className="btn sec sm" onClick={() => setCompra(true)}>Ingreso</button>}
+      </div>
+      {!lista ? <Loader /> : visible.length === 0 ? <Empty text="Sin productos" /> : (
+        <div className="card !p-2">
+          {visible.map((p) => (
+            <div key={p.id} className="row cursor-pointer" onClick={() => setSel(p)}>
+              <div className="flex-1 min-w-0"><p className="m-0 text-sm font-semibold">{p.nombre}</p><p className="m-0 text-xs text-muted">{p.codigo}{p.marca ? ' · ' + p.marca : ''}{p.categoria ? ' · ' + p.categoria : ''}</p></div>
+              <div className="text-right"><p className="m-0 text-sm font-bold">{money(p.precio_venta)}</p><Badge tone={p.stock === 0 ? 'bad' : p.stock <= p.stock_min ? 'warn' : 'good'}>{p.stock} uds</Badge></div>
+            </div>
+          ))}
+        </div>
+      )}
+      {scan && <Scanner onClose={() => setScan(false)} onScan={(c) => { setQ(c); setScan(false) }} />}
+      {sel && !form && <Detalle p={sel} editar={editar} costos={costos} onClose={() => setSel(null)} onEditar={() => setForm(sel)} onCambio={refrescar} />}
+      {form && <ProductoForm inicial={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => { setForm(null); refrescar(); toast('Producto guardado') }} />}
+      {compra && <CompraForm onClose={() => setCompra(false)} onSaved={() => { setCompra(false); refrescar() }} />}
+    </AppShell>
+  )
+}
+
+function Detalle({ p, editar, costos, onClose, onEditar, onCambio }) {
+  const [modo, setModo] = useState(null)
+  const [movs, setMovs] = useState(null)
+  const [uni, setUni] = useState(null)
+  const [tipo, setTipo] = useState('ajuste_entrada')
+  const [cant, setCant] = useState('')
+  const [motivo, setMotivo] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (p.maneja_serial) supabase.from('unidades_serializadas').select('id,serial,estado').eq('producto_id', p.id).order('id', { ascending: false }).limit(100).then(({ data }) => setUni(data || []))
+  }, [p])
+
+  async function verMovs() {
+    setModo('movs')
+    const { data } = await supabase.from('movimientos_inventario').select('*').eq('producto_id', p.id).order('fecha', { ascending: false }).limit(40)
+    setMovs(data || [])
+  }
+  async function ajustar() {
+    setErr('')
+    const { error } = await supabase.rpc('ajustar_inventario', { p_producto_id: p.id, p_cantidad: parseInt(cant, 10), p_tipo: tipo, p_motivo: motivo })
+    if (error) return setErr(mensajeError(error))
+    toast('Inventario actualizado'); onCambio()
+  }
+
+  return (
+    <Modal title={p.nombre} onClose={onClose}>
+      <ErrorBox text={err} />
+      {modo === null && (
+        <>
+          <div className="card !p-3 mb-3 text-sm">
+            <div className="flex justify-between"><span className="text-muted">Código</span><b>{p.codigo}</b></div>
+            {p.codigo_barras && <div className="flex justify-between"><span className="text-muted">Barras</span><b>{p.codigo_barras}</b></div>}
+            {p.marca && <div className="flex justify-between"><span className="text-muted">Marca</span><b>{p.marca}</b></div>}
+            <div className="flex justify-between"><span className="text-muted">Precio venta</span><b>{money(p.precio_venta)}</b></div>
+            {costos && p.precio_compra != null && <div className="flex justify-between"><span className="text-muted">Costo</span><b>{money(p.precio_compra)}</b></div>}
+            <div className="flex justify-between"><span className="text-muted">Stock</span><b>{p.stock} (mín. {p.stock_min})</b></div>
+            {costos && p.precio_compra != null && <div className="flex justify-between"><span className="text-muted">Valor en stock</span><b>{money(p.stock * p.precio_compra)}</b></div>}
+            <div className="flex justify-between"><span className="text-muted">Garantía</span><b>{p.garantia_meses ? p.garantia_meses + ' meses' : 'Sin garantía'}</b></div>
+          </div>
+          {p.maneja_serial && uni && (
+            <div className="mb-3"><h4 className="text-sm text-muted uppercase m-0 mb-1">IMEI / seriales</h4>
+              {uni.length === 0 ? <Empty text="Sin unidades" /> : uni.map((u) => <div key={u.id} className="row"><span className="flex-1 text-sm">{u.serial}</span><Badge tone={u.estado === 'disponible' ? 'good' : ''}>{u.estado}</Badge></div>)}
+            </div>
+          )}
+          {editar && (
+            <div className="grid grid-cols-2 gap-2">
+              <button className="btn sec" onClick={onEditar}>Editar</button>
+              {!p.maneja_serial && <button className="btn sec" onClick={() => setModo('ajuste')}>Ajustar stock</button>}
+              <button className="btn sec" onClick={verMovs}>Movimientos</button>
+            </div>
+          )}
+        </>
+      )}
+      {modo === 'ajuste' && (
+        <>
+          <Select label="Tipo de movimiento" value={tipo} onChange={(e) => setTipo(e.target.value)}>
+            <option value="ajuste_entrada">Entrada (ajuste)</option><option value="ajuste_salida">Salida (pérdida, daño, uso)</option><option value="devolucion_proveedor">Devolución a proveedor</option>
+          </Select>
+          <Input label="Cantidad" type="number" min="1" value={cant} onChange={(e) => setCant(e.target.value)} />
+          <Input label="Motivo (obligatorio)" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+          <div className="grid grid-cols-2 gap-2"><button className="btn sec" onClick={() => setModo(null)}>Cancelar</button><button className="btn" onClick={ajustar}>Guardar</button></div>
+        </>
+      )}
+      {modo === 'movs' && (
+        <>
+          <button className="btn sec sm mb-2" onClick={() => setModo(null)}>‹ Volver</button>
+          {!movs ? <Loader /> : movs.length === 0 ? <Empty text="Sin movimientos" /> : movs.map((m) => (
+            <div key={m.id} className="row"><div className="flex-1"><p className="m-0 text-sm font-semibold">{m.tipo.replace(/_/g, ' ')}</p><p className="m-0 text-xs text-muted">{fechaHora(m.fecha)}{m.motivo ? ' · ' + m.motivo : ''}</p></div><div className="text-right"><b className={m.cantidad > 0 ? 'text-good' : 'text-bad'}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</b><p className="m-0 text-xs text-muted">queda {m.stock_despues}</p></div></div>
+          ))}
+        </>
+      )}
+    </Modal>
+  )
+}
