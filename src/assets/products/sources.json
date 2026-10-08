@@ -1,0 +1,112 @@
+{
+  "IPAD10-64": {
+    "source": "https://support.apple.com/en-us/111840",
+    "image": "https://cdsassets.apple.com/live/SZLF0YNV/images/sp/111840_sp884-ipad-10gen-960.png",
+    "filename": "IPAD10-64.png",
+    "provisional": true
+  },
+  "RN13P-256": {
+    "source": "https://www.mi.com/ae-en/product/redmi-note-13-pro/",
+    "image": "https://i02.appmifile.com/mi-com-product/fly-birds/redmi-note-13-pro/pc/a69a4089984da42166ce89df3dc83468.jpg",
+    "filename": "RN13P-256.jpg",
+    "provisional": true
+  },
+  "GLASS15": {
+    "source": "https://www.spigen.com/products/iphone-15-series-glas-tr-ez-fit-sensor-protection",
+    "image": "https://cdn.shopify.com/s/files/1/0808/0067/files/title_web_ip6.7p_glas_tr_ezfit_02.jpg?v=1724364265",
+    "filename": "GLASS15.jpg",
+    "provisional": true,
+    "variantNote": "Provisional family photograph: EZ Fit tray for iPhone 15 series"
+  },
+  "ANK20K": {
+    "source": "https://www.anker.com/products/a1383",
+    "image": "https://cdn.shopify.com/s/files/1/0493/9834/9974/files/A1383011-F0_A1383H11_Product_Image.png?v=1773225296",
+    "filename": "ANK20K.png",
+    "provisional": true
+  },
+  "USBC2M": {
+    "source": "https://www.anker.com/products/a8752",
+    "image": "https://cdn.shopify.com/s/files/1/0493/9834/9974/files/B8752011_TD01.png?v=1748225373",
+    "filename": "USBC2M.png",
+    "provisional": true,
+    "variantNote": "Provisional braided USB-C cable family photograph"
+  },
+  "BUDS-FE": {
+    "source": "https://www.samsung.com/uk/audio-sound/galaxy-buds/galaxy-buds-fe-graphite-sm-r400nzaaeua/",
+    "image": "https://images.samsung.com/is/image/samsung/p6pim/uk/sm-r400nzaaeua/gallery/uk-galaxy-buds-fe-sm-r400nzaaeua-538543281?$624_468_PNG",
+    "filename": "BUDS-FE.png",
+    "provisional": true
+  },
+  "SGS24-256": {
+    "source": "https://www.samsung.com/us/smartphones/galaxy-s24/",
+    "image": "https://images.samsung.com/us/smartphones/galaxy-s24/images/galaxy-s24-share-image.jpg",
+    "filename": "SGS24-256.jpg",
+    "provisional": true
+  },
+  "LIS3-I5": {
+    "source": "https://www.lenovo.com/us/en/p/laptops/ideapad/ideapad-300/ideapad-slim-3i-gen-8-(15-inch-intel)/len101i0073",
+    "image": "https://p2-ofp.static.pub/fes/cms/2022/12/05/4xmv4q7x8ckr0wctmmh4x1al7k5ly7924347.png",
+    "filename": "LIS3-I5.png",
+    "provisional": true
+  },
+  "HUB7-USBC": {
+    "source": "https://us.ugreen.com/products/7-in-1-multiport-adapter-with-4k-60hz",
+    "image": "https://cdn.shopify.com/s/files/1/0257/5246/9566/products/ugreen-7-in-1-4k-hdmi-usb-c-hub-547708.png?v=1694151975",
+    "filename": "HUB7-USBC.png",
+    "provisional": true
+  },
+  "GW6-44": {
+    "source": "https://www.samsung.com/uk/support/model/SM-R940NZKDWEU/",
+    "image": "https://images.samsung.com/is/image/samsung/p6pim/uk/2307/gallery/uk-galaxy-watch6-r945-sm-r940nzkdweu-537433537?$624_624_PNG$",
+    "filename": "GW6-44.png",
+    "provisional": true
+  },
+  "MAGSAFE15": {
+    "source": "https://www.spigen.com/products/iphone-15-series-case-ultra-hybrid-magfit.js",
+    "image": "https://cdn.shopify.com/s/files/1/0808/0067/files/title_web_iphone_15_pro_max_ultrahybrid_magfit_white.jpg?v=1695752472",
+    "filename": "MAGSAFE15.jpg",
+    "provisional": true
+  },
+  "APP2-USBC": {
+    "source": "refenrcias/03_inventario_reference.png",
+    "filename": "APP2-USBC.jpg",
+    "provisional": true,
+    "method": "Only photographic region, no interface"
+  },
+  "IP15P-128": {
+    "source": "refenrcias/03_inventario_reference.png",
+    "filename": "IP15P-128.jpg",
+    "provisional": true,
+    "method": "Only photographic region, no interface"
+  },
+  "AWS9-45": {
+    "source": "refenrcias/03_inventario_reference.png",
+    "filename": "AWS9-45.jpg",
+    "provisional": true,
+    "method": "Only photographic region, no interface"
+  },
+  "JBL-TUNE": {
+    "source": "refenrcias/03_inventario_reference.png",
+    "filename": "JBL-TUNE.jpg",
+    "provisional": true,
+    "method": "Only photographic region, no interface"
+  },
+  "LIGHT1M": {
+    "source": "refenrcias/03_inventario_reference.png",
+    "filename": "LIGHT1M.jpg",
+    "provisional": true,
+    "method": "Only photographic region, no interface"
+  },
+  "USBC20W": {
+    "source": "refenrcias/03_inventario_reference.png",
+    "filename": "USBC20W.jpg",
+    "provisional": true,
+    "method": "Only photographic region, no interface"
+  },
+  "MBA-M2": {
+    "source": "refenrcias/01_login_reference.png",
+    "filename": "MBA-M2.jpg",
+    "provisional": true,
+    "method": "Only photographic region, no interface"
+  }
+}

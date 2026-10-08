@@ -1,0 +1,101 @@
+import assert from 'node:assert/strict'
+import { createDemoClient } from '../src/lib/demo/client.js'
+import { DEMO_KEY, DEMO_PASSWORD } from '../src/lib/demo/seed.js'
+import { mkdirSync, writeFileSync } from 'node:fs'
+
+const entries = new Map(), storage = {getItem:k=>entries.get(k)||null,setItem:(k,v)=>entries.set(k,v)}
+const now = ()=>new Date('2026-10-07T17:00:00Z')
+let client=createDemoClient({storage,now,location:{hostname:'localhost',protocol:'http:'}}), count=0
+globalThis.fetch=()=>{throw new Error('Remote calls are forbidden in local demo tests')}
+async function ok(result){const r=await result;assert.equal(r.error,null,JSON.stringify(r.error));return r.data}
+async function rejects(result){const before=entries.get(DEMO_KEY),r=await result;assert.ok(r.error);assert.equal(entries.get(DEMO_KEY),before,'Failed operation must not partially mutate persisted data');count++}
+function check(label,fn){fn();count++;console.log('PASS '+label)}
+const login=(email='admin@angietech.demo')=>ok(client.auth.signInWithPassword({email,password:DEMO_PASSWORD}))
+await login()
+const snapshot=()=>client.demo.snapshot().tables
+function coherent(){const t=snapshot();for(const p of t.productos){assert.equal(p.stock,t.movimientos_inventario.filter(m=>m.producto_id===p.id).reduce((n,m)=>n+m.cantidad,0),p.nombre+' inventory ledger');if(p.maneja_serial)assert.equal(p.stock,t.unidades_serializadas.filter(u=>u.producto_id===p.id&&u.estado==='disponible').length,p.nombre+' serial count')}for(const c of t.compras)assert.ok(c.total>=t.pagos_proveedor.filter(p=>p.compra_id===c.id).reduce((n,p)=>n+p.monto,0))}
+check('Seed quantities and coherent initial stock',()=>{const t=snapshot();assert.equal(t.productos.length,18);assert.equal(t.proveedores.length,5);assert.equal(t.clientes.length,10);assert.equal(t.perfiles.length,5);assert.equal(t.facturas.length,16);coherent()})
+await rejects(client.auth.signInWithPassword({email:'admin@angietech.demo',password:'wrong'}))
+const customer=await ok(client.from('clientes').insert({nombre:'Gabriela Acosta',tipo_documento:'CC',documento:'1000005555',telefono:'3000000555',correo:'gabriela@example.test',ciudad:'Bogotá'}).select().single())
+await ok(client.from('clientes').update({nombre:'Gabriela Acosta Ruiz'}).eq('id',customer.id))
+check('Client creation, update, search',()=>assert.equal(snapshot().clientes.find(c=>c.id===customer.id).nombre,'Gabriela Acosta Ruiz'))
+await rejects(client.from('clientes').insert({...customer,id:undefined}))
+const provider=await ok(client.from('proveedores').insert({nombre:'Tecnología Andina SAS',nit:'900000500-0',ciudad:'Pereira'}).select().single())
+await ok(client.from('proveedores').update({contacto:'Diana Ospina'}).eq('id',provider.id))
+check('Supplier creation and update',()=>assert.equal(snapshot().proveedores.find(p=>p.id===provider.id).contacto,'Diana Ospina'))
+const product=await ok(client.rpc('crear_producto_demo',{producto:{codigo:'HUB-DEMO',nombre:'Hub portátil 5 en 1',categoria_id:6,precio_compra:40000,precio_venta:80000,stock_min:3,garantia_meses:6,maneja_serial:false,proveedor_id:provider.id},stock:4}))
+const device=await ok(client.rpc('crear_producto_demo',{producto:{codigo:'PHONE-DEMO',nombre:'Motorola Edge 50',categoria_id:1,precio_compra:800000,precio_venta:1200000,stock_min:1,garantia_meses:12,maneja_serial:true},stock:1,seriales:['DEMO-MOTO-001']}))
+check('Products with initial stock and serials',coherent)
+await rejects(client.rpc('crear_producto_demo',{producto:{...device,id:undefined,codigo:'PHONE-BAD'},stock:2,seriales:['DEMO-MOTO-001','SECOND']}))
+const baseProfit=(await ok(client.rpc('resumen_dashboard')))[0].utilidad_mes
+const purchase=await ok(client.rpc('registrar_compra',{p_proveedor_id:provider.id,p_numero_documento:'AND-001',p_forma_pago:'contado',p_metodo_pago:'transferencia',p_items:[{producto_id:product.id,cantidad:3,costo_unitario:40000},{producto_id:device.id,cantidad:2,costo_unitario:800000}],p_seriales:[{producto_id:device.id,serial:'DEMO-MOTO-002'},{producto_id:device.id,serial:'DEMO-MOTO-003'}]}))
+check('Multi-product purchase updates stock, provider and capital ledger',()=>{coherent();assert.equal(snapshot().productos.find(p=>p.id===product.id).stock,7);assert.ok(snapshot().movimientos.some(m=>m.compra_id===purchase&&m.origen==='compra'))})
+check('Purchases do not double-subtract inventory cost from profit',()=>{})
+assert.equal((await ok(client.rpc('resumen_dashboard')))[0].utilidad_mes,baseProfit)
+await rejects(client.rpc('registrar_compra',{p_proveedor_id:provider.id,p_forma_pago:'contado',p_items:[{producto_id:device.id,cantidad:1,costo_unitario:800000}],p_seriales:[{producto_id:device.id,serial:'DEMO-MOTO-002'}]}))
+const credit=await ok(client.rpc('registrar_compra',{p_proveedor_id:provider.id,p_numero_documento:'AND-002',p_forma_pago:'credito',p_vence_el:'2026-11-07',p_items:[{producto_id:product.id,cantidad:2,costo_unitario:40000}]}))
+await ok(client.rpc('registrar_pago_proveedor',{p_compra_id:credit,p_monto:30000,p_metodo_pago:'efectivo'}))
+check('Credit purchase and partial supplier payment',()=>assert.equal(snapshot().pagos_proveedor.filter(p=>p.compra_id===credit).reduce((n,p)=>n+p.monto,0),30000))
+await rejects(client.rpc('registrar_pago_proveedor',{p_compra_id:credit,p_monto:60000}))
+await login('ana@angietech.demo')
+await rejects(client.from('productos').update({precio_venta:1}).eq('id',product.id))
+const beforeSale=(await ok(client.rpc('ventas_por_empleado',{p_desde:'2026-10-01',p_hasta:'2026-10-31'})))[0]
+const sale=await ok(client.rpc('emitir_factura',{p_cliente_id:customer.id,p_metodo_pago:'tarjeta',p_items:[{producto_id:product.id,cantidad:3}],p_descuento:0}))
+check('Sale creates invoice, inventory, income, warranty, employee and client relations',()=>{coherent();const t=snapshot(),f=t.facturas.find(f=>f.id===sale);assert.equal(f.vendedor_id,'demo-ana');assert.equal(f.cliente_id,customer.id);assert.equal(f.total,240000);assert.equal(f.comision,7200);assert.ok(t.movimientos.some(m=>m.factura_id===sale&&m.monto===240000));assert.ok(t.garantias.some(g=>g.factura_item_id===t.factura_items.find(i=>i.factura_id===sale).id))})
+const afterSale=(await ok(client.rpc('ventas_por_empleado',{p_desde:'2026-10-01',p_hasta:'2026-10-31'})))[0]
+check('Seller commissions match sales',()=>{assert.equal(afterSale.total_vendido-beforeSale.total_vendido,240000);assert.equal(afterSale.comision-beforeSale.comision,7200)})
+await login()
+assert.equal((await ok(client.rpc('resumen_dashboard')))[0].utilidad_mes,baseProfit+120000)
+await rejects(client.rpc('emitir_factura',{p_metodo_pago:'efectivo',p_items:[{producto_id:product.id,cantidad:100}]}))
+await rejects(client.rpc('emitir_factura',{p_metodo_pago:'efectivo',p_items:[{producto_id:product.id,cantidad:0.5}]}))
+const line=snapshot().factura_items.find(i=>i.factura_id===sale)
+await ok(client.rpc('registrar_devolucion',{p_factura_id:sale,p_motivo:'Cambio de referencia',p_reintegra_stock:true,p_items:[{factura_item_id:line.id,cantidad:1}]}))
+check('Partial refund restores stock and reverses proportional revenue/commission',()=>{coherent();const refund=snapshot().devoluciones.find(d=>d.factura_id===sale);assert.equal(refund.total_devuelto,80000);assert.equal(refund.comision_revertida,2400)})
+await rejects(client.rpc('registrar_devolucion',{p_factura_id:sale,p_motivo:'Excess',p_reintegra_stock:true,p_items:[{factura_item_id:line.id,cantidad:3}]}))
+await ok(client.rpc('anular_factura',{p_factura_id:sale,p_motivo:'Cancelar saldo restante'}))
+check('Cancellation after refund avoids double restocking',()=>{coherent();assert.equal(snapshot().productos.find(p=>p.id===product.id).stock,9)})
+assert.equal((await ok(client.rpc('resumen_dashboard')))[0].utilidad_mes,baseProfit)
+const unit=snapshot().unidades_serializadas.find(u=>u.producto_id===device.id&&u.estado==='disponible')
+const soldDevice=await ok(client.rpc('emitir_factura',{p_metodo_pago:'efectivo',p_items:[{producto_id:device.id,cantidad:1,unidad_id:unit.id}]}))
+await rejects(client.rpc('emitir_factura',{p_metodo_pago:'efectivo',p_items:[{producto_id:device.id,cantidad:1,unidad_id:unit.id}]}))
+const deviceLine=snapshot().factura_items.find(i=>i.factura_id===soldDevice)
+await ok(client.rpc('registrar_devolucion',{p_factura_id:soldDevice,p_motivo:'Cambio',p_reintegra_stock:true,p_items:[{factura_item_id:deviceLine.id,cantidad:1}]}))
+const resold=await ok(client.rpc('emitir_factura',{p_metodo_pago:'efectivo',p_items:[{producto_id:device.id,cantidad:1,unidad_id:unit.id}]}))
+await ok(client.rpc('anular_factura',{p_factura_id:soldDevice,p_motivo:'Anular factura original'}))
+check('A returned serial can be resold without original cancellation reclaiming it',()=>{coherent();const u=snapshot().unidades_serializadas.find(u=>u.id===unit.id);assert.equal(u.estado,'vendida');assert.equal(u.factura_item_id,snapshot().factura_items.find(i=>i.factura_id===resold).id)})
+const discounted=await ok(client.rpc('emitir_factura',{p_metodo_pago:'efectivo',p_items:[{producto_id:product.id,cantidad:2,descuento:10000}],p_descuento:10000}))
+await ok(client.rpc('registrar_devolucion',{p_factura_id:discounted,p_motivo:'Reembolso completo',p_reintegra_stock:true,p_items:[{factura_item_id:snapshot().factura_items.find(i=>i.factura_id===discounted).id,cantidad:2}]}))
+check('Combined line/invoice discount refund equals amount paid',()=>assert.equal(snapshot().devoluciones.find(d=>d.factura_id===discounted).total_devuelto,140000))
+const manual=await ok(client.from('movimientos').insert({tipo:'gasto',categoria:'Transporte',monto:25000,fecha:'2026-10-07'}).select().single())
+await ok(client.from('movimientos').delete().eq('id',manual.id))
+await rejects(client.from('movimientos').delete().eq('id',snapshot().movimientos.find(m=>m.origen).id))
+const employee=await ok(client.functions.invoke('crear-empleado',{body:{nombre:'Laura Ospina',correo:'laura@angietech.demo',password:DEMO_PASSWORD,rol:'vendedor',comision_pct:4,permisos:['vender','ver_inventario','crear_clientes']}}))
+check('Employee creation with local password and permissions',()=>assert.ok(snapshot().perfil_permisos.some(p=>p.perfil_id===employee.id&&p.permiso==='vender')))
+await ok(client.auth.signInWithPassword({email:'laura@angietech.demo',password:DEMO_PASSWORD}))
+await rejects(client.rpc('registrar_compra',{p_proveedor_id:1,p_items:[]}))
+await login()
+const uncovered=snapshot().factura_items.find(i=>snapshot().facturas.find(f=>f.id===i.factura_id)?.estado==='emitida'&&!snapshot().garantias.some(g=>g.factura_item_id===i.id))
+const warranty=await ok(client.rpc('crear_garantia_demo',{factura_item_id:uncovered.id}))
+await rejects(client.rpc('crear_garantia_demo',{factura_item_id:uncovered.id}))
+const claim=await ok(client.from('reclamos_garantia').insert({garantia_id:warranty,descripcion:'Revisión de conectividad',creado_por:'demo-admin'}).select().single())
+for(const estado of ['en_revision','aprobado','resuelto'])await ok(client.from('reclamos_garantia').update({estado}).eq('id',claim.id))
+await ok(client.from('garantias').update({estado:'resuelta'}).eq('id',warranty))
+check('Warranty creation, duplicate protection, review, approval and completion',()=>assert.equal(snapshot().reclamos_garantia.find(r=>r.id===claim.id).estado,'resuelto'))
+const tiny=await ok(client.rpc('crear_producto_demo',{producto:{codigo:'ROUNDING',nombre:'Accesorio de validación de redondeo',precio_compra:0,precio_venta:1,stock_min:0,garantia_meses:0,maneja_serial:false},stock:3}))
+const tinySale=await ok(client.rpc('emitir_factura',{p_metodo_pago:'efectivo',p_descuento:1,p_items:[{producto_id:tiny.id,cantidad:3}]})),tinyItem=snapshot().factura_items.find(i=>i.factura_id===tinySale)
+for(let i=0;i<3;i++)await ok(client.rpc('registrar_devolucion',{p_factura_id:tinySale,p_motivo:'Reembolso fraccionado',p_reintegra_stock:true,p_items:[{factura_item_id:tinyItem.id,cantidad:1}]}))
+check('Repeated partial refunds reconcile exactly to discounted invoice total',()=>assert.equal(snapshot().devoluciones.filter(d=>d.factura_id===tinySale).reduce((n,d)=>n+d.total_devuelto,0),2))
+const beforeLoss=(await ok(client.rpc('resumen_dashboard')))[0].utilidad_mes
+const damaged=await ok(client.rpc('emitir_factura',{p_metodo_pago:'efectivo',p_items:[{producto_id:product.id,cantidad:1}]})),damagedItem=snapshot().factura_items.find(i=>i.factura_id===damaged)
+await ok(client.rpc('registrar_devolucion',{p_factura_id:damaged,p_motivo:'Daño no reintegrable',p_reintegra_stock:false,p_items:[{factura_item_id:damagedItem.id,cantidad:1}]}))
+await ok(client.rpc('anular_factura',{p_factura_id:damaged,p_motivo:'Cierre administrativo'}))
+check('Damaged return cost remains in profit after cancellation',()=>{});assert.equal((await ok(client.rpc('resumen_dashboard')))[0].utilidad_mes,beforeLoss-40000)
+const previousSave=storage.setItem;storage.setItem=()=>{throw new Error('Quota exceeded')};await rejects(client.from('clientes').insert({nombre:'Sin espacio',documento:'1000007777'}));storage.setItem=previousSave
+const persisted=JSON.stringify(client.demo.snapshot())
+client=createDemoClient({storage,now,location:{hostname:'localhost',protocol:'http:'}})
+check('Reload preserves complete state and session',()=>assert.equal(JSON.stringify(client.demo.snapshot()),persisted))
+assert.ok((await ok(client.from('facturas').select('*').eq('cliente_id',customer.id))).some(f=>f.id===sale));count++
+check('All stock and serial relations reconcile after transactions',coherent)
+mkdirSync('artifacts/resume-review',{recursive:true})
+writeFileSync('artifacts/resume-review/demo-tests.json',JSON.stringify({status:'PASS',cases:count,networkCalls:0,date:now().toISOString()},null,2))
+console.log(`PASS ${count} local demo checks; zero network calls`)

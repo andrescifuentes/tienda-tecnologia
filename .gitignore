@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.local
+android
+ios
+
+artifacts/
+refenrcias/
+LOCAL_DEMO_REVIEW.md
+LOCAL_UI_REVIEW.md
+LOCAL_VISUAL_REDESIGN.md
