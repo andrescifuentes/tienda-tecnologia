@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Modal from './Modal'
+import { Icon } from './Icons'
 import { Badge, Empty, ErrorBox } from './ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -33,5 +34,5 @@ export default function Notifications({ items, onClose }) {
     }
     onClose(); navigate(item.to)
   }
-  return <Modal title="Notificaciones locales" onClose={onClose}><ErrorBox text={error} />{items.length ? items.map(item=><button className="row menu-row notification-row" key={item.id} onClick={()=>open(item)}><span className="flex-1"><b className="text-sm">{item.title}</b><span className="block text-xs text-muted">{item.text}</span></span><Badge tone={item.tone}>{item.read?'Leída':'Nueva'}</Badge></button>) : <Empty text="Todo al día" description="Sin alertas de stock, garantías ni actividad importante." />}</Modal>
+  return <Modal title="Tu actividad" subtitle="Notificaciones locales" className="experience-sheet notifications-sheet" keyboardAware onClose={onClose}><ErrorBox text={error}/><div className="notice-summary"><span className="premium-eyebrow">CENTRO DE NOTIFICACIONES</span><b>{items.filter(item=>!item.read).length} nuevas</b><p>Inventario, ventas y garantías de tu negocio.</p></div><div className="notice-list">{items.length ? items.map(item=><button className={'row menu-row notification-row '+(item.read?'is-read':'is-new')} key={item.id} onClick={()=>open(item)}><span className={'notice-icon '+item.tone}><Icon name={item.id.startsWith('stock:')?'box':item.id.startsWith('warranty:')?'shield':/venta|factura/i.test(item.title)?'doc':/mercanc/i.test(item.title)?'truck':'chart'}/></span><span className="notice-copy"><b>{item.title}</b><span>{item.text}</span></span><span className="notice-state"><Badge tone={item.read?'':item.tone}>{item.read?'Leída':'Nueva'}</Badge><span aria-hidden="true">›</span></span></button>) : <Empty text="Todo al día" description="Sin alertas de stock, garantías ni actividad importante." />}</div></Modal>
 }

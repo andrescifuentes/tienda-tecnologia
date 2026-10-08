@@ -25,6 +25,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
   const [photo, setPhoto] = useState(null)
   const [photoBusy,setPhotoBusy] = useState(false)
   const precios = can('editar_precios')
+  const costos = can('ver_costos')
   const [activePrice, setActivePrice] = useState('precio_venta')
   const setPrice = key => value => setF(previous => ({ ...previous, [key]: value }))
   function addPrice(amount) {
@@ -59,7 +60,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
         try { await saveImage(newImage, photo.blob); d.image_ref = newImage; d.image_removed = false } catch (error) { setBusy(false); return setErr(mensajeError(error)) }
       } else { d.image_ref = null; d.image_removed = true }
     }
-    if (precios) { d.precio_compra = Number(f.precio_compra) || 0; d.precio_venta = Number(f.precio_venta) || 0 }
+    if (precios) { if(costos) d.precio_compra = Number(f.precio_compra) || 0; d.precio_venta = Number(f.precio_venta) || 0 }
     if (!editando) d.maneja_serial = !!f.maneja_serial
     const q = isDemoMode && !editando ? supabase.rpc('crear_producto_demo', { producto: d, stock: Number(stock), seriales: seriales.split(/[,\n]/).map(s => s.trim()).filter(Boolean) }) : editando ? supabase.from('productos').update(d).eq('id', inicial.id) : supabase.from('productos').insert(d)
     const { error } = await q
@@ -85,7 +86,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
       {isDemoMode && <ProductPhotoEditor product={inicial} value={photo} onChange={setPhoto} onBusyChange={setPhotoBusy} />}
       <section className="product-section"><div className="product-section-heading"><span>03</span><div><h3>Precios</h3><p>Valores en pesos colombianos · COP</p></div></div>
         <div className="product-price-grid">
-          <ProductPriceInput label="Precio compra" value={f.precio_compra} onValueChange={setPrice('precio_compra')} onFocus={() => setActivePrice('precio_compra')} disabled={!precios} />
+          {costos && <ProductPriceInput label="Precio compra" value={f.precio_compra} onValueChange={setPrice('precio_compra')} onFocus={() => setActivePrice('precio_compra')} disabled={!precios} />}
           <ProductPriceInput label="Precio venta" value={f.precio_venta} onValueChange={setPrice('precio_venta')} onFocus={() => setActivePrice('precio_venta')} disabled={!precios} />
         </div>
         {precios ? <div className="product-quick-prices"><p id="quick-price-target">Sumar a <b>{activePrice === 'precio_compra' ? 'Precio compra' : 'Precio venta'}</b></p><div role="group" aria-labelledby="quick-price-target">{[[10000,'+10 mil'],[100000,'+100 mil'],[1000000,'+1 millón']].map(([amount,label])=><button key={amount} type="button" className="product-amount-chip" onClick={()=>addPrice(amount)}>{label}</button>)}</div><p className="product-price-feedback" aria-live="polite">{activePrice === 'precio_compra' ? 'Compra' : 'Venta'}: <b>$ {formatProductPrice(f[activePrice])}</b></p></div> : <p className="product-hint">Tu perfil no tiene permiso para editar precios.</p>}

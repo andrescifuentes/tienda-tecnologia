@@ -38,7 +38,7 @@ export default function Facturas() {
   }, [q, estado, tick])
 
   return (
-    <AppShell title="Facturas" sub="Tus ventas, en un solo lugar">
+    <div className="admin-premium admin-invoices"><AppShell title="Facturas" sub="Tus ventas, en un solo lugar">
       {can('vender') && <button className="btn full mb-3" onClick={() => navigate('/vender')}>+ Nueva factura <Icon name="arrow" className="w-4 h-4" /></button>}
       <SearchBar value={q} onChange={setQ} placeholder="Número, cliente o monto" />
       <Chips value={estado} onChange={setEstado} options={[{ value: 'todas', label: 'Todas' }, { value: 'emitida', label: 'Emitidas' }, { value: 'anulada', label: 'Anuladas' }]} />
@@ -46,14 +46,13 @@ export default function Facturas() {
         <div className="invoice-list">
           {lista.map((f, index) => (
             <AnimatedCard as="button" type="button" index={index} key={f.id} className="row invoice-card" onClick={() => setVer(f.id)}>
-              <span className="invoice-symbol"><Icon name="doc" /></span>
-              <div className="flex-1 min-w-0"><p className="m-0 text-sm font-semibold">{numFactura(f)}</p><p className="invoice-customer">{f.clientes?.nombre || 'Consumidor final'}</p><p className="m-0 text-xs text-muted">{fechaHora(f.fecha)} · {f.perfiles?.nombre}</p></div>
-              <div className="text-right"><p className="m-0 text-sm font-bold">{money(f.total)}</p><div><Badge tone={f.estado === 'anulada' ? 'bad' : f.estado === 'pendiente' ? 'warn' : 'good'}>{f.estado === 'anulada' ? 'Anulada' : f.estado === 'pendiente' ? 'Pendiente' : 'Emitida'}</Badge></div></div>
+              <div className="invoice-main"><strong>{numFactura(f)}</strong><p className="invoice-customer">{f.clientes?.nombre || 'Consumidor final'}</p><p className="invoice-meta">{fechaHora(f.fecha)}</p><div className="invoice-seller">{f.perfiles?.nombre || 'Vendedor'}</div></div>
+              <div className="invoice-side"><b className="invoice-amount">{money(f.total)}</b><Badge tone={f.estado === 'anulada' ? 'bad' : f.estado === 'pendiente' ? 'warn' : 'good'}>{f.estado === 'anulada' ? 'Anulada' : f.estado === 'pendiente' ? 'Pendiente' : 'Emitida'}</Badge><span className="invoice-chevron" aria-hidden="true">›</span></div>
             </AnimatedCard>
           ))}
         </div>
       )}
       {ver && <FacturaDetalle id={ver} onClose={() => setVer(null)} onCambio={() => setTick((t) => t + 1)} />}
-    </AppShell>
+    </AppShell></div>
   )
 }

@@ -55,7 +55,7 @@ function Ficha({ c, onClose, onEditar, puedeEditar }) {
   const [fac, setFac] = useState(null)
   const [ver, setVer] = useState(null)
   useEffect(() => {
-    supabase.from(isDemoMode?'facturas_netas':'facturas').select('id,prefijo,numero,total,estado,fecha').eq('cliente_id', c.id).order('fecha', { ascending: false }).limit(30).then(({ data }) => setFac(data || []))
+    supabase.from(isDemoMode?'facturas_netas':'facturas').select('id,prefijo,numero,total,estado,fecha').eq('cliente_id', c.id).order('fecha', { ascending: false }).then(({ data }) => setFac(data || []))
   }, [c.id])
   return (
     <Modal title={c.nombre} onClose={onClose}>
@@ -75,7 +75,7 @@ function Ficha({ c, onClose, onEditar, puedeEditar }) {
           <div className="text-right"><b className="text-sm">{money(f.total)}</b>{f.estado === 'anulada' && <div><Badge tone="bad">Anulada</Badge></div>}</div>
         </div>
       ))}
-      {ver && <FacturaDetalle id={ver} onClose={() => setVer(null)} />}
+      {ver && <FacturaDetalle id={ver} onClose={() => setVer(null)} onCambio={()=>supabase.from(isDemoMode?'facturas_netas':'facturas').select('*').eq('cliente_id',c.id).order('fecha',{ascending:false}).then(({data})=>setFac(data||[]))} />}
     </Modal>
   )
 }

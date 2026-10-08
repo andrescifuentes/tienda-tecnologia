@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import { useAuth } from '../context/AuthContext'
 import ConfirmAction from '../components/ConfirmAction'
 import { monetaryError } from '../lib/money'
 import { useDemoRevision } from '../lib/demo/useDemoRevision'
@@ -7,6 +8,7 @@ import AppShell from '../components/AppShell'
 import Modal from '../components/Modal'
 import MoneyInput from '../components/MoneyInput'
 import DateField from '../components/DateField'
+import BalanceChart from '../components/BalanceChart'
 import { Icon } from '../components/Icons'
 import { Empty, Loader, Input, Select, ErrorBox, Stat, Chips } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
@@ -18,6 +20,8 @@ const CATS_I = ['Venta adicional', 'Servicio', 'Abono', 'Otro ingreso', 'Servici
 
 export default function Finanzas() {
   const revision = useDemoRevision()
+  const { can } = useAuth()
+  const costos = can('ver_costos')
   const [remove,setRemove] = useState(null)
   const [mes, setMes] = useState(0)
   const [tipo, setTipo] = useState('todos')
@@ -60,9 +64,9 @@ export default function Finanzas() {
       <div className="grid finance-stats mb-3">
         <Stat label="Ingresos" icon="cash" value={money(ventas + ing)} sub="Ventas y otros ingresos" tone="good" />
         <Stat label="Gastos" icon="out" value={money(gas)} sub="Movimientos manuales" tone="bad" />
-        <Stat label={isDemoMode ? "Utilidad neta" : "Resultado (sin costo de mercancía)"} value={money(isDemoMode ? profit : ventas + ing - gas)} tone={(isDemoMode ? profit : ventas + ing - gas) >= 0 ? 'good' : 'bad'} />
+        {costos && <Stat label={isDemoMode ? "Utilidad neta" : "Resultado (sin costo de mercancía)"} value={money(isDemoMode ? profit : ventas + ing - gas)} tone={(isDemoMode ? profit : ventas + ing - gas) >= 0 ? 'good' : 'bad'} />}
       </div>
-      <div className="card finance-chart"><div className="finance-balance-heading"><span className="document-symbol"><Icon name="chart" /></span><div><span className="premium-eyebrow">TU ACTIVIDAD FINANCIERA</span><h2>Balance del mes</h2></div><span className="finance-currency">COP</span></div>{[{label:'Ventas',value:ventas},{label:'Otros ingresos',value:ing},{label:'Gastos',value:gas}].map(x=><div className={"chart-row balance-"+(x.label==='Gastos'?'expense':'income')} key={x.label}><span>{x.label}</span><div className="chart-track"><span style={{width:(x.value/Math.max(ventas,ing,gas,1)*100)+'%'}} /></div><b>{money(x.value)}</b></div>)}<p>Ventas netas de facturas y movimientos manuales del período.{isDemoMode ? ' Las compras de inventario se reflejan como mercancía; la utilidad descuenta el costo vendido.' : ' El resultado no incluye el costo de mercancía.'}</p></div>
+      <BalanceChart showProfit={costos} ventas={ventas} ingresos={ing} gastos={gas} utilidad={isDemoMode?profit:ventas+ing-gas} demo={isDemoMode}/>
       <div className="premium-section-heading finance-list-heading"><h2>Movimientos y categorías</h2><span>{lista.length} registros</span></div><div className="finance-filters">
       <Chips value={tipo} onChange={setTipo} options={[{ value: 'todos', label: 'Todos' }, { value: 'ingreso', label: 'Ingresos' }, { value: 'gasto', label: 'Gastos' }]} /></div>
       {!movs ? <Loader /> : lista.length === 0 ? <Empty text="Sin movimientos este mes" /> : (

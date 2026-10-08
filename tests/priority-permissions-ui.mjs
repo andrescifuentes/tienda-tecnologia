@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 // No npm dependencies, production accounts, real camera, or remote requests.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const artifacts = join(root, 'artifacts', process.env.UI_ARTIFACTS || 'iphone-themes')
+const artifacts = join(root, 'artifacts', process.env.UI_ARTIFACTS || 'priority-permissions')
 const base = process.env.UI_BASE_URL || 'http://127.0.0.1:5173'
 assert.ok(new URL(base).protocol === 'http:' && esEntornoDemoPermitido(new URL(base)), 'Use HTTP localhost or a private LAN server for these tests')
 const browserPath = process.env.UI_BROWSER_PATH || [
@@ -90,6 +90,7 @@ try {
   async function waitFor(expression, timeout = 25000) {
     const deadline = Date.now() + timeout
     do { if (await evaluate(expression)) return; await delay(150) } while (Date.now() < deadline)
+    await screenshot("failure"); await writeFile(join(artifacts,"failure.json"),JSON.stringify(await evaluate("({alerts:[...document.querySelectorAll(\"[role=alert]\")].map(e=>e.textContent),body:document.body.innerText})"),null,2));
     throw new Error(`Timed out waiting for ${expression}`)
   }
   async function navigate(path, role = 'admin') {
@@ -130,58 +131,21 @@ try {
     }
     results.push({ name, width, height, status: 'PASS' })
   }
-
-  await send('Page.enable');await send('Runtime.enable');await send('Log.enable')
-  await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]})
-  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'},{name:'prefers-color-scheme',value:'light'}]})
-  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'dark','Default must ignore OS light preference')
-  results.push({name:'Dark default under OS light',status:'PASS'})
-  const routes=[['/','.stat-card','inicio'],['/inventario','.product-card','inventario'],['/vender','.sale-product','ventas'],['/facturas','.invoice-card','facturas'],['/clientes','.row','clientes'],['/proveedores','.row','proveedores'],['/empleados','.row','empleados'],['/finanzas','.row','finanzas'],['/garantias','.row','garantias'],['/mas','.menu-row','mas'],['/configuracion','.settings-panel','configuracion']]
-  const dimensions=[[320,700],[360,800],[390,844],[430,932]],measurements=[]
-  const applyTheme=theme=>evaluate('import("/src/lib/theme.js").then(m=>m.setTheme('+JSON.stringify(theme)+'))')
-  for(const theme of ['dark','light']){
-    await applyTheme(theme)
-    for(const[width,height]of dimensions){
-      await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true})
-      await evaluate('document.fonts.ready.then(()=>true)');await delay(150)
-      await evaluate("document.querySelector('.login-screen').scrollTop=0")
-      const name=width+'-login-'+theme;await geometry(name,width,height,false);await screenshot(name)
-      const m=await evaluate("(()=>{const s=document.querySelector('.login-screen'),l=document.querySelector('.login-layout');return {height:l.getBoundingClientRect().height,scroll:s.scrollHeight,viewport:s.clientHeight,demoBottom:document.querySelector('.demo-access').getBoundingClientRect().bottom,hero:document.querySelector('.login-hero').getBoundingClientRect().height,input:document.querySelector('.login-input .inp').getBoundingClientRect().height,cta:document.querySelector('.login-form .btn').getBoundingClientRect().height}})()")
-      measurements.push({name,...m});assert.equal(m.hero,150);assert.equal(m.input,50);assert.equal(m.cta,50)
-      if(width===390){assert.ok(m.demoBottom<=height,'Login demo must be visible at 390x844');assert.ok(m.scroll<=height+2,'Login must fit at 390x844')}
-    }
-  }
-  await evaluate("document.querySelector('.login-form button.btn').click()");await waitFor("!!document.querySelector('.stat-card')")
-  for(const theme of ['dark','light']){
-    await applyTheme(theme)
-    for(const[width,height]of dimensions){
-      await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true})
-      for(const[path,selector,label]of routes){
-        await send('Page.navigate',{url:base+path});await waitFor("!!document.querySelector('.nav') && document.readyState==='complete'");await waitFor('!!document.querySelector('+JSON.stringify(selector)+')');await evaluate('document.fonts.ready.then(()=>true)');await delay(120)
-        const name=width+'-'+label+'-'+theme;await geometry(name,width,height);await screenshot(name)
-        assert.equal(await evaluate('document.documentElement.dataset.theme'),theme,'Saved theme must survive navigation/reload')
-        const styles=await evaluate("(()=>{const root=getComputedStyle(document.documentElement),sel=['.stat-card','.product-card','.invoice-card','.profile-card'];return {ink:root.getPropertyValue('--text').trim(),surfaces:sel.flatMap(s=>[...document.querySelectorAll(s)].map(e=>({selector:s,bg:getComputedStyle(e).backgroundColor,image:getComputedStyle(e).backgroundImage}))),header:document.querySelector('.top').getBoundingClientRect().height}})()")
-        if(theme==='light'){assert.equal(styles.ink,'#17130e');for(const s of styles.surfaces){assert.equal(s.image,'none',name+': no dirty gradients');assert.equal(s.bg,'rgb(255, 252, 247)',name+': light surfaces')}}
-        if(path==='/'&&width===390){assert.ok(styles.header>=100&&styles.header<=140,'Compact home header');measurements.push({name,header:styles.header})}
-      }
-    }
-  }
-  // The header toggle and settings segments subscribe to the same preference.
-  await send('Page.navigate',{url:base+'/configuracion'});await waitFor("!!document.querySelector('[aria-label=\"Cambiar tema\"]') && document.querySelectorAll('.theme-segments button').length===2")
-  await evaluate("document.querySelector('[aria-label=\"Cambiar tema\"]').click()")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'dark')
-  await waitFor("document.querySelector('.theme-segments button:first-child').getAttribute('aria-pressed')==='true'")
-  await evaluate("document.querySelector('.theme-segments button:last-child').click()")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'light')
-  assert.equal(await evaluate("localStorage.getItem('tema')"),'light')
-  await send('Page.reload');await waitFor("!!document.querySelector('.nav')");assert.equal(await evaluate('document.documentElement.dataset.theme'),'light')
-  await waitFor("document.querySelector('.theme-segments button:last-child').getAttribute('aria-pressed')==='true'")
-  results.push({name:'Header toggle, settings segments and saved theme after reload',status:'PASS'})
-  assert.deepEqual(externalRequests,[]);assert.deepEqual(browserErrors,[])
-  await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'PASS',cases:results.length,measurements,results,externalRequests,browserErrors},null,2))
-  console.log(JSON.stringify({status:'PASS',cases:results.length,measurements,artifacts}));await send('Browser.close').catch(()=>{})
-
+  await send('Page.enable');await send('Page.bringToFront');await send('Runtime.enable');await send('Log.enable');await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  const check=name=>results.push({name,status:'PASS'});
+  const rpc=(name,args)=>evaluate(`import('/src/lib/supabase.js').then(async({supabase})=>{const r=await supabase.rpc(${JSON.stringify(name)},${JSON.stringify(args)});if(r.error)throw Error(r.error.message);return r.data})`);
+  const go=async path=>{await send('Page.navigate',{url:base+path});await waitFor("!!document.querySelector('.nav')&&document.readyState==='complete'");await delay(400)};
+  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')");await evaluate("document.querySelector('.login-form .btn').click()");await waitFor("!!document.querySelector('.stat-card')");
+  await go('/inventario');await waitFor("!!document.querySelector('.product-card')");await evaluate("document.querySelector('.product-card').click()");await waitFor("!!document.querySelector('.sheet')");assert.ok(await evaluate("document.querySelector('.sheet').innerText.includes('Costo')"));check('Administrator sees product cost');await evaluate("document.querySelector('.sheet-x').click()");
+  await evaluate("document.querySelector('.header-controls .btn').click()");await waitFor("!!document.querySelector('.product-form')");assert.ok(await evaluate("[...document.querySelectorAll('.sheet label')].some(l=>l.textContent==='Precio compra')"));check('Administrator sees purchase price field');await evaluate("document.querySelector('.sheet-x').click()");
+  await rpc('guardar_empleado_demo',{id:'demo-ana',datos:{},permisos:['vender','ver_inventario','crear_clientes','editar_inventario','editar_precios','ver_finanzas']});
+  await evaluate("import('/src/lib/supabase.js').then(async({supabase})=>{const r=await supabase.auth.signInWithPassword({email:'ana@angietech.demo',password:'AngieDemo123!'});if(r.error)throw Error(r.error.message)})");
+  await go('/inventario');await waitFor("!!document.querySelector('.product-card')");await evaluate("document.querySelector('.product-card').click()");await waitFor("!!document.querySelector('.sheet')");assert.equal(await evaluate("document.querySelector('.sheet').innerText.includes('Costo')"),false);check('Seller product detail hides cost and stock valuation');
+  await evaluate("[...document.querySelectorAll('.sheet button')].find(b=>b.textContent.trim()==='Editar').click()");await waitFor("!!document.querySelector('.product-form')");assert.equal(await evaluate("[...document.querySelectorAll('.sheet label')].some(l=>l.textContent==='Precio compra')"),false);check('Seller editor has no hidden-cost field');
+  const before=await evaluate("JSON.parse(localStorage.getItem('angie-tech:demo:v1')).tables.productos.map(p=>({id:p.id,cost:p.precio_compra}))");await evaluate("document.querySelector('.sheet-foot button').click()");await waitFor("!document.querySelector('.sheet')");const after=await evaluate("JSON.parse(localStorage.getItem('angie-tech:demo:v1')).tables.productos.map(p=>({id:p.id,cost:p.precio_compra}))");assert.deepEqual(after,before);check('Editing without cost permission preserves stored purchase price');
+  await go('/');await waitFor("!!document.querySelector('.stat-card')");await evaluate("document.querySelector('.home-section button').click()");await delay(120);assert.equal(await evaluate("document.body.innerText.includes('Utilidad del mes')||document.body.innerText.includes('Valor inventario')"),false);check('Finance-enabled seller Home hides profit and valuation');
+  await go('/finanzas');await waitFor("!!document.querySelector('.finance-chart')");assert.equal(await evaluate("document.body.innerText.includes('Utilidad')||document.body.innerText.includes('Resultado (')"),false);check('Finance-enabled seller has no profit card or profit series');await screenshot('390-seller-finance');
+  assert.deepEqual(externalRequests,[]);assert.deepEqual(browserErrors,[]);await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'PASS',cases:results.length,results,externalRequests,browserErrors},null,2));console.log(JSON.stringify({status:'PASS',cases:results.length,artifacts}));await send('Browser.close').catch(()=>{});
 } catch (error) {
   await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'FAIL',error:error.stack,results,externalRequests,browserErrors},null,2)+'\n')
   console.error(error.stack)

@@ -3,6 +3,7 @@ import ConfirmAction from '../components/ConfirmAction'
 import { useAction } from '../lib/useAction'
 import AppShell from '../components/AppShell'
 import Modal from '../components/Modal'
+import { FormSection, PremiumSwitch, RoleField, PasswordField } from '../components/AdminPrimitives'
 import { Empty, Loader, Badge, Input, ErrorBox, SearchBar, Select } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { fechaHora, mensajeError, money, hoyBogota, rangoMes } from '../lib/format'
@@ -28,30 +29,27 @@ export default function Empleados() {
   const refrescar = () => { setLista(null); setTick((t) => t + 1) }
 
   return (
-    <AppShell title="Empleados" sub="Solo el administrador crea usuarios" right={<button className="btn sm" onClick={() => setNuevo(true)}>+ Vendedor</button>}>
+    <div className="admin-premium admin-employees"><AppShell title="Empleados" sub="Equipo, acceso y comisiones" right={<button className="btn sm" onClick={() => setNuevo(true)}>+ Vendedor</button>}>
       <SearchBar value={q} onChange={setQ} placeholder="Buscar empleado o correo" />
       {!lista ? <Loader /> : visible.length === 0 ? <Empty /> : (
-        <div className="card entity-list !p-2">
+        <div className="admin-list entity-list">
           {visible.map((p) => (
-            <div key={p.id} className="row cursor-pointer" onClick={() => setSel(p)}>
-              <span className="entity-avatar">{p.nombre.slice(0,1)}</span>
-              <div className="flex-1"><p className="m-0 text-sm font-semibold">{p.nombre}</p><p className="m-0 text-xs text-muted">{p.correo}</p>{isDemoMode&&<div className="employee-summary"><p>Hoy {money(sales.day.find(s=>s.vendedor_id===p.id)?.total_vendido||0)}</p><p>Mes {money(sales.month.find(s=>s.vendedor_id===p.id)?.total_vendido||0)} · {sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0} facturas</p>{p.comision_pct!=null&&<p>Comisión ({p.comision_pct}%) {money(sales.month.find(s=>s.vendedor_id===p.id)?.comision||0)}</p>}</div>}</div>
-              <div className="employee-state"><Badge tone={p.rol === 'admin' ? 'good' : ''}>{p.rol === 'admin' ? 'Admin' : 'Vendedor'}</Badge><Badge tone={p.activo?'good':'bad'}>{p.activo?'Activo':'Inactivo'}</Badge></div>
-            </div>
+            <button type="button" key={p.id} className="row card admin-list-card employee-card" onClick={() => setSel(p)}>
+              <div className="employee-card-heading"><span className="entity-avatar">{p.nombre.slice(0,1)}</span><div className="employee-card-copy"><p className="admin-card-title">{p.nombre}</p><p className="admin-card-secondary">{p.rol==='admin'?'Administrador':'Vendedor'}</p></div><Badge tone={p.activo?'good':'bad'}>{p.activo?'Activo':'Inactivo'}</Badge></div>
+              <p className="admin-card-secondary mt-2">{p.correo}</p>{isDemoMode&&<div className="employee-summary"><div className="employee-summary-grid"><span><small>Ventas mes</small><b>{money(sales.month.find(s=>s.vendedor_id===p.id)?.total_vendido||0)}</b></span><span><small>Comisión {p.comision_pct!=null?`(${p.comision_pct}%)`:''}</small><b>{p.comision_pct!=null?money(sales.month.find(s=>s.vendedor_id===p.id)?.comision||0):'Sin comisión'}</b></span></div><div className="employee-aux"><span>Hoy {money(sales.day.find(s=>s.vendedor_id===p.id)?.total_vendido||0)} · {sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0} facturas mes</span><span className="admin-chevron" aria-hidden="true">›</span></div></div>}
+            </button>
           ))}
         </div>
       )}
       {nuevo && <Nuevo onClose={() => setNuevo(false)} onSaved={() => { setNuevo(false); refrescar() }} />}
       {sel && <Detalle p={sel} onClose={() => setSel(null)} onCambio={() => { refrescar(); setSel(null) }} />}
-    </AppShell>
+    </AppShell></div>
   )
 }
 
 function Permisos({ value, onChange }) {
   return PERMISOS.map(([k, t]) => (
-    <label key={k} className="flex items-center gap-2 text-sm py-1.5">
-      <input type="checkbox" checked={value.includes(k)} onChange={(e) => onChange(e.target.checked ? [...value, k] : value.filter((x) => x !== k))} /> {t}
-    </label>
+    <PremiumSwitch key={k} label={t} checked={value.includes(k)} onChange={checked=>onChange(checked ? [...value, k] : value.filter((x) => x !== k))}/>
   ))
 }
 
@@ -77,17 +75,12 @@ function Nuevo({ onClose, onSaved }) {
     toast('Empleado creado'); onSaved()
   }
   return (
-    <Modal title="Nuevo vendedor" onClose={onClose} footer={<button className="btn full" onClick={crear} disabled={busy || pendingCreate}>{busy ? 'Creando…' : 'Crear usuario'}</button>}>
+    <Modal title="Nuevo vendedor" subtitle="Acceso y perfil de tu equipo" className="admin-sheet employee-create-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" onClick={crear} disabled={busy || pendingCreate}>{busy ? 'Creando…' : 'Crear usuario'}</button>}>
       <ErrorBox text={err} />
-      {isDemoMode&&<Input label="Documento empleado" value={f.documento||''} onChange={set('documento')}/>}
-      <Input required label="Nombre completo" value={f.nombre} onChange={set('nombre')} />
-      <Input label="Correo (con él inicia sesión)" type="email" value={f.correo} onChange={set('correo')} />
-      {isDemoMode&&<Select label="Rol" value={f.rol||'vendedor'} onChange={set('rol')}><option value="vendedor">Vendedor</option><option value="admin">Administrador</option></Select>}
-      <Input label="Contraseña inicial" type="password" value={f.password} onChange={set('password')} />
-      <Input label="Teléfono" value={f.telefono} onChange={set('telefono')} inputMode="tel" />
-      <Input label="Comisión % (opcional)" type="number" min="0" max="100" step="0.01" value={f.comision_pct} onChange={set('comision_pct')} />
-      <h4 className="text-sm text-muted uppercase mb-1">Permisos</h4>
-      <Permisos value={permisos} onChange={setPermisos} />
+      <FormSection number="01" title="Identidad"><div className="admin-form-grid"><div className="admin-span"><Input required label="Nombre completo" value={f.nombre} onChange={set('nombre')}/></div>{isDemoMode&&<Input label="Documento empleado" value={f.documento||''} onChange={set('documento')}/>}<Input label="Teléfono" value={f.telefono} onChange={set('telefono')} inputMode="tel"/></div></FormSection>
+      <FormSection number="02" title="Acceso"><Input label="Correo (con él inicia sesión)" type="email" value={f.correo} onChange={set('correo')}/>{isDemoMode&&<RoleField label="Rol" value={f.rol||'vendedor'} onChange={set('rol')}/>}<PasswordField value={f.password} onChange={set('password')} generate={isDemoMode}/></FormSection>
+      <FormSection number="03" title="Comisiones"><div className="commission-field"><Input label="Comisión % (opcional)" type="number" min="0" max="100" step="0.01" value={f.comision_pct} onChange={set('comision_pct')}/></div></FormSection>
+      <FormSection number="04" title="Permisos" collapsible detail={`${permisos.length} activos`}><Permisos value={permisos} onChange={setPermisos}/></FormSection>
     </Modal>
   )
 }
@@ -130,25 +123,24 @@ function Detalle({ p, onClose, onCambio }) {
   }
 
   return (
-    <Modal title={p.nombre} onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={pendingSave}>{pendingSave?'Guardando...':'Guardar cambios'}</button>}>
+    <Modal title={p.nombre} className="admin-sheet employee-edit-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={pendingSave}>{pendingSave?'Guardando...':'Guardar cambios'}</button>}>
       <ErrorBox text={err} />
-      <p className="text-sm text-muted mt-0">{p.correo} · {p.rol}</p>
-      {isDemoMode && <><Input required label="Nombre empleado" value={name} onChange={e=>setName(e.target.value)} /><Input label="Documento empleado" value={documento} onChange={e=>setDocumento(e.target.value)} /><label className="lbl">Rol empleado</label><select className="inp mb-3" value={rol} onChange={e=>setRol(e.target.value)}><option value="vendedor">Vendedor</option><option value="admin">Administrador</option></select></>}
-      <Input label="Teléfono" value={tel} onChange={(e) => setTel(e.target.value)} />
-      <Input label="Comisión % (vacío = sin comisión)" type="number" min="0" max="100" step="0.01" value={com} onChange={(e) => setCom(e.target.value)} />
+      <div className="employee-detail-identity"><span className="entity-avatar">{p.nombre.slice(0,1)}</span><div className="flex-1 min-w-0"><b>{p.nombre}</b><p>{p.rol==='admin'?'Administrador':'Vendedor'}</p><p>{p.correo}</p></div><Badge tone={p.activo?'good':'bad'}>{p.activo?'Activo':'Inactivo'}</Badge></div>
+      <FormSection title="Datos personales"><div className="admin-form-grid">{isDemoMode&&<><div className="admin-span"><Input required label="Nombre empleado" value={name} onChange={e=>setName(e.target.value)}/></div><Input label="Documento empleado" value={documento} onChange={e=>setDocumento(e.target.value)}/></>}<Input label="Teléfono" value={tel} onChange={e=>setTel(e.target.value)}/></div></FormSection>
+      <FormSection title="Rol y comisiones">{isDemoMode&&<RoleField label="Rol empleado" value={rol} onChange={e=>setRol(e.target.value)}/>}<div className="commission-field"><Input label="Comisión % (vacío = sin comisión)" type="number" min="0" max="100" step="0.01" value={com} onChange={e=>setCom(e.target.value)}/></div></FormSection>
       {!esAdmin && (
         <>
-          <h4 className="text-sm text-muted uppercase mb-1">Permisos</h4>
-          {permisos ? <Permisos value={permisos} onChange={setPermisos} /> : <Loader />}
-          <button className={'btn full my-3 ' + (p.activo ? 'bad' : 'sec')} onClick={()=>setConfirm(true)}>{p.activo ? 'Desactivar empleado' : 'Activar empleado'}</button>
+          <FormSection title="Permisos" collapsible detail={permisos?`${permisos.length} activos`:'Cargando…'}>{permisos ? <Permisos value={permisos} onChange={setPermisos} /> : <Loader />}</FormSection>
+          <div className="admin-discreet-action"><button className={p.activo?'admin-reset':'btn sec full'} onClick={()=>setConfirm(true)}>{p.activo ? 'Desactivar empleado' : 'Activar empleado'}</button></div>
         </>
       )}
       {confirm&&<ConfirmAction title={p.activo?'Desactivar empleado':'Activar empleado'} label="Confirmar estado" onClose={()=>setConfirm(false)} onConfirm={alternar}>Se conserva el historial. El empleado desactivado no podra iniciar sesion.</ConfirmAction>}
-      {isDemoMode&&<section><h4 className="section-heading">Ventas y comisiones</h4><p className="text-sm">Mes actual: {money(sales.filter(f=>f.estado==='emitida'&&f.fecha.slice(0,7)===hoyBogota().slice(0,7)).reduce((n,f)=>n+(f.total_neto||0),0))}</p>{sales.map(f=><div className="row" key={f.id}><span className="flex-1 text-sm">{f.prefijo}-{f.numero} - {f.estado}</span><span className="text-xs">{money(f.total_neto)} / Comision {money(f.estado==='emitida'?f.comision_neta:0)}</span></div>)}</section>}
-      <h4 className="text-sm text-muted uppercase mt-3 mb-1">Historial de actividad</h4>
+      {isDemoMode&&<details className="admin-history"><summary>Ventas y comisiones</summary><p className="text-sm">Mes actual: {money(sales.filter(f=>f.estado==='emitida'&&f.fecha.slice(0,7)===hoyBogota().slice(0,7)).reduce((n,f)=>n+(f.total_neto||0),0))}</p>{sales.map(f=><div className="row" key={f.id}><span className="flex-1 text-sm">{f.prefijo}-{f.numero} - {f.estado}</span><span className="text-xs">{money(f.total_neto)} / Comision {money(f.estado==='emitida'?f.comision_neta:0)}</span></div>)}</details>}
+      <details className="admin-history"><summary>Historial de actividad</summary>
       {!act ? <Loader /> : act.length === 0 ? <Empty text="Sin actividad" /> : act.map((a) => (
         <div key={a.id} className="row"><div className="flex-1"><p className="m-0 text-sm">{a.accion}{a.entidad ? ` · ${a.entidad} ${a.entidad_id ?? ''}` : ''}</p><p className="m-0 text-xs text-muted">{fechaHora(a.fecha)}</p></div></div>
       ))}
+      </details>
     </Modal>
   )
 }

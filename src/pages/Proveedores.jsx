@@ -4,6 +4,7 @@ import { monetaryError } from '../lib/money'
 import { useSearchParams } from 'react-router-dom'
 import CompraDetalle from '../components/CompraDetalle'
 import Modal from '../components/Modal'
+import { FormSection } from '../components/AdminPrimitives'
 import RecordStatus from '../components/RecordStatus'
 import { useAction } from '../lib/useAction'
 import CompraForm from '../components/CompraForm'
@@ -21,6 +22,7 @@ export default function Proveedores() {
   const [form, setForm] = useState(null)
   const [sel, setSel] = useState(null)
   const [tick, setTick] = useState(0)
+  const [balances,setBalances]=useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -36,22 +38,23 @@ export default function Proveedores() {
   const refrescar = () => { setLista(null); setTick((t) => t + 1) }
 
   return (
-    <AppShell title="Proveedores" sub="Compras y cuentas por pagar" right={<button className="btn sm" onClick={() => setForm({})}>+ Nuevo</button>}>
-      <div className="mb-3"><Stat label="Cuentas por pagar" value={money(deuda)} tone={deuda > 0 ? 'warn' : 'good'} /></div>
+    <div className="admin-premium admin-suppliers"><AppShell title="Proveedores" sub="Compras y cuentas por pagar" right={<button className="btn sm" onClick={() => setForm({})}>+ Nuevo</button>}>
+      <div className="admin-payable"><Stat label="Cuentas por pagar" value={money(deuda)} tone={deuda > 0 ? 'warn' : 'good'} /><div className="admin-payable-foot"><span>{new Set(compras.filter(c=>c.saldo>0).map(c=>c.proveedor_id)).size} proveedores con saldo</span><button onClick={()=>setBalances(true)}>Ver detalle ›</button></div></div>
       <SearchBar value={q} onChange={setQ} placeholder="Buscar proveedor o contacto" />
       {!lista ? <Loader /> : visible.length === 0 ? <Empty text="Aún no hay proveedores" description="Registra un proveedor para ingresar mercancía y controlar tus cuentas por pagar." action={()=>setForm({})} actionLabel="+ Crear proveedor" /> : (
-        <div className="card entity-list !p-2">
+        <div className="admin-list entity-list">
           {visible.map((p) => (
-            <div key={p.id} className="row cursor-pointer" onClick={() => setSel(p)}>
-              <div className="flex-1"><p className="m-0 text-sm font-semibold">{p.nombre}</p><p className="m-0 text-xs text-muted">{p.contacto || ''}{p.telefono ? ' · ' + p.telefono : ''}</p></div>
-              <div className="text-right"><b className="entity-total">{money(compras.filter(c=>c.proveedor_id===p.id&&c.saldo>0).reduce((n,c)=>n+Number(c.saldo),0))}</b><p className="m-0 text-xs text-muted">{compras.filter(c=>c.proveedor_id===p.id).length} compras · Saldo</p>{!p.activo && <Badge tone="bad">inactivo</Badge>}</div>
-            </div>
+            <button type="button" key={p.id} className="row card admin-list-card supplier-card" onClick={() => setSel(p)}>
+              <div className="admin-card-top"><p className="admin-card-title">{p.nombre}</p>{!p.activo&&<Badge tone="bad">Inactivo</Badge>}</div><p className="admin-card-secondary">{p.contacto || 'Sin contacto'}</p>{p.telefono&&<p className="admin-card-secondary">{p.telefono}</p>}
+              <div className="admin-card-bottom"><span>{compras.some(c=>c.proveedor_id===p.id&&c.saldo>0)?<><small>Saldo pendiente</small><b className="entity-total">{money(compras.filter(c=>c.proveedor_id===p.id&&c.saldo>0).reduce((n,c)=>n+Number(c.saldo),0))}</b></>:<Badge tone="good">Al día</Badge>}<small>{compras.filter(c=>c.proveedor_id===p.id).length} compras</small></span><span className="admin-chevron" aria-hidden="true">›</span></div>
+            </button>
           ))}
         </div>
       )}
       {form && <Form inicial={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => { setForm(null); setSel(null); refrescar() }} />}
       {sel && !form && <Detalle compraId={Number(params.get('compra'))||null} p={sel} onClose={() => setSel(null)} onEditar={() => setForm(sel)} onCambio={refrescar} />}
-    </AppShell>
+      {balances&&<Modal title="Cuentas por pagar" className="admin-sheet" onClose={()=>setBalances(false)}><p className="admin-hint">Saldo total {money(deuda)}</p>{(lista||[]).filter(p=>compras.some(c=>c.proveedor_id===p.id&&c.saldo>0)).map(p=><button className="row settings-row" key={p.id} onClick={()=>{setBalances(false);setSel(p)}}><span className="flex-1">{p.nombre}</span><b>{money(compras.filter(c=>c.proveedor_id===p.id&&c.saldo>0).reduce((n,c)=>n+Number(c.saldo),0))}</b><span aria-hidden="true">›</span></button>)}{deuda===0&&<Empty text="Todos los proveedores están al día"/>}</Modal>}
+    </AppShell></div>
   )
 }
 
@@ -69,16 +72,19 @@ function Form({ inicial, onClose, onSaved }) {
     onSaved()
   }
   return (
-    <Modal title={inicial ? 'Editar proveedor' : 'Nuevo proveedor'} onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={pendingSave}>{pendingSave?'Guardando...':'Guardar'}</button>}>
+    <Modal title={inicial ? 'Editar proveedor' : 'Nuevo proveedor'} className="admin-sheet supplier-form" keyboardAware onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={pendingSave}>{pendingSave?'Guardando...':'Guardar'}</button>}>
       <ErrorBox text={err} />
+      <FormSection number="01" title="Identidad">
       <Input required label="Nombre / razón social" value={f.nombre} onChange={set('nombre')} />
       <Input label="NIT" value={f.nit || ''} onChange={set('nit')} />
+      </FormSection><FormSection number="02" title="Contacto"><div className="admin-form-grid">
       <Input label="Contacto" value={f.contacto || ''} onChange={set('contacto')} />
       <Input label="Teléfono" value={f.telefono || ''} onChange={set('telefono')} />
-      <Input type="email" label="Correo" value={f.correo || ''} onChange={set('correo')} />
+      <div className="admin-span"><Input type="email" label="Correo" value={f.correo || ''} onChange={set('correo')} /></div>
+      </div></FormSection><FormSection number="03" title="Ubicación">
       <Input label="Dirección" value={f.direccion || ''} onChange={set('direccion')} />
-      {isDemoMode&&<Input label="Notas" value={f.notas||''} onChange={set('notas')} />}
       {isDemoMode&&<Input label="Ciudad" value={f.ciudad||''} onChange={set('ciudad')} />}
+      </FormSection>{isDemoMode&&<FormSection number="04" title="Otros"><Input label="Notas" value={f.notas||''} onChange={set('notas')} /></FormSection>}
     </Modal>
   )
 }
@@ -109,7 +115,7 @@ function Detalle({ compraId,p, onClose, onEditar, onCambio }) {
   }
 
   return (
-    <Modal title={p.nombre} onClose={onClose}>
+    <Modal title={p.nombre} className="admin-sheet supplier-detail-sheet" keyboardAware onClose={onClose}>
       <ErrorBox text={err} />
       <p className="text-sm text-muted mt-0">{[p.nit && 'NIT ' + p.nit, p.telefono, p.correo].filter(Boolean).join(' · ')}</p>
       {p.ciudad && <p className="text-sm text-muted">{p.ciudad} · {p.contacto}</p>}
@@ -133,7 +139,7 @@ function Detalle({ compraId,p, onClose, onEditar, onCambio }) {
       {!prods ? <Loader /> : prods.length === 0 ? <Empty text="Sin productos asignados" /> : prods.map((x) => <div key={x.id} className="row"><span className="flex-1 text-sm">{x.nombre}</span><Badge>{x.stock} uds</Badge></div>)}
       {seePurchase&&<CompraDetalle id={seePurchase} onClose={()=>setSeePurchase(null)}/>}
       {pagar && (
-        <Modal title="Registrar pago" onClose={() => setPagar(null)} footer={<button className="btn full" disabled={pendingPayment} onClick={registrarPago}>{pendingPayment?'Registrando...':'Registrar pago'}</button>}>
+        <Modal title="Registrar pago" className="admin-sheet" keyboardAware onClose={() => setPagar(null)} footer={<button className="btn full" disabled={pendingPayment} onClick={registrarPago}>{pendingPayment?'Registrando...':'Registrar pago'}</button>}>
           <p className="text-sm text-muted mt-0">Saldo pendiente: {money(pagar.saldo)}</p>
           <Input label="Monto" type="number" min="1" max={pagar.saldo} value={monto} onChange={(e) => setMonto(e.target.value)} />
         </Modal>

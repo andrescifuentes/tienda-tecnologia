@@ -106,7 +106,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
   const anulada = f.estado === 'anulada'
 
   return (
-    <Modal title={(nueva ? '✓ Venta registrada · ' : '') + numFactura(f)} className="invoice-detail-sheet" subtitle="El detalle de tu venta" onClose={onClose}>
+    <Modal title={(nueva ? '✓ Venta registrada · ' : '') + numFactura(f)} className="invoice-detail-sheet experience-sheet" subtitle="El detalle de tu venta" keyboardAware onClose={onClose}>
       <ErrorBox text={err} />
       {newWarranty && <NuevaGarantia facturaId={f.id} onClose={()=>setNewWarranty(false)} onSaved={()=>{setNewWarranty(false);toast('Garantía registrada')}} />}
       {confirmRefund && <ConfirmAction title="Confirmar devolución" label="Confirmar devolución" onClose={()=>setConfirmRefund(false)} onConfirm={devolver}>Se registrará la devolución de los productos elegidos y su reverso de dinero y comisión. {reintegra ? 'El stock disponible aumentará.' : 'El producto dañado no aumentará el stock disponible.'}</ConfirmAction>}
@@ -117,11 +117,11 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
         {preview === 'whatsapp' && <button className="btn full mt-2" onClick={() => window.open(enlaceWhatsApp(tel, 'Hola ' + (f.clientes?.nombre || 'cliente') + ', te compartimos tu factura ' + numFactura(f) + ' de ANGIE TECH.\n' + texto()), '_blank', 'noopener,noreferrer')}>Abrir WhatsApp</button>}
         {preview === 'correo' && <a className="btn full mt-2" href={'mailto:' + encodeURIComponent(f.clientes?.correo || '') + '?subject=' + encodeURIComponent('Factura ' + numFactura(f) + ' de ANGIE TECH') + '&body=' + encodeURIComponent(texto().replace(/\*/g,''))}>Abrir correo</a>}
       </section>}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="invoice-detail-meta flex items-center gap-2 mb-2">
         <span className="text-xs text-muted">{fechaHora(f.fecha)} · {f.perfiles?.nombre}</span>
         <Badge tone={anulada ? 'bad' : f.estado === 'pendiente' ? 'warn' : 'good'}>{anulada ? 'Anulada' : f.estado === 'pendiente' ? 'Pendiente' : 'Emitida'}</Badge>
       </div>
-      <p className="text-sm mt-0 mb-2"><b>Cliente:</b> {f.clientes?.nombre || 'Consumidor final'}</p>
+      <div className="invoice-party"><span className="premium-eyebrow">CLIENTE</span><b>{f.clientes?.nombre || 'Consumidor final'}</b>{f.clientes?.documento&&<small>{f.clientes.documento}</small>}</div>
 
       <div className="card invoice-detail-lines !p-3 mb-3">
         {items.map((i) => (
@@ -139,18 +139,19 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
       {!modo && <button className="btn full invoice-open-document" onClick={imprimir}>PDF / Imprimir</button>}
       {!anulada && !modo && (
         <>
+          <h4 className="experience-section-title">Comunicación</h4>
           <Input label="Teléfono para WhatsApp" value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" />
-          <div className="grid grid-cols-2 gap-2 mb-3 invoice-detail-actions">
-            <button className="btn" onClick={porWhatsApp}>WhatsApp</button>
+          <div className="action-grid communication-actions mb-3 invoice-detail-actions">
+            <button className="btn sec" onClick={porWhatsApp}>WhatsApp</button>
             <button className="btn sec" onClick={porCorreo}>Correo</button>
             <button className="btn sec" onClick={compartir}>Compartir</button>
             
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          {f.estado==='emitida'&&((isDemoMode&&can('editar_inventario'))||can('hacer_devoluciones'))&&<><h4 className="experience-section-title">Postventa</h4><div className="action-grid aftersale-actions">
             {isDemoMode && f.estado==='emitida' && can('editar_inventario') && <button className="btn sec" onClick={()=>setNewWarranty(true)}>Crear garantía</button>}
             {f.estado==='emitida' && can('hacer_devoluciones') && <button className="btn sec" onClick={() => { setErr(''); setModo('devolver') }}>Devolución</button>}
-            {can('anular_facturas') && <button className="btn bad" onClick={() => { setErr(''); setModo('anular') }}>Anular</button>}
-          </div>
+          </div></>}
+          {can('anular_facturas') && <div className="destructive-zone"><button className="btn bad full" onClick={() => { setErr(''); setModo('anular') }}>Anular</button></div>}
         </>
       )}
 

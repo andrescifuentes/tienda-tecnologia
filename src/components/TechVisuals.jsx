@@ -46,7 +46,7 @@ export default function TechHero() {
   }, [])
   return <section className="tech-hero" ref={ref} aria-label="ANGIE TECH, inicio">
     <img className="hero-photo" src={homePhoto} alt="Dispositivos y accesorios tecnológicos" />
-    <div className="hero-copy"><h2>Tecnología<br/>que impulsa<br/>tu <em>negocio.</em></h2><p>Los mejores dispositivos<br/>y accesorios, siempre<br/>al alcance de tu mano.</p><button className="hero-arrow" onClick={() => navigate('/vender')} aria-label="Ir a nueva venta"><Icon name="arrow" /></button></div>
+    <div className="hero-copy"><span className="hero-eyebrow">ANGIE TECH</span><h2>Tecnología para<br/><em>vender mejor.</em></h2><p>Inventario, ventas y gestión en un solo lugar.</p><button className="hero-arrow" onClick={() => navigate('/vender')} aria-label="Ir a nueva venta"><span>Nueva venta</span><Icon name="arrow" /></button></div>
   </section>
 }
 export function AnimatedCard({ as: Element = 'div', index = 0, className = '', style, children, ...props }) {

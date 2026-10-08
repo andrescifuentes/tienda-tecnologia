@@ -1,6 +1,9 @@
 import { money, fechaHora, numFactura } from './format'
+import { invoiceBusiness } from './invoiceSnapshot'
 
 export function textoFactura(f, items, tienda, cliente) {
+  tienda = invoiceBusiness(f, tienda)
+  cliente = Object.hasOwn(f,'cliente_snapshot') ? f.cliente_snapshot : cliente
   const L = []
   L.push(`*${tienda?.nombre || 'ANGIE TECH'}*`)
   if (tienda?.nit) L.push(`NIT ${tienda.nit}`)

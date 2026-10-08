@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDemoRevision } from '../lib/demo/useDemoRevision'
 import AppShell from '../components/AppShell'
 import SalesMetricDetail from '../components/SalesMetricDetail'
+import BusinessDetail from '../components/BusinessDetail'
 import TechHero from '../components/TechVisuals'
 import Modal from '../components/Modal'
 import Scanner from '../components/Scanner'
@@ -31,11 +32,12 @@ function HomeTools() {
     },250)
     return()=>{active=false;clearTimeout(timer)}
   },[q])
-  return <><SearchBar value={q} onChange={setQ} onScan={()=>setScan(true)} placeholder="Buscar producto, SKU o factura" />
+  return <section className="home-tools"><SearchBar value={q} onChange={setQ} onScan={()=>setScan(true)} placeholder="Buscar producto, SKU o factura" />
     {q && <div className="card search-results mb-3">{results.length ? results.map(x=><button key={x.key} className="row menu-row" onClick={()=>navigate(x.to)}><span className="flex-1"><b>{x.title}</b><small>{x.sub}</small></span><Icon name="back" className="w-4 h-4 rotate-180" /></button>):<p className="text-sm text-muted">Sin coincidencias</p>}</div>}
+    {!q && <div className="home-search-guide"><span className="premium-eyebrow">ENCUENTRA LO QUE NECESITAS</span><p>Productos, códigos y facturas.</p><small>Prueba AirPods, USBC2M o FV-1245.</small></div>}
     <div className="quick-actions">{[{to:'/vender',title:'Nueva venta',icon:'cart',allowed:can('vender')},{to:'/inventario',title:'Inventario',icon:'box',allowed:can('ver_inventario')},{to:'/facturas',title:'Facturas',icon:'doc',allowed:true}].filter(x=>x.allowed).map(x=><button key={x.to} onClick={()=>navigate(x.to)}><span><Icon name={x.icon}/></span>{x.title}</button>)}</div>
     {scan && <Scanner onClose={()=>setScan(false)} onScan={async code=>{setScan(false);const s=limpiarBusqueda(code);const {data}=await supabase.from('productos_venta').select('*').or(`codigo.eq.${s},codigo_barras.eq.${s}`);if(data?.length===1)navigate('/inventario?producto='+data[0].id);else setQ(code)}} />}
-  </>
+  </section>
 }
 export default function Inicio() {
   const { esAdmin, can, perfil } = useAuth()
@@ -45,6 +47,8 @@ const bogotaDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' 
 const dateLabel=()=>new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})
 
 function DashboardAdmin() {
+  const { can } = useAuth()
+  const costos = can('ver_costos')
   const revision = useDemoRevision()
   const navigate=useNavigate()
   const [activity,setActivity]=useState([]),[d,setD]=useState(null),[bajo,setBajo]=useState([]),[emp,setEmp]=useState([]),[rec,setRec]=useState([]),[err,setErr]=useState(''),[detail,setDetail]=useState(null),[targets,setTargets]=useState({}),[agotados,setAgotados]=useState(0)
@@ -73,7 +77,7 @@ function DashboardAdmin() {
   const sales = rec.filter(f=>f.estado==='emitida' && (detail==='day'?bogotaDay.format(new Date(f.fecha))===hoyBogota():bogotaDay.format(new Date(f.fecha)).startsWith(hoyBogota().slice(0,7))))
   return <AppShell title="Inicio" sub={dateLabel()}><HomeTools/><TechHero/><ErrorBox text={err}/>
     {!d&&!err?<Loader/>:d&&<>
-      <div className="home-section"><h2>Resumen de tu negocio</h2><button onClick={()=>setDetail('summary')}>Ver detalle ›</button></div>
+      <div className="home-section"><div><span className="home-kicker">TU NEGOCIO AL DÍA</span><h2>Resumen de tu negocio</h2></div><button onClick={()=>setDetail('summary')}>Ver detalle ›</button></div>
       <div className="grid grid-cols-2 gap-2.5 mb-3 home-metrics">
         <Stat index={0} onClick={()=>setDetail('day')} icon="cash" label="Ventas de hoy" value={money(d.ventas_hoy)} sub={d.facturas_hoy+' facturas'}/>
         <Stat index={1} onClick={()=>setDetail('month')} icon="chart" label="Ventas del mes" value={money(d.ventas_mes)} sub={d.facturas_mes+' facturas'}/>
@@ -82,14 +86,13 @@ function DashboardAdmin() {
       </div>
       <div className="home-section"><h2>Actividad reciente</h2><button onClick={()=>setDetail('activity')}>Ver todo ›</button></div>
       <div className="card activity-list">{activityRows(activities.slice(0,3))}</div>
-      {detail&&<Modal title={{activity:'Historial completo',day:'Ventas de hoy',month:'Ventas del mes',summary:'Detalle del negocio'}[detail]} className={['day','month'].includes(detail)?'sales-metric-sheet':''} subtitle={['day','month'].includes(detail)?'El detalle detrás de tus resultados':undefined} onClose={()=>setDetail(null)}>
-        {detail==='activity'?activityRows(activities):['day','month'].includes(detail)?<SalesMetricDetail total={detail==='day'?d.ventas_hoy:d.ventas_mes} invoices={sales} period={detail} onOpen={id=>navigate('/facturas?factura='+id)} />:<>
-          <div className="grid grid-cols-2 gap-2"><Stat label="Ventas de hoy" value={money(d.ventas_hoy)}/><Stat label="Ventas del mes" value={money(d.ventas_mes)}/><Stat label="Ingresos del mes" value={money(d.ingresos_mes)}/><Stat label="Stock bajo" value={d.productos_stock_bajo}/><Stat label="Agotados" value={agotados}/></div>
-          <div className="grid grid-cols-2 gap-2"><Stat label="Gastos del mes" value={money(d.gastos_mes)} tone="bad"/><Stat label="Utilidad del mes" value={money(d.utilidad_mes)} tone={d.utilidad_mes>=0?'good':'bad'}/><Stat label="Valor inventario" value={money(d.valor_inventario)}/><Stat label="Facturas del día" value={d.facturas_hoy}/></div>
-          <h2 className="section-heading">Ventas por empleado (mes)</h2>{emp.length?emp.map(e=><div className="row" key={e.vendedor_id}><div className="flex-1"><b className="text-sm">{e.nombre}</b><p className="text-xs text-muted m-0">{e.facturas} facturas</p><div className="sales-track"><span style={{width:Math.max(3,e.total_vendido/Math.max(...emp.map(x=>x.total_vendido),1)*100)+'%'}}/></div></div><div className="text-right"><b className="text-sm">{money(e.total_vendido)}</b><p className="text-xs text-muted m-0">Comisión {money(e.comision)}</p></div></div>):<Empty text="Sin ventas este mes"/>}
-          <h2 className="section-heading">Stock bajo</h2>{bajo.length?bajo.map(p=><div className="row" key={p.id}><div className="flex-1"><b className="text-sm">{p.nombre}</b><p className="text-xs text-muted m-0">{p.codigo}</p></div><Badge tone={p.stock===0?'bad':'warn'}>{p.stock} / mín {p.stock_min}</Badge></div>):<Empty text="Todo el inventario está en orden"/>}
-          <h2 className="section-heading">Últimas facturas</h2>{rec.slice(0,6).map(f=><div className="row" key={f.id}><div className="flex-1"><b className="text-sm">{numFactura(f)}</b><p className="text-xs text-muted m-0">{fechaHora(f.fecha)} · {f.perfiles?.nombre}</p></div><div className="text-right"><b className="text-sm">{money(f.total)}</b>{f.estado==='anulada'&&<Badge tone="bad">Anulada</Badge>}</div></div>)}
-        </>}
+      {detail&&<Modal title={{activity:'Historial completo',day:'Ventas de hoy',month:'Ventas del mes',summary:'Detalle del negocio'}[detail]}
+        className={detail==='summary'?'business-detail-sheet':['day','month'].includes(detail)?'sales-metric-sheet':''}
+        keyboardAware={detail==='summary'}
+        footer={detail==='summary'?<p className="business-detail-footer">Resumen del negocio · COP</p>:undefined}
+        subtitle={detail==='summary'?'Una mirada clara a tu operación y tu equipo.':['day','month'].includes(detail)?'El detalle detrás de tus resultados':undefined}
+        onClose={()=>setDetail(null)}>
+        {detail==='activity'?activityRows(activities):['day','month'].includes(detail)?<SalesMetricDetail total={detail==='day'?d.ventas_hoy:d.ventas_mes} invoices={sales} period={detail} onOpen={id=>navigate('/facturas?factura='+id)} />:<BusinessDetail data={d} costos={costos} agotados={agotados} empleados={emp} bajo={bajo} facturas={rec}/>}
       </Modal>}
     </>}
   </AppShell>

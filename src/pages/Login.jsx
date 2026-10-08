@@ -30,11 +30,11 @@ export default function Login() {
     if (error) return setErr(mensajeError(error))
     try { if (remember) localStorage.setItem('angie:remember-email', email); else localStorage.removeItem('angie:remember-email') } catch { /* email preference only */ }
   }
-  return <main className="login-screen"><div className="login-layout">
-    <div className="login-brand"><Brand /><p>TU ALIADO TECNOLÓGICO<br/>EN LAS MEJORES MANOS</p></div>
-    <div className="login-hero"><img className="login-photo" src={photo} alt="Tecnología ANGIE TECH: teléfonos, computador y accesorios" fetchPriority="high" /></div>
+  return <main className="login-screen login-editorial"><div className="login-layout">
+    <div className="login-brand"><Brand /><p>TU ALIADO TECNOLÓGICO</p></div>
+    <div className="login-hero"><img className="login-photo" src={photo} alt="Tecnología ANGIE TECH: teléfonos, computador y accesorios" fetchPriority="high" /><div className="login-photo-copy"><span>GESTIÓN SIN LÍMITES</span><p>Tu negocio.<br/><em>Siempre contigo.</em></p></div></div>
     <form onSubmit={e => { e.preventDefault(); acceder() }} className="login-form">
-      <h1>Inicia <em>sesión</em></h1><p className="login-intro">Accede y administra tu negocio<br/>desde un solo lugar.</p>
+      <div className="login-heading"><span className="premium-eyebrow">TU ESPACIO DE TRABAJO</span><h1>Bienvenido</h1><p className="login-intro">Administra Angie Tech.</p></div>
       {err && <div role="alert" className="bg-badbg text-bad rounded-xl p-3 text-sm mb-3">{err}</div>}
       <label className="sr-only" htmlFor="login-email">Correo</label>
       <div className="login-input"><Icon name="mail" /><input id="login-email" className="inp" type="email" placeholder="Correo electrónico" autoComplete="username" autoCapitalize="none" value={correo} onChange={e => setCorreo(e.target.value)} required /></div>

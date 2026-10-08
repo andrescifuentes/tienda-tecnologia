@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 // No npm dependencies, production accounts, real camera, or remote requests.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const artifacts = join(root, 'artifacts', process.env.UI_ARTIFACTS || 'iphone-themes')
+const artifacts = join(root, 'artifacts', process.env.UI_ARTIFACTS || 'business-detail')
 const base = process.env.UI_BASE_URL || 'http://127.0.0.1:5173'
 assert.ok(new URL(base).protocol === 'http:' && esEntornoDemoPermitido(new URL(base)), 'Use HTTP localhost or a private LAN server for these tests')
 const browserPath = process.env.UI_BROWSER_PATH || [
@@ -90,6 +90,7 @@ try {
   async function waitFor(expression, timeout = 25000) {
     const deadline = Date.now() + timeout
     do { if (await evaluate(expression)) return; await delay(150) } while (Date.now() < deadline)
+    await screenshot("failure"); await writeFile(join(artifacts,"failure.json"),JSON.stringify(await evaluate("({alerts:[...document.querySelectorAll(\"[role=alert]\")].map(e=>e.textContent),body:document.body.innerText})"),null,2));
     throw new Error(`Timed out waiting for ${expression}`)
   }
   async function navigate(path, role = 'admin') {
@@ -130,58 +131,29 @@ try {
     }
     results.push({ name, width, height, status: 'PASS' })
   }
-
-  await send('Page.enable');await send('Runtime.enable');await send('Log.enable')
-  await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]})
-  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'},{name:'prefers-color-scheme',value:'light'}]})
-  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'dark','Default must ignore OS light preference')
-  results.push({name:'Dark default under OS light',status:'PASS'})
-  const routes=[['/','.stat-card','inicio'],['/inventario','.product-card','inventario'],['/vender','.sale-product','ventas'],['/facturas','.invoice-card','facturas'],['/clientes','.row','clientes'],['/proveedores','.row','proveedores'],['/empleados','.row','empleados'],['/finanzas','.row','finanzas'],['/garantias','.row','garantias'],['/mas','.menu-row','mas'],['/configuracion','.settings-panel','configuracion']]
-  const dimensions=[[320,700],[360,800],[390,844],[430,932]],measurements=[]
-  const applyTheme=theme=>evaluate('import("/src/lib/theme.js").then(m=>m.setTheme('+JSON.stringify(theme)+'))')
-  for(const theme of ['dark','light']){
-    await applyTheme(theme)
-    for(const[width,height]of dimensions){
-      await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true})
-      await evaluate('document.fonts.ready.then(()=>true)');await delay(150)
-      await evaluate("document.querySelector('.login-screen').scrollTop=0")
-      const name=width+'-login-'+theme;await geometry(name,width,height,false);await screenshot(name)
-      const m=await evaluate("(()=>{const s=document.querySelector('.login-screen'),l=document.querySelector('.login-layout');return {height:l.getBoundingClientRect().height,scroll:s.scrollHeight,viewport:s.clientHeight,demoBottom:document.querySelector('.demo-access').getBoundingClientRect().bottom,hero:document.querySelector('.login-hero').getBoundingClientRect().height,input:document.querySelector('.login-input .inp').getBoundingClientRect().height,cta:document.querySelector('.login-form .btn').getBoundingClientRect().height}})()")
-      measurements.push({name,...m});assert.equal(m.hero,150);assert.equal(m.input,50);assert.equal(m.cta,50)
-      if(width===390){assert.ok(m.demoBottom<=height,'Login demo must be visible at 390x844');assert.ok(m.scroll<=height+2,'Login must fit at 390x844')}
-    }
+  await send('Page.enable');await send('Page.bringToFront');await send('Runtime.enable');await send('Log.enable');await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+  const check=name=>results.push({name,status:'PASS'});
+  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')");await evaluate("document.querySelector('.login-form .btn').click()");await waitFor("!!document.querySelector('.home-metrics')");
+  const persisted=await evaluate("localStorage.getItem('angie-tech:demo:v1')");
+  const open=async()=>{await evaluate("document.querySelector('.home-section button').click()");await waitFor("!!document.querySelector('.business-detail-sheet')");await evaluate('document.fonts.ready.then(()=>true)');await delay(150)};
+  const close=async()=>{await evaluate("document.querySelector('.business-detail-sheet .sheet-x').click()");await waitFor("!document.querySelector('.sheet')")};
+  const money=n=>'$'+Number(n).toLocaleString('es-CO',{maximumFractionDigits:0});
+  const summary=await evaluate("import('/src/lib/supabase.js').then(async({supabase})=>(await supabase.rpc('resumen_dashboard')).data[0])");
+  for(const theme of ['dark','light'])for(const[width,height]of [[320,700],[360,800],[390,844],[430,932]]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await evaluate('import("/src/lib/theme.js").then(m=>m.setTheme('+JSON.stringify(theme)+'))');await open();
+    const m=await evaluate("(()=>{const s=document.querySelector('.business-detail-sheet'),b=s.querySelector('.sheet-body'),f=s.querySelector('.sheet-foot'),r=s.getBoundingClientRect(),br=b.getBoundingClientRect(),fr=f.getBoundingClientRect(),x=s.querySelector('.sheet-x').getBoundingClientRect();const overflow=[...s.querySelectorAll('*')].filter(e=>{const t=e.getBoundingClientRect();return t.width&&(t.left<r.left-1||t.right>r.right+1||e.scrollWidth>e.clientWidth+2)&&!e.closest('svg')}).map(e=>e.className);return{top:r.top,bottom:r.bottom,bodyTop:br.top,bodyBottom:br.bottom,footerTop:fr.top,footerBottom:fr.bottom,close:[x.width,x.height],overflow,rootInert:document.getElementById('root').inert,scroll:getComputedStyle(b).overflowY,otherScroll:[...s.querySelectorAll('*')].filter(e=>e!==b&&['auto','scroll'].includes(getComputedStyle(e).overflowY)&&e.scrollHeight>e.clientHeight+1).map(e=>e.className),cards:[...s.querySelectorAll('.stat-card')].map(e=>[e.querySelector('.stat-heading p').textContent,e.querySelector('.stat-value').textContent]),headline:s.querySelector('.headline').getBoundingClientRect().width,secondary:s.querySelector('.income').getBoundingClientRect().width,headingFont:parseFloat(getComputedStyle(s.querySelector(':scope>h3')).fontSize)}})()");
+    assert.deepEqual(m.overflow,[],theme+' '+width+' overflow');assert.ok(m.top>=0&&m.bottom<=height+1&&m.bodyBottom<=m.footerTop+1&&m.footerBottom<=m.bottom);assert.ok(m.close.every(n=>n>=44)&&m.rootInert&&m.scroll==='auto');assert.deepEqual(m.otherScroll,[]);assert.equal(m.cards.length,9);assert.ok(m.headingFont>=24);assert.ok(m.headline>m.secondary*1.8);
+    const cards=Object.fromEntries(m.cards);for(const[label,key]of [['Ventas de hoy','ventas_hoy'],['Ventas del mes','ventas_mes'],['Ingresos del mes','ingresos_mes'],['Gastos del mes','gastos_mes'],['Utilidad del mes','utilidad_mes'],['Valor inventario','valor_inventario']])assert.equal(cards[label],money(summary[key]),label);assert.equal(cards['Stock bajo'],String(summary.productos_stock_bajo));assert.equal(cards['Facturas del d\u00eda'],String(summary.facturas_hoy));
+    await screenshot(width+'-'+theme+'-executive');await evaluate("document.querySelector('.business-detail-sheet .sheet-body').scrollTop=100000");await delay(100);await screenshot(width+'-'+theme+'-records');check(theme+' '+width+' layout, hierarchy, unchanged metrics, one scroll, fixed footer');await close();
   }
-  await evaluate("document.querySelector('.login-form button.btn').click()");await waitFor("!!document.querySelector('.stat-card')")
-  for(const theme of ['dark','light']){
-    await applyTheme(theme)
-    for(const[width,height]of dimensions){
-      await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true})
-      for(const[path,selector,label]of routes){
-        await send('Page.navigate',{url:base+path});await waitFor("!!document.querySelector('.nav') && document.readyState==='complete'");await waitFor('!!document.querySelector('+JSON.stringify(selector)+')');await evaluate('document.fonts.ready.then(()=>true)');await delay(120)
-        const name=width+'-'+label+'-'+theme;await geometry(name,width,height);await screenshot(name)
-        assert.equal(await evaluate('document.documentElement.dataset.theme'),theme,'Saved theme must survive navigation/reload')
-        const styles=await evaluate("(()=>{const root=getComputedStyle(document.documentElement),sel=['.stat-card','.product-card','.invoice-card','.profile-card'];return {ink:root.getPropertyValue('--text').trim(),surfaces:sel.flatMap(s=>[...document.querySelectorAll(s)].map(e=>({selector:s,bg:getComputedStyle(e).backgroundColor,image:getComputedStyle(e).backgroundImage}))),header:document.querySelector('.top').getBoundingClientRect().height}})()")
-        if(theme==='light'){assert.equal(styles.ink,'#17130e');for(const s of styles.surfaces){assert.equal(s.image,'none',name+': no dirty gradients');assert.equal(s.bg,'rgb(255, 252, 247)',name+': light surfaces')}}
-        if(path==='/'&&width===390){assert.ok(styles.header>=100&&styles.header<=140,'Compact home header');measurements.push({name,header:styles.header})}
-      }
-    }
-  }
-  // The header toggle and settings segments subscribe to the same preference.
-  await send('Page.navigate',{url:base+'/configuracion'});await waitFor("!!document.querySelector('[aria-label=\"Cambiar tema\"]') && document.querySelectorAll('.theme-segments button').length===2")
-  await evaluate("document.querySelector('[aria-label=\"Cambiar tema\"]').click()")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'dark')
-  await waitFor("document.querySelector('.theme-segments button:first-child').getAttribute('aria-pressed')==='true'")
-  await evaluate("document.querySelector('.theme-segments button:last-child').click()")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'light')
-  assert.equal(await evaluate("localStorage.getItem('tema')"),'light')
-  await send('Page.reload');await waitFor("!!document.querySelector('.nav')");assert.equal(await evaluate('document.documentElement.dataset.theme'),'light')
-  await waitFor("document.querySelector('.theme-segments button:last-child').getAttribute('aria-pressed')==='true'")
-  results.push({name:'Header toggle, settings segments and saved theme after reload',status:'PASS'})
-  assert.deepEqual(externalRequests,[]);assert.deepEqual(browserErrors,[])
-  await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'PASS',cases:results.length,measurements,results,externalRequests,browserErrors},null,2))
-  console.log(JSON.stringify({status:'PASS',cases:results.length,measurements,artifacts}));await send('Browser.close').catch(()=>{})
-
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await open();
+  await evaluate("Object.defineProperty(visualViewport,'height',{configurable:true,value:450});Object.defineProperty(visualViewport,'offsetTop',{configurable:true,value:30});visualViewport.dispatchEvent(new Event('resize'))");await delay(150);
+  const keyboard=await evaluate("(()=>{const s=document.querySelector('.business-detail-sheet'),r=s.getBoundingClientRect(),b=s.querySelector('.sheet-body').getBoundingClientRect(),f=s.querySelector('.sheet-foot').getBoundingClientRect();return{top:r.top,bottom:r.bottom,bodyBottom:b.bottom,footerTop:f.top,footerBottom:f.bottom,background:getComputedStyle(s.querySelector('.sheet-foot')).backgroundColor,inert:document.getElementById('root').inert}})()");assert.equal(keyboard.top,30);assert.equal(keyboard.bottom,480);assert.ok(keyboard.bodyBottom<=keyboard.footerTop+1&&keyboard.footerBottom<=480&&keyboard.background!=='rgba(0, 0, 0, 0)'&&keyboard.inert);check('Reduced Safari viewport keeps continuous sheet and protected footer');await screenshot('390-keyboard');await evaluate("delete visualViewport.height;delete visualViewport.offsetTop;visualViewport.dispatchEvent(new Event('resize'))");await delay(150);await close();assert.equal(await evaluate("document.getElementById('root').inert"),false);assert.equal(await evaluate("localStorage.getItem('angie-tech:demo:v1')"),persisted);check('Opening, scrolling, resizing and closing do not change persisted business data');
+  await open();
+  const team=await evaluate("Promise.all([import('/src/lib/supabase.js'),import('/src/lib/format.js')]).then(async([{supabase},{rangoMes}])=>{const m=rangoMes();return(await supabase.rpc('ventas_por_empleado',{p_desde:m.ini,p_hasta:m.fin})).data})");
+  const rows=await evaluate("[...document.querySelectorAll('.executive-person')].map(e=>({name:e.querySelector('.executive-person-top b').textContent,total:e.querySelector('.executive-person-total strong').textContent,commission:e.querySelector('.executive-commission b').textContent}))");assert.equal(rows.length,team.length);for(const e of team){const row=rows.find(r=>r.name===e.nombre);assert.equal(row.total,money(e.total_vendido));assert.equal(row.commission,money(e.comision))}check('Team totals and commissions match the existing dashboard API');
+  await close();await evaluate("import('/src/lib/supabase.js').then(async({supabase})=>{const r=await supabase.rpc('guardar_empleado_demo',{id:'demo-ana',datos:{},permisos:['vender','ver_inventario','ver_finanzas']});if(r.error)throw Error(r.error.message);await supabase.auth.signInWithPassword({email:'ana@angietech.demo',password:'AngieDemo123!'})})");await send('Page.reload');await waitFor("!!document.querySelector('.home-metrics')");await open();assert.equal(await evaluate("document.querySelectorAll('.business-detail .stat-card').length"),7);assert.equal(await evaluate("!!document.querySelector('.business-detail .profit,.business-detail .negative,.business-detail .inventory-value')"),false);assert.equal(await evaluate("document.querySelectorAll('.executive-bar').length"),2);check('Existing cost permissions remain respected by metrics and visualization');await close();
+  assert.deepEqual(externalRequests,[]);assert.deepEqual(browserErrors,[]);await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'PASS',cases:results.length,results,externalRequests,browserErrors,physicalSafariPending:true},null,2));console.log(JSON.stringify({status:'PASS',cases:results.length,artifacts}));await send('Browser.close').catch(()=>{});
 } catch (error) {
   await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'FAIL',error:error.stack,results,externalRequests,browserErrors},null,2)+'\n')
   console.error(error.stack)

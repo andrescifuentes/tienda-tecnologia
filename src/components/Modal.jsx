@@ -43,12 +43,15 @@ export default function Modal({ title, onClose, footer, children, expanded = fal
     const viewport = window.visualViewport
     if (!keyboardAware || !viewport) return
     let frame
+    let baseline = Math.max(window.innerHeight, document.documentElement.clientHeight, viewport.height)
     const fit = event => {
       const overlay = overlayRef.current
       // The backdrop always covers the app; only the sheet's frame follows Safari.
       overlay.style.setProperty('--dialog-viewport-top', `${viewport.offsetTop}px`)
       overlay.style.setProperty('--dialog-viewport-height', `${viewport.height}px`)
-      overlay.classList.toggle('keyboard-open', viewport.height < window.innerHeight * .8)
+      const keyboard = baseline - viewport.height > Math.max(120, baseline * .15) && Math.abs(viewport.scale - 1) < .05
+      overlay.classList.toggle('keyboard-open', keyboard)
+      if (!keyboard && Math.abs(viewport.scale - 1) < .05) baseline = Math.max(window.innerHeight, document.documentElement.clientHeight, viewport.height)
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         const active = document.activeElement
@@ -84,7 +87,17 @@ export default function Modal({ title, onClose, footer, children, expanded = fal
       else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) { event.preventDefault(); first.focus() }
     }
     document.addEventListener('keydown', keys)
-    return () => { document.removeEventListener('keydown', keys); unlockBackground(); if (previous?.isConnected) previous.focus({ preventScroll: true }) }
+    return () => {
+      document.removeEventListener('keydown', keys)
+      unlockBackground()
+      if (previous?.isConnected) {
+        // Returning focus after a dialog is not a new request to open search.
+        // Safari can finish its closing resize before this cleanup runs.
+        previous.setAttribute('data-dialog-restoring-focus', '')
+        try { previous.focus({ preventScroll: true }) }
+        finally { previous.removeAttribute('data-dialog-restoring-focus') }
+      }
+    }
   }, [])
 
   const sheet = <div className={'sheet' + (expanded ? ' sheet-expanded' : '') + (className ? ' ' + className : '')} ref={dialogRef} data-app-dialog role="dialog" aria-modal="true" aria-labelledby={title ? id : undefined} aria-label={title ? undefined : 'Detalle'} tabIndex={-1}>

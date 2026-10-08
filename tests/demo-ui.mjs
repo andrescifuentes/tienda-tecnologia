@@ -151,7 +151,7 @@ try {
     const s=await state();if(s?.session){await go('/mas');await button('Cerrar sesión');await waitFor("!!document.querySelector('.login-form')")}
     await field('Correo',email);await field('Contraseña','AngieDemo123!');await button('Entrar');await waitFor("!!document.querySelector('.stat-card')")
   }
-  const routes=[['/','inicio','.stat-card'],['/inventario','inventario','.product-card'],['/vender','vender','.sale-product'],['/facturas','facturas','.invoice-card'],['/clientes','clientes','.row'],['/proveedores','proveedores','.row'],['/empleados','empleados','.row'],['/finanzas','finanzas','.row'],['/garantias','garantias','.row'],['/mas','mas','.menu-row'],['/configuracion','configuracion','.card']]
+  const routes=[['/','inicio','.stat-card'],['/inventario','inventario','.product-card'],['/vender','vender','.sale-product'],['/facturas','facturas','.invoice-card'],['/clientes','clientes','.row'],['/proveedores','proveedores','.row'],['/empleados','empleados','.row'],['/finanzas','finanzas','.row'],['/garantias','garantias','.row'],['/mas','mas','.menu-row'],['/configuracion','configuracion','.settings-panel']]
   for(const [width,height] of [[320,568],[360,740],[390,844],[430,932]]){
     // Responsive cases are isolated; the functional suite verifies draft persistence.
     await evaluate("Object.keys(sessionStorage).filter(k=>k.startsWith('angie:cart:')).forEach(k=>sessionStorage.removeItem(k))")
@@ -187,7 +187,7 @@ try {
   assert.ok(await evaluate("document.querySelector('.brand-logo').naturalWidth > 0"))
   assert.ok(await evaluate("document.fonts.check('20px Inter') && document.fonts.check('20px \\\"Playfair Display\\\"')"))
   const compactHome=await evaluate("(()=>{const v=document.querySelector('.view');return {content:v.scrollHeight,viewport:v.clientHeight,hero:document.querySelector('.tech-hero').getBoundingClientRect().height}})()")
-  assert.ok(compactHome.hero>=180&&compactHome.hero<=230)
+  assert.ok(compactHome.hero>=170&&compactHome.hero<=205)
   assert.ok(compactHome.content-compactHome.viewport<400,'Home should need less than one short additional swipe at 390 px')
   await button('Ver detalle ›'); await waitFor("document.querySelector('.sheet')?.textContent.includes('Ventas por empleado')")
   assert.ok(await evaluate("document.querySelector('.sheet').textContent.includes('Valor inventario')")); await close()

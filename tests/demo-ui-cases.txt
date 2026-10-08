@@ -19,7 +19,7 @@
     const s=await state();if(s?.session){await go('/mas');await button('Cerrar sesión');await waitFor("!!document.querySelector('.login-form')")}
     await field('Correo',email);await field('Contraseña','AngieDemo123!');await button('Entrar');await waitFor("!!document.querySelector('.stat-card')")
   }
-  const routes=[['/','inicio','.stat-card'],['/inventario','inventario','.product-card'],['/vender','vender','.sale-product'],['/facturas','facturas','.invoice-card'],['/clientes','clientes','.row'],['/proveedores','proveedores','.row'],['/empleados','empleados','.row'],['/finanzas','finanzas','.row'],['/garantias','garantias','.row'],['/mas','mas','.menu-row'],['/configuracion','configuracion','.card']]
+  const routes=[['/','inicio','.stat-card'],['/inventario','inventario','.product-card'],['/vender','vender','.sale-product'],['/facturas','facturas','.invoice-card'],['/clientes','clientes','.row'],['/proveedores','proveedores','.row'],['/empleados','empleados','.row'],['/finanzas','finanzas','.row'],['/garantias','garantias','.row'],['/mas','mas','.menu-row'],['/configuracion','configuracion','.settings-panel']]
   for(const [width,height] of [[320,568],[360,740],[390,844],[430,932]]){
     // Responsive cases are isolated; the functional suite verifies draft persistence.
     await evaluate("Object.keys(sessionStorage).filter(k=>k.startsWith('angie:cart:')).forEach(k=>sessionStorage.removeItem(k))")

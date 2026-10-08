@@ -25,7 +25,7 @@ export function ClienteForm({ inicial, onSaved, onClose }) {
     onSaved(data)
   }
   return (
-    <Modal title={inicial?.id ? 'Editar cliente' : 'Nuevo cliente'} onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={busy || pendingSave}>{busy ? 'Guardando…' : 'Guardar'}</button>}>
+    <Modal title={inicial?.id ? 'Editar cliente' : 'Nuevo cliente'} className="experience-sheet client-form-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={busy || pendingSave}>{busy ? 'Guardando…' : 'Guardar'}</button>}>
       <ErrorBox text={err} />
       <div className="grid grid-cols-3 gap-2">
         <div className="col-span-1"><Select label="Tipo" value={f.tipo_documento} onChange={set('tipo_documento')}>{['CC', 'NIT', 'CE', 'PASAPORTE'].map((t) => <option key={t}>{t}</option>)}</Select></div>
@@ -59,7 +59,7 @@ export default function ClientePicker({ onPick, onClose }) {
   }, [q])
   if (nuevo) return <ClienteForm onClose={() => setNuevo(false)} onSaved={(c) => onPick(c)} />
   return (
-    <Modal title="Elegir cliente" onClose={onClose}>
+    <Modal title="Elegir cliente" className="experience-sheet client-picker-sheet" keyboardAware onClose={onClose}>
       <SearchBar value={q} onChange={setQ} placeholder="Nombre, documento o teléfono" />
       <button className="btn sec full mb-2" onClick={() => onPick(null)}>Consumidor final</button>
       {can('crear_clientes') && <button className="btn sec full mb-3" onClick={() => setNuevo(true)}>+ Nuevo cliente</button>}

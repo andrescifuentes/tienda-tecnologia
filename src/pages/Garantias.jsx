@@ -28,21 +28,22 @@ export default function Garantias() {
   }, [estado, tick])
 
   return (
-    <AppShell title="Garantías" sub="Vigentes y reclamos" right={isDemoMode&&<button className="btn sm" onClick={()=>setNuevo(true)}>+ Nueva</button>}>
-      <Chips value={estado} onChange={setEstado} options={[{ value: 'vigente', label: 'Vigentes' }, { value: 'por_vencer', label: 'Por vencer' }, { value: 'en_reclamo', label: 'En revisión' }, { value: 'resuelta', label: 'Resueltas' }, {value:'rechazada',label:'Rechazadas'}, { value: 'vencida', label: 'Vencidas' }, { value: 'todas', label: 'Todas' }]} />
+    <div className="admin-premium admin-warranties"><AppShell title="Garantías" sub="Vigentes y reclamos" right={isDemoMode&&<button className="btn sm" onClick={()=>setNuevo(true)}>+ Nueva</button>}>
+      <div className="admin-filter-fade"><Chips value={estado} onChange={setEstado} options={[{ value: 'vigente', label: 'Vigentes' }, { value: 'por_vencer', label: 'Por vencer' }, { value: 'en_reclamo', label: 'En revisión' }, { value: 'resuelta', label: 'Resueltas' }, {value:'rechazada',label:'Rechazadas'}, { value: 'vencida', label: 'Vencidas' }, { value: 'todas', label: 'Todas' }]} /></div>
       {!lista ? <Loader /> : lista.length === 0 ? <Empty text="Sin garantías" /> : (
-        <div className="card entity-list !p-2">
+        <div className="admin-list entity-list">
           {lista.map((g) => (
-            <div key={g.id} className="row cursor-pointer" onClick={() => setSel(g)}>
-              <div className="flex-1"><p className="m-0 text-xs text-brand">GAR-{String(g.id).padStart(4,'0')}{facturas[g.factura_item_id] ? ' · '+numFactura(facturas[g.factura_item_id]) : ''}</p><p className="m-0 text-sm font-semibold">{g.productos?.nombre}</p><p className="m-0 text-xs text-muted">{g.clientes?.nombre || 'Consumidor final'}{g.unidades_serializadas?.serial ? ' · ' + g.unidades_serializadas.serial : ''}</p></div>
-              <div className="text-right"><p className="m-0 text-xs">hasta {fecha(g.fin)}</p><Badge tone={['Rechazada','Vencida'].includes(statusLabel(g))?'bad':['Por vencer','En revisión'].includes(statusLabel(g))?'warn':'good'}>{statusLabel(g)}</Badge></div>
-            </div>
+            <button type="button" key={g.id} className="row card admin-list-card warranty-card" onClick={() => setSel(g)}>
+              <div className="admin-card-top"><span className="admin-reference">GAR-{String(g.id).padStart(4,'0')}{facturas[g.factura_item_id] ? ' · '+numFactura(facturas[g.factura_item_id]) : ''}</span><Badge tone={['Rechazada','Vencida'].includes(statusLabel(g))?'bad':['Por vencer','En revisión','Aprobada'].includes(statusLabel(g))?'warn':'good'}>{statusLabel(g)}</Badge></div>
+              <p className="admin-card-title">{g.productos?.nombre}</p><p className="admin-card-secondary">{g.clientes?.nombre || 'Consumidor final'}</p>{g.unidades_serializadas?.serial&&<p className="admin-card-secondary">{g.unidades_serializadas.serial}</p>}
+              <div className="admin-card-bottom"><span><small>Vence</small><b>{fecha(g.fin)}</b></span><span className="admin-chevron" aria-hidden="true">›</span></div>
+            </button>
           ))}
         </div>
       )}
       {sel && <Detalle g={sel} perfil={perfil} onClose={() => setSel(null)} onCambio={() => { setSel(null); setTick((t) => t + 1) }} />}
       {nuevo&&<NuevaGarantia onClose={()=>setNuevo(false)} onSaved={()=>{setNuevo(false);setTick(t=>t+1)}}/>}
-    </AppShell>
+    </AppShell></div>
   )
 }
 
@@ -54,7 +55,7 @@ export function NuevaGarantia({onClose,onSaved,facturaId}){
   useEffect(()=>{Promise.all([supabase.from('factura_items').select('*'),supabase.from('facturas').select('*').eq('estado','emitida'),supabase.from('garantias').select('*')]).then(([items,invoices,gs])=>setOptions((items.data||[]).filter(i=>invoices.data?.some(f=>f.id===i.factura_id&&(!facturaId||f.id===facturaId))&&!gs.data?.some(g=>g.factura_item_id===i.id)).map(i=>({...i,invoice:invoices.data.find(f=>f.id===i.factura_id)}))))},[])
   const [guardar,pendingSave]=useAction(guardarImpl, () => setBusy(false))
   async function guardarImpl(){if(!item)return setErr('Elige un producto de una factura vigente.');setBusy(true);const {error}=await supabase.rpc('crear_garantia_demo',{factura_item_id:Number(item),inicio,fin:fin||undefined,motivo,descripcion});setBusy(false);if(error)return setErr(mensajeError(error));toast('Garantía registrada');onSaved()}
-  return <Modal title="Nueva garantía" onClose={onClose} footer={<button className="btn full" disabled={busy||pendingSave||!options.length} onClick={guardar}>Guardar garantía</button>}><ErrorBox text={err}/><p className="text-sm text-muted">Asocia un producto vendido sin garantía registrada. Cliente, serial y cobertura se toman de la venta.</p><Select label="Producto y factura" value={item} onChange={e=>setItem(e.target.value)}><option value="">Elegir…</option>{options.map(i=><option key={i.id} value={i.id}>FV-{i.invoice.numero} · {i.nombre}</option>)}</Select><Input label="Inicio de cobertura" type="date" value={inicio} onChange={e=>setInicio(e.target.value)}/><Input label="Vencimiento de cobertura (opcional)" type="date" min={inicio} value={fin} onChange={e=>setFin(e.target.value)}/><Input label="Motivo garantia" value={motivo} onChange={e=>setMotivo(e.target.value)}/><Input label="Descripcion garantia" value={descripcion} onChange={e=>setDescripcion(e.target.value)}/>{!options.length&&<Empty text="Todas las ventas tienen garantía" description="La próxima venta de un producto con cobertura creará su garantía automáticamente."/>}</Modal>
+  return <Modal title="Nueva garantía" className="admin-sheet warranty-create-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" disabled={busy||pendingSave||!options.length} onClick={guardar}>Guardar garantía</button>}><ErrorBox text={err}/><p className="text-sm text-muted">Asocia un producto vendido sin garantía registrada. Cliente, serial y cobertura se toman de la venta.</p><Select label="Producto y factura" value={item} onChange={e=>setItem(e.target.value)}><option value="">Elegir…</option>{options.map(i=><option key={i.id} value={i.id}>FV-{i.invoice.numero} · {i.nombre}</option>)}</Select><Input label="Inicio de cobertura" type="date" value={inicio} onChange={e=>setInicio(e.target.value)}/><Input label="Vencimiento de cobertura (opcional)" type="date" min={inicio} value={fin} onChange={e=>setFin(e.target.value)}/><Input label="Motivo garantia" value={motivo} onChange={e=>setMotivo(e.target.value)}/><Input label="Descripcion garantia" value={descripcion} onChange={e=>setDescripcion(e.target.value)}/>{!options.length&&<Empty text="Todas las ventas tienen garantía" description="La próxima venta de un producto con cobertura creará su garantía automáticamente."/>}</Modal>
 }
 
 function Detalle({ g, perfil, onClose, onCambio }) {
@@ -80,7 +81,7 @@ function Detalle({ g, perfil, onClose, onCambio }) {
     toast('Estado y nota guardados');onCambio()
   })
   return (
-    <Modal title={g.productos?.nombre} onClose={onClose}>
+    <Modal title={g.productos?.nombre} className="admin-sheet warranty-detail-sheet" keyboardAware onClose={onClose}>
       <ErrorBox text={err} />
       <p className="text-sm m-0">Cliente: {g.clientes?.nombre || 'Consumidor final'}{g.clientes?.telefono ? ' · ' + g.clientes.telefono : ''}</p>
       <p className="text-sm text-muted mt-0">Del {fecha(g.inicio)} al {fecha(g.fin)}</p>

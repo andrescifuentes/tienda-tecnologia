@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Modal from './Modal'
+import { Icon } from './Icons'
 
 // Escáner con la cámara (BarcodeDetector del navegador/WebView). Si no está disponible, se digita el código.
 export default function Scanner({ onClose, onScan }) {
@@ -40,18 +41,17 @@ export default function Scanner({ onClose, onScan }) {
   const enviar = () => { const c = manual.trim(); if (c && !done.current) { done.current = true; onScan(c) } }
 
   return (
-    <Modal title="Escanear código" onClose={onClose}>
+    <Modal title="Escanear código" subtitle="Encuentra el producto al instante" className="experience-sheet scanner-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" disabled={!manual.trim()} onClick={enviar}>Buscar producto<Icon name="arrow" className="w-4 h-4"/></button>}>
       {camOk
         ? <><div className="scanner-frame">
             <video ref={videoRef} playsInline muted />
             <div className="scanner-corners" aria-hidden="true" />
             {camActive ? <span className="scanner-line" aria-hidden="true" /> : <div className="scanner-wait" role="status">Preparando cámara…</div>}
           </div>{camActive && <p className="scanner-status" role="status">Cámara activa · centra el código</p>}</>
-        : <p className="text-muted text-sm mb-3">La cámara no está disponible aquí. Digita el código.</p>}
+        : <div className="scanner-fallback"><span className="notice-icon"><Icon name="scan"/></span><h4>Búsqueda por código</h4><p>La cámara no está disponible aquí. Digita el código.</p><small>En un navegador compatible y un contexto seguro, se solicita permiso para usar la cámara.</small></div>}
       <label className="lbl" htmlFor="scanner-code">…o digita el código</label>
-      <div className="flex gap-2">
+      <div className="scanner-manual">
         <input id="scanner-code" className="inp" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && enviar()} placeholder="Código de barras o serial" />
-        <button className="btn" onClick={enviar}>OK</button>
       </div>
     </Modal>
   )

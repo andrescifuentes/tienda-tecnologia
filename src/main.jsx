@@ -6,6 +6,9 @@ import App from './App'
 import { supabaseConfigurationError } from './lib/supabase'
 import './index.css'
 import './styles/premium-finance.css'
+import './styles/premium-admin.css'
+import './styles/premium-experience.css'
+import './styles/home-experience.css'
 import { initializeTheme } from './lib/theme'
 
 initializeTheme()

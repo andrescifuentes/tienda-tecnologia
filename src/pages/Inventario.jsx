@@ -119,11 +119,12 @@ function Detalle({ p, editar, costos, onClose, onEditar, onCambio }) {
   }
 
   return (
-    <Modal title={p.nombre} onClose={onClose}>
+    <Modal title={p.nombre} className="experience-sheet product-detail-sheet" keyboardAware onClose={onClose} footer={modo==='ajuste'&&<div className="action-grid"><button className="btn sec" onClick={()=>setModo(null)}>Cancelar</button><button className="btn" disabled={pendingAdjust} onClick={ajustar}>{pendingAdjust?'Guardando...':'Guardar'}</button></div>}>
       <ErrorBox text={err} />
       {modo === null && (
         <>
-          <div className="card !p-3 mb-3 text-sm">
+          <div className="product-detail-hero"><ProductThumbnail product={p}/><div><span className="premium-eyebrow">FICHA DE PRODUCTO</span><Badge tone={p.stock===0?'bad':p.stock<=p.stock_min?'warn':'good'}>{p.stock===0?'Agotado':p.stock<=p.stock_min?'Stock bajo':'Disponible'}</Badge><p>{p.marca || p.categoria || 'ANGIE TECH'}</p></div></div>
+          <div className="card product-detail-info !p-3 mb-3 text-sm">
             <div className="flex justify-between"><span className="text-muted">Código</span><b>{p.codigo}</b></div>
             {p.codigo_barras && <div className="flex justify-between"><span className="text-muted">Barras</span><b>{p.codigo_barras}</b></div>}
             {p.marca && <div className="flex justify-between"><span className="text-muted">Marca</span><b>{p.marca}</b></div>}
@@ -134,19 +135,19 @@ function Detalle({ p, editar, costos, onClose, onEditar, onCambio }) {
             <div className="flex justify-between"><span className="text-muted">Garantía</span><b>{p.garantia_meses ? p.garantia_meses + ' meses' : 'Sin garantía'}</b></div>
           </div>
           {p.descripcion && <p className="text-sm">{p.descripcion}</p>}
-          {isDemoMode && editar && <RecordStatus table="productos" record={p} onSaved={onCambio} />}
           {p.maneja_serial && uni && (
             <div className="mb-3"><h4 className="text-sm text-muted uppercase m-0 mb-1">IMEI / seriales</h4>
               {uni.length === 0 ? <Empty text="Sin unidades" /> : uni.map((u) => <div key={u.id} className="row"><span className="flex-1 text-sm">{u.serial}</span><Badge tone={u.estado === 'disponible' ? 'good' : ''}>{u.estado}</Badge></div>)}
             </div>
           )}
           {editar && (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="action-grid product-detail-actions">
               <button className="btn sec" onClick={onEditar}>Editar</button>
               {!p.maneja_serial && <button className="btn sec" onClick={() => setModo('ajuste')}>Ajustar stock</button>}
               <button className="btn sec" onClick={verMovs}>Movimientos</button>
             </div>
           )}
+          {isDemoMode && editar && <div className="destructive-zone"><RecordStatus table="productos" record={p} onSaved={onCambio} /></div>}
         </>
       )}
       {modo === 'ajuste' && (
@@ -158,7 +159,6 @@ function Detalle({ p, editar, costos, onClose, onEditar, onCambio }) {
           </Select>
           {tipo==='fisico' ? <Input label="Stock fisico" type="number" min="0" step="1" value={fisico} onChange={e=>setFisico(e.target.value)} /> : <Input label="Cantidad" type="number" min="1" value={cant} onChange={(e) => setCant(e.target.value)} />}
           <Input label="Motivo (obligatorio)" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-          <div className="grid grid-cols-2 gap-2"><button className="btn sec" onClick={() => setModo(null)}>Cancelar</button><button className="btn" disabled={pendingAdjust} onClick={ajustar}>{pendingAdjust?'Guardando...':'Guardar'}</button></div>
         </>
       )}
       {modo === 'movs' && (

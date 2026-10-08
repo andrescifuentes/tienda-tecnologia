@@ -1,0 +1,101 @@
+@media screen {
+  .sheet.business-detail-sheet { height:min(900px,calc(var(--dialog-viewport-height,100dvh) - max(16px,env(safe-area-inset-top)))); max-height:min(900px,calc(var(--dialog-viewport-height,100dvh) - max(16px,env(safe-area-inset-top)))); padding:26px 18px 0; border-radius:28px 28px 0 0; background:var(--bg); box-shadow:0 -16px 70px #0005; overflow:hidden; }
+  .sheet.business-detail-sheet>h3 { font-size:27px; line-height:1.12; margin:0 42px 7px 0; }
+  .sheet.business-detail-sheet>.sheet-subtitle { color:var(--muted); font-size:11px; line-height:1.5; margin:0 38px 20px 0; flex:none; }
+  .sheet.business-detail-sheet>.sheet-x { top:17px; right:12px; border:1px solid var(--line); background:var(--surface); border-radius:50%; }
+  .sheet.business-detail-sheet>.sheet-body { flex:1; padding:0 1px 22px; -webkit-overflow-scrolling:touch; }
+  .sheet.business-detail-sheet>.sheet-foot { flex:none; border-top:1px solid var(--line); background:var(--bg); padding:11px 0 calc(11px + env(safe-area-inset-bottom)); }
+  .business-detail-footer { display:flex; align-items:center; gap:7px; margin:0; color:var(--muted); font-size:9px; }
+  .business-detail-footer:before { content:''; width:5px; height:5px; border-radius:50%; background:var(--gold); }
+  .keyboard-open .sheet.business-detail-sheet { height:100%; max-height:100%; border-radius:0; padding-top:18px; }
+  .keyboard-open .sheet.business-detail-sheet>.sheet-subtitle { margin-bottom:12px; }
+  .keyboard-open .sheet.business-detail-sheet>.sheet-foot { padding-bottom:10px; }
+  .business-detail { display:grid; gap:27px; }
+  .executive-section>header { display:flex; align-items:center; gap:10px; margin-bottom:13px; }
+  .executive-section>header>span { font-size:10px; color:var(--gold); padding-right:10px; border-right:1px solid var(--accent-border); letter-spacing:.08em; }
+  .executive-section>header h2 { font:500 20px/1.2 'Playfair Display',serif; margin:0; color:var(--text); letter-spacing:-.02em; }
+  .executive-section>header p { font-size:10px; color:var(--muted); margin:4px 0 0; }
+  .executive-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .executive-grid>.executive-metric:only-child { grid-column:1/-1; }
+  .business-detail .executive-metric { position:relative; isolation:isolate; overflow:hidden; min-width:0; padding:16px 13px; margin:0; border:1px solid var(--line); border-radius:17px; background:var(--surface); box-shadow:0 4px 18px #0000000a; }
+  .executive-metric .stat-heading { display:flex; align-items:center; justify-content:space-between; gap:5px; }
+  .executive-metric .stat-heading p { margin:0; font-size:10px; color:var(--muted); }
+  .executive-icon { display:grid; place-items:center; width:25px; height:25px; flex:none; border-radius:8px; background:var(--accent-soft); color:var(--gold); }
+  .executive-icon svg { width:14px; height:14px; }
+  .executive-metric .stat-value { font:500 clamp(19px,5.4vw,25px)/1.18 'Inter',sans-serif; font-variant-numeric:tabular-nums; letter-spacing:-.055em; margin:13px 0 5px; color:var(--text); overflow-wrap:anywhere; }
+  .executive-metric small { display:block; font-size:9px; line-height:1.5; color:var(--muted); }
+  .executive-metric.headline { padding:21px 18px; margin-bottom:10px; background:linear-gradient(115deg,#e9d7b0,#c9a86a); border-color:#e8d2a1; color:#20190e; box-shadow:0 8px 26px #0002; }
+  .headline .stat-heading p,.headline small { color:#4c3b20; }
+  .headline .executive-icon { color:#30230e; background:#ffffff36; }
+  .executive-metric.headline .stat-value { font-size:clamp(32px,9vw,43px); color:#20190e; margin-top:18px; letter-spacing:-.06em; }
+  .executive-pattern { position:absolute; z-index:-1; right:0; bottom:0; height:130px; width:170px; fill:none; stroke:#80602c; stroke-width:.6; opacity:.2; pointer-events:none; }
+  .executive-metric.profit { background:var(--accent-soft); border-color:var(--accent-border); }
+  .profit .stat-value { color:var(--gold); }
+  .executive-metric.income { border-top:2px solid var(--gold); }
+  .executive-today { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:10px; margin-bottom:12px; }
+  .executive-today .executive-metric { background:transparent; box-shadow:none; }
+  .executive-metric.count .stat-value,.executive-metric.stock .stat-value { font-size:32px; letter-spacing:-.04em; }
+  .executive-metric.expense { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:0 10px; margin-top:10px; box-shadow:none; }
+  .expense .stat-heading { grid-column:1; }
+  .executive-metric.expense .stat-value { grid-column:2; grid-row:1/3; font-size:22px; margin:0; }
+  .expense .executive-icon { display:none; }
+  .executive-metric.negative .stat-value { color:var(--bad); }
+  .executive-balance { padding:17px 14px; border:1px solid var(--line); border-radius:17px; background:var(--surface); }
+  .executive-chart-heading { display:flex; justify-content:space-between; font-size:8px; letter-spacing:.12em; color:var(--gold); margin-bottom:18px; }
+  .executive-chart-heading small { color:var(--muted); letter-spacing:0; }
+  .executive-bar { margin-top:15px; }
+  .executive-bar>div:first-child { display:flex; justify-content:space-between; gap:8px; font-size:10px; }
+  .executive-bar b { font-variant-numeric:tabular-nums; font-weight:500; text-align:right; }
+  .executive-track { margin-top:8px; height:6px; background:var(--surface-2); border-radius:8px; overflow:hidden; }
+  .executive-track>span { display:block; height:100%; border-radius:8px; background:var(--gold); }
+  .executive-bar.expense .executive-track>span { background:var(--muted); }
+  .executive-bar.profit .executive-track>span { background:var(--good); }
+  .executive-balance>p { margin:15px 0 0; font-size:9px; line-height:1.5; color:var(--muted); }
+  .executive-metric.inventory-value { margin-bottom:10px; padding-left:18px; border-left:3px solid var(--gold); box-shadow:none; }
+  .executive-metric.inventory-value .stat-value { font-size:29px; }
+  .executive-metric.stock { background:transparent; box-shadow:none; }
+  .stock .stat-value { color:var(--gold); }
+  .executive-records { margin-top:18px; }
+  .business-detail .executive-records h3 { font-family:'Inter',sans-serif; font-size:10px; color:var(--muted); margin:0 0 5px; letter-spacing:.05em; }
+  .executive-stock-row { display:flex; align-items:center; gap:9px; padding:13px 0; border-bottom:1px solid var(--line); }
+  .executive-stock-row>div { flex:1; min-width:0; }
+  .executive-stock-row b { display:block; font-size:11px; font-weight:500; line-height:1.5; }
+  .executive-stock-row small { color:var(--muted); font-size:9px; }
+  .executive-stock-row .badge { flex:none; font-size:9px; }
+  .executive-stock-dot { width:5px; height:5px; flex:none; border-radius:50%; background:var(--gold); }
+  .executive-stock-dot[data-empty="true"] { background:var(--bad); }
+  .executive-team { display:grid; gap:10px; }
+  .executive-person { padding:15px; border:1px solid var(--line); border-radius:17px; background:var(--surface); }
+  .executive-person-top { display:flex; align-items:center; gap:10px; }
+  .executive-avatar { display:grid; place-items:center; width:34px; height:34px; flex:none; border-radius:50%; color:var(--gold); background:var(--accent-soft); border:1px solid var(--accent-border); font:500 19px 'Playfair Display',serif; }
+  .executive-person-top>div { min-width:0; }
+  .executive-person-top b { display:block; font-size:12px; font-weight:500; }
+  .executive-person-top small { color:var(--muted); font-size:9px; }
+  .executive-person-total { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-top:17px; }
+  .executive-person-total span,.executive-commission span { font-size:9px; color:var(--muted); }
+  .executive-person-total strong { font-size:23px; font-variant-numeric:tabular-nums; letter-spacing:-.04em; font-weight:500; }
+  .executive-person .sales-track { margin:10px 0 12px; height:4px; }
+  .executive-commission { display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--line); padding-top:10px; gap:10px; }
+  .executive-commission b { font-size:11px; color:var(--gold); font-weight:500; }
+  .executive-invoices { border-top:1px solid var(--line); }
+  .executive-invoice { display:flex; align-items:center; gap:9px; padding:14px 0; border-bottom:1px solid var(--line); }
+  .executive-invoice-icon { flex:none; color:var(--gold); }
+  .executive-invoice-icon svg { width:17px; height:17px; }
+  .executive-invoice>div:nth-child(2) { flex:1; min-width:0; }
+  .executive-invoice b { display:block; font-size:11px; font-weight:500; }
+  .executive-invoice small { display:block; font-size:9px; line-height:1.6; color:var(--muted); }
+  .executive-invoice>div:last-child { max-width:48%; text-align:right; }
+  .executive-invoice strong { font-size:13px; font-weight:500; font-variant-numeric:tabular-nums; }
+  .executive-invoice .badge { display:block; margin-top:5px; }
+  :root[data-theme="light"] .executive-person,:root[data-theme="light"] .executive-balance { box-shadow:0 4px 18px #45361905; }
+  :root[data-theme="light"] .business-detail .executive-metric.headline { background:linear-gradient(115deg,#f1e4c9,#e6cea0); }
+}
+@media screen and (max-width:350px) {
+  .sheet.business-detail-sheet { padding-inline:13px; }
+  .sheet.business-detail-sheet>h3 { font-size:24px; }
+  .business-detail .executive-metric { padding:13px 10px; }
+  .executive-metric .stat-value { font-size:18px; letter-spacing:-.055em; }
+  .executive-metric .stat-heading p { font-size:9px; }
+  .executive-icon { width:20px; height:20px; }
+  .executive-metric.expense .stat-value { font-size:20px; }
+}

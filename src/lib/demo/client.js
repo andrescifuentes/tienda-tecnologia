@@ -3,6 +3,7 @@ import { exigirEntornoDemoPermitido } from './environment.js'
 import { hashDemoPassword } from './password.js'
 import { coordinateDemoWrite, readDemoState } from './writeCoordinator.js'
 import { monetaryAmount } from '../money.js'
+import { freezeInvoiceIdentity } from '../invoiceSnapshot.js'
 
 const clone = (value) => structuredClone(value)
 const fail = (message) => { throw new Error(message) }
@@ -36,7 +37,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     const raw = persisted ?? storage.getItem(DEMO_KEY)
     // Reads never write: otherwise an uncoordinated first read could overwrite
     // another tab's first committed transaction.
-    if (!raw) return clone(initialState ||= createDemoSeed(now()))
+    if (!raw) { const seed = clone(initialState ||= createDemoSeed(now())); seed.tables.facturas.forEach(f => freezeInvoiceIdentity(seed, f)); return seed }
     const state = JSON.parse(raw)
     if (state.version !== 1 || !state.tables?.productos) fail('Los datos demo locales no son compatibles. Restablece la demo desde Configuración.')
     // Additive migration: keep all existing transactions and sessions.
@@ -49,6 +50,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     for (const nombre of ['Smartphones','Audio','Accesorios','Cómputo','Wearables','Tablets','Otros']) if (!state.tables.categorias.some(c => c.nombre === nombre)) state.tables.categorias.push({id:++state.sequences.categorias,nombre,activa:true})
     const settings = state.tables.tienda[0]
     settings.ultimo_numero_factura = Math.max(settings.ultimo_numero_factura, ...state.tables.facturas.map(f => f.numero))
+    state.tables.facturas.forEach(f => freezeInvoiceIdentity(state, f))
     return state
   }
   function transaction(action) {
@@ -91,16 +93,24 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     const reintegrated = refunds.filter((d) => d.reintegra_stock).flatMap((d) => state.tables.devolucion_items.filter((i) => i.devolucion_id === d.id))
     return { ...invoice, total_neto:invoice.total-sum(refunds,'total_devuelto'), comision_neta:(invoice.comision||0)-sum(refunds,'comision_revertida'), costo_neto:invoice.costo_total-reintegrated.reduce((n,i)=>n+i.cantidad*find(state,'factura_items',i.factura_item_id).costo_unitario,0) }
   }
+  const hasPermission = (state, permission) => user(state)?.rol === 'admin' || state.tables.perfil_permisos.some(p => p.perfil_id === user(state)?.id && p.permiso === permission)
+  const costKeys = new Set(['precio_compra','costo_unitario','costo_total','costo_neto','margen','utilidad_mes','valor_inventario'])
+  function visible(state, value) {
+    if (hasPermission(state, 'ver_costos')) return value
+    const redact = data => Array.isArray(data) ? data.map(redact) : data && typeof data === 'object' ? Object.fromEntries(Object.entries(data).filter(([key]) => !costKeys.has(key)).map(([key,item]) => [key,redact(item)])) : data
+    return redact(value)
+  }
   function hydrate(state, table, row) {
     const t = state.tables, copy = { ...row }
     if (table === 'productos' || table === 'productos_venta') { copy.categorias = t.categorias.find((c)=>c.id===row.categoria_id); copy.categoria=copy.categorias?.nombre; copy.proveedores=t.proveedores.find(p=>p.id===row.proveedor_id); if(table==='productos_venta') delete copy.precio_compra }
-    if (table === 'facturas' || table === 'facturas_netas') { copy.clientes=t.clientes.find(c=>c.id===row.cliente_id)||null; copy.perfiles=t.perfiles.filter(p=>p.id===row.vendedor_id).map(({nombre})=>({nombre}))[0] }
+    if (table === 'facturas' || table === 'facturas_netas') { copy.clientes=Object.hasOwn(row,'cliente_snapshot')?row.cliente_snapshot:t.clientes.find(c=>c.id===row.cliente_id)||null; copy.perfiles=row.vendedor_snapshot||t.perfiles.filter(p=>p.id===row.vendedor_id).map(({nombre})=>({nombre}))[0] }
     if (table === 'devoluciones') copy.devolucion_items=t.devolucion_items.filter(i=>i.devolucion_id===row.id)
     if (table === 'garantias') { copy.historial=t.garantia_eventos.filter(e=>e.garantia_id===row.id); const item=t.factura_items.find(i=>i.id===row.factura_item_id); copy.factura=item?t.facturas.find(f=>f.id===item.factura_id):null; copy.productos=t.productos.find(p=>p.id===row.producto_id); copy.clientes=t.clientes.find(c=>c.id===row.cliente_id); copy.unidades_serializadas=t.unidades_serializadas.find(u=>u.id===row.unidad_id); copy.reclamos_garantia=t.reclamos_garantia.filter(r=>r.garantia_id===row.id) }
     if (table === 'perfiles') delete copy.password_hash
     return copy
   }
   function rows(state, table) {
+    if (['compras','compra_items','compras_saldo','pagos_proveedor'].includes(table) && (!hasPermission(state,'ver_costos') || !(hasPermission(state,'registrar_compras') || hasPermission(state,'ver_finanzas')))) fail('No tienes permiso para consultar costos de compras.')
     let data
     if(table==='productos_venta') data=state.tables.productos.filter(p=>p.activo)
     else if(table==='stock_bajo') data=state.tables.productos.filter(p=>p.activo && p.stock<=p.stock_min)
@@ -109,7 +119,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     else data=state.tables[table] || fail(`Módulo demo desconocido: ${table}`)
     const profile=user(state)
     if(profile.rol!=='admin') { if(table==='facturas'||table==='facturas_netas') data=data.filter(f=>f.vendedor_id===profile.id); if(table==='perfiles')data=data.filter(p=>p.id===profile.id); if(['movimientos','compras_saldo','actividad'].includes(table) && !state.tables.perfil_permisos.some(p=>p.perfil_id===profile.id && p.permiso==='ver_finanzas')) data=table==='actividad'?data.filter(a=>a.perfil_id===profile.id):[] }
-    return data.map(row=>hydrate(state,table,row))
+    return data.map(row=>visible(state,hydrate(state,table,row)))
   }
   function validate(state, table, data, id) {
     validateMoney(data)
@@ -155,7 +165,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
         data.sort((a,b)=>{for(const {key,ascending} of this.sort){const order=typeof a[key]==='string'?a[key].localeCompare(b[key]||'','es'):Number(a[key]||0)-Number(b[key]||0);if(order)return ascending?order:-order}return 0})
         if(this.count!==undefined)data=data.slice(0,this.count)
         if(this.mustExist&&data.length!==1)fail('No se encontró un único registro')
-        return !this.returning?null:this.one?data[0]||null:data
+        return visible(state,!this.returning?null:this.one?data[0]||null:data)
       }
       return this.operation==='read'?readCurrent(action):transaction(action)
     }
@@ -171,14 +181,16 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     if(args.p_cliente_id&&!find(state,'clientes',args.p_cliente_id).activo)fail('El cliente está desactivado.')
     if(!['efectivo','tarjeta','transferencia'].includes(args.p_metodo_pago))fail('Método de pago inválido')
     const discount=amount(args.p_descuento||0,'Descuento'); if(discount)permit(state,'editar_precios')
-    const prepared=items.map(item=>{const p=find(state,'productos',item.producto_id),qty=quantity(item.cantidad),lineDiscount=amount(item.descuento||0);if(!p.activo)fail('Producto inactivo');if(lineDiscount)permit(state,'editar_precios');if(lineDiscount>qty*p.precio_venta)fail('Descuento de línea inválido');let unit=null;if(p.maneja_serial){unit=find(state,'unidades_serializadas',item.unidad_id);if(qty!==1||unit.producto_id!==p.id||unit.estado!=='disponible')fail('Serial no disponible')}return {p,qty,lineDiscount,unit}})
+    const prepared=items.map(item=>{const p=find(state,'productos',item.producto_id),qty=quantity(item.cantidad),lineDiscount=amount(item.descuento||0),price=item.precio_unitario===undefined?p.precio_venta:amount(item.precio_unitario);if(price!==p.precio_venta&&!hasPermission(state,'editar_precios'))fail('El precio cambió. Actualiza el carrito y confirma el nuevo total.');if(!p.activo)fail('Producto inactivo');if(lineDiscount)permit(state,'editar_precios');if(lineDiscount>qty*price)fail('Descuento de línea inválido');let unit=null;if(p.maneja_serial){unit=find(state,'unidades_serializadas',item.unidad_id);if(qty!==1||unit.producto_id!==p.id||unit.estado!=='disponible')fail('Serial no disponible')}return {p,qty,lineDiscount,unit,price}})
     const seen=new Set();for(const item of prepared){if(item.unit){if(seen.has(item.unit.id))fail('Serial repetido en la venta');seen.add(item.unit.id)}const totalQty=prepared.filter(i=>i.p.id===item.p.id).reduce((n,i)=>n+i.qty,0);if(totalQty>item.p.stock)fail(`Stock insuficiente para ${item.p.nombre}`)}
     for (const {p} of prepared) { amount(p.precio_venta); amount(p.precio_compra) }
-    const subtotal=amount(prepared.reduce((n,i)=>n+i.qty*i.p.precio_venta,0)), totalDiscount=amount(discount+sum(prepared,'lineDiscount'))
+    const subtotal=amount(prepared.reduce((n,i)=>n+i.qty*i.price,0)), totalDiscount=amount(discount+sum(prepared,'lineDiscount'))
     if(totalDiscount>subtotal)fail('El descuento no puede superar el subtotal')
+    if(args.p_total_confirmado!==undefined && amount(args.p_total_confirmado)!==subtotal-totalDiscount)fail('El total confirmado no coincide con el checkout. Revisa la venta.')
     const settings=state.tables.tienda[0], date=demoDate(now())
     const invoice=add(state,'facturas',{prefijo:settings.factura_prefijo,numero:++settings.ultimo_numero_factura,cliente_id:args.p_cliente_id||null,vendedor_id:profile.id,creado_por:actor.id,request_id:args.p_request_id||null,subtotal,descuento:totalDiscount,total:subtotal-totalDiscount,costo_total:prepared.reduce((n,i)=>n+i.qty*i.p.precio_compra,0),estado:'emitida',fecha:now().toISOString(),metodo_pago:args.p_metodo_pago,notas:args.p_notas,comision_pct:profile.comision_pct,comision:profile.comision_pct==null?null:Math.round((subtotal-totalDiscount)*profile.comision_pct/100)})
-    for(const {p,qty,lineDiscount,unit} of prepared){const item=add(state,'factura_items',{factura_id:invoice.id,producto_id:p.id,unidad_id:unit?.id||null,nombre:p.nombre,cantidad:qty,precio_unitario:p.precio_venta,costo_unitario:p.precio_compra,descuento:lineDiscount});if(unit){unit.estado='vendida';unit.factura_item_id=item.id}move(state,p,-qty,'salida_venta','factura',invoice.id);if(p.garantia_meses){const end=new Date(date+'T12:00:00Z');end.setUTCMonth(end.getUTCMonth()+p.garantia_meses);add(state,'garantias',{factura_item_id:item.id,producto_id:p.id,cliente_id:invoice.cliente_id,unidad_id:unit?.id||null,inicio:date,fin:demoDate(end),estado:'vigente'})}}
+    freezeInvoiceIdentity(state,invoice)
+    for(const {p,qty,lineDiscount,unit,price} of prepared){const item=add(state,'factura_items',{factura_id:invoice.id,producto_id:p.id,unidad_id:unit?.id||null,nombre:p.nombre,codigo:p.codigo,cantidad:qty,precio_unitario:price,costo_unitario:p.precio_compra,descuento:lineDiscount});if(unit){unit.estado='vendida';unit.factura_item_id=item.id}move(state,p,-qty,'salida_venta','factura',invoice.id);if(p.garantia_meses){const end=new Date(date+'T12:00:00Z');end.setUTCMonth(end.getUTCMonth()+p.garantia_meses);add(state,'garantias',{factura_item_id:item.id,producto_id:p.id,cliente_id:invoice.cliente_id,unidad_id:unit?.id||null,inicio:date,fin:demoDate(end),estado:'vigente'})}}
     ledger(state,'ingreso','Ventas',invoice.total,{origen:'venta',factura_id:invoice.id,descripcion:`Factura ${invoice.prefijo}-${invoice.numero}`})
     activity(state,'Nueva venta realizada','factura',invoice.id,{numero:`${invoice.prefijo}-${invoice.numero}`,total:invoice.total})
     return invoice.id
@@ -255,7 +267,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
   const emit=(event,session)=>{for(const callback of listeners)queueMicrotask(()=>callback(event,clone(session)))}
   return {
     from:(table)=>new Query(table),
-    rpc:(name,args={})=>safe(()=>name==='resumen_dashboard'?readCurrent(state=>dashboard(state,args)):name==='ventas_por_empleado'?readCurrent(state=>employeeSales(state,args)):transaction(state=>rpcAction(state,name,args))),
+    rpc:(name,args={})=>safe(()=>name==='resumen_dashboard'?readCurrent(state=>visible(state,dashboard(state,args))):name==='ventas_por_empleado'?readCurrent(state=>employeeSales(state,args)):transaction(state=>visible(state,rpcAction(state,name,args)))),
     auth:{
       getSession:async()=>{const result=await safe(()=>readCurrent(state=>state.session));return {data:{session:result.data},error:result.error}},
       onAuthStateChange:(callback)=>{listeners.add(callback);return {data:{subscription:{unsubscribe:()=>listeners.delete(callback)}}}},

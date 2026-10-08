@@ -1,8 +1,11 @@
 import { jsPDF } from 'jspdf'
 import { money, fechaHora, numFactura } from './format.js'
+import { invoiceBusiness, invoiceIdentity } from './invoiceSnapshot.js'
 
 // Text and vector drawing only: no screenshots, HTML rendering or network requests.
 export function createInvoicePdf(invoice, items, tienda, demo = false) {
+  invoice = invoiceIdentity(invoice)
+  tienda = invoiceBusiness(invoice, tienda)
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const number = numFactura(invoice)
   const filename = `ANGIE-TECH-${number.replace(/[^a-zA-Z0-9-]/g, '')}.pdf`

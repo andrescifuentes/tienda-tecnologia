@@ -4,6 +4,7 @@ import { monetaryError } from '../lib/money'
 import { AnimatedCard, ProductThumbnail } from '../components/TechVisuals'
 import { Icon } from '../components/Icons'
 import Modal from '../components/Modal'
+import { FormSection } from '../components/AdminPrimitives'
 import Scanner from '../components/Scanner'
 import ClientePicker from '../components/ClientePicker'
 import FacturaDetalle from '../components/FacturaDetalle'
@@ -116,10 +117,16 @@ export default function Vender() {
     for (const value of [descuento,subtotal,total,...carrito.flatMap(i=>[i.producto.precio_venta,i.producto.precio_compra ?? 0])]) if (monetaryError(value)) return setErr(monetaryError(value))
     if (carrito.some(i=>!Number.isInteger(i.cantidad)||i.cantidad<=0||i.cantidad>i.producto.stock||i.producto.activo===false)) return setErr('Revisa el carrito: un producto está desactivado o no tiene stock suficiente. Reduce su cantidad o quítalo.')
     setErr(''); setBusy(true)
-    const items = carrito.map((i) => (i.unidad ? { producto_id: i.producto.id, cantidad: 1, unidad_id: i.unidad.id } : { producto_id: i.producto.id, cantidad: i.cantidad, descuento: 0 }))
-    const { data, error } = await supabase.rpc('emitir_factura', { p_cliente_id: cliente?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notas.trim() || null, ...(isDemoMode?{p_request_id:requestId,p_vendedor_id:esAdmin?seller:undefined}:{}) })
+    const items = carrito.map((i) => ({ producto_id:i.producto.id, cantidad:i.unidad?1:i.cantidad, ...(i.unidad?{unidad_id:i.unidad.id}:{descuento:0}), ...(isDemoMode?{precio_unitario:i.producto.precio_venta}:{}) }))
+    const { data, error } = await supabase.rpc('emitir_factura', { p_cliente_id: cliente?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notas.trim() || null, ...(isDemoMode?{p_request_id:requestId,p_total_confirmado:total,p_vendedor_id:esAdmin?seller:undefined}:{}) })
     setBusy(false)
-    if (error) return setErr(mensajeError(error))
+    if (error) {
+      if (isDemoMode && /^El precio cambió/.test(error.message)) {
+        const fresh = await supabase.from('productos_venta').select('*').in('id',carrito.map(i=>i.producto.id))
+        if (!fresh.error) setCarrito(rows=>rows.map(i=>({...i,producto:fresh.data.find(p=>p.id===i.producto.id)||i.producto})))
+      }
+      return setErr(mensajeError(error))
+    }
     const id = typeof data === 'object' && data !== null ? (data.id ?? data.factura_id ?? Object.values(data)[0]) : data
     setCarrito([]); setCliente(null); setDescuento(''); setNotas(''); setVerCarrito(false); setQ('')
     setRequestId(imageKey()); setRefresh(n=>n+1); setFacturaId(id); toast('Venta registrada')
@@ -158,35 +165,40 @@ export default function Vender() {
       {facturaId && <FacturaDetalle id={facturaId} nueva onClose={() => setFacturaId(null)} />}
 
       {serialDe && (
-        <Modal title={`Serial · ${serialDe.nombre}`} onClose={() => setSerialDe(null)}>
-          {unidades.map((u) => <div key={u.id} className="row cursor-pointer" onClick={() => agregarUnidad(u)}><span className="flex-1 text-sm font-semibold">{u.serial}</span><span className="text-brand text-sm font-bold">Elegir</span></div>)}
+        <Modal title={`Serial · ${serialDe.nombre}`} subtitle="Selecciona una unidad disponible" className="experience-sheet serial-picker-sheet" keyboardAware onClose={() => setSerialDe(null)}>
+          <div className="serial-product"><ProductThumbnail product={serialDe}/><span><b>{serialDe.nombre}</b><small>{unidades.length} unidades disponibles</small></span></div>
+          <div className="serial-list">{unidades.map((u) => <button type="button" key={u.id} className="row serial-option" onClick={() => agregarUnidad(u)}><span className="serial-mark"><Icon name="scan"/></span><span className="flex-1"><small>SERIAL / IMEI</small><b>{u.serial}</b><Badge tone="good">Disponible</Badge></span><span className="serial-select">Elegir <span aria-hidden="true">›</span></span></button>)}</div>
         </Modal>
       )}
 
       {verCarrito && (
-        <Modal expanded={expand} title="Carrito" onClose={() => setVerCarrito(false)} footer={
+        <Modal expanded={expand} title="Carrito" subtitle="Revisa tu venta antes de confirmar" className="experience-sheet checkout-sheet" keyboardAware onClose={() => setVerCarrito(false)} footer={
           <button className="btn full" disabled={busy || pendingSale || carrito.length === 0} onClick={facturar}>{busy ? 'Facturando…' : `Confirmar venta · ${money(total)}`}</button>}>
           <div className="flex gap-2 mb-2"><button className="btn sec sm" onClick={()=>setExpand(!expand)}>{expand?'Contraer carrito':'Expandir carrito'}</button><button className="btn sec sm" disabled={!carrito.length} onClick={()=>setRemove('all')}>Vaciar carrito</button></div>
           <ErrorBox text={err} />
+          <FormSection number="01" title="Tu selección">
           {carrito.map((i) => (
-            <div key={i.key} className="row">
+            <div key={i.key} className="row checkout-item">
               <ProductThumbnail product={i.producto} />
               <div className="flex-1 min-w-0"><p className="m-0 text-sm font-semibold">{i.producto.nombre}</p><p className="m-0 text-xs text-muted">{i.unidad ? 'Serial ' + i.unidad.serial : money(i.producto.precio_venta) + ' c/u'}</p></div>
-              {!i.unidad && <Stepper value={i.cantidad} max={i.producto.stock} onChange={(n) => cambiarCant(i, n)} />}
-              <button className="btn bad sm" aria-label={`Quitar ${i.producto.nombre}`} onClick={() => quitar(i)}>✕</button>
+              <div className="checkout-item-controls">{!i.unidad && <Stepper value={i.cantidad} max={i.producto.stock} onChange={(n) => cambiarCant(i, n)} />}<b>{money(i.producto.precio_venta*i.cantidad)}</b><button className="checkout-remove" aria-label={`Quitar ${i.producto.nombre}`} onClick={() => quitar(i)}><Icon name="trash"/></button></div>
             </div>
           ))}
-          <div className="mt-3">
+          </FormSection><div className="mt-3">
+            <FormSection number="02" title="Cliente y vendedor">
             <label className="lbl">Cliente</label>
             <button className="btn sec full mb-3" onClick={() => setVerCliente(true)}>{cliente ? cliente.nombre + (cliente.documento?' ('+cliente.documento+')':'') : 'Consumidor final · tocar para elegir'}</button>
             {isDemoMode && esAdmin && <Select label="Vendedor" value={seller} onChange={e=>setSeller(e.target.value)}>{sellers.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</Select>}
+            </FormSection><FormSection number="03" title="Pago y observaciones">
             <label className="lbl">Método de pago</label>
             <Chips value={metodo} onChange={setMetodo} options={[{ value: 'efectivo', label: 'Efectivo' }, { value: 'tarjeta', label: 'Tarjeta' }, { value: 'transferencia', label: 'Transferencia' }]} />
             <Input disabled={!can('editar_precios')} title={!can('editar_precios')?'Tu perfil no puede aplicar descuentos':undefined} label="Descuento ($)" inputMode="numeric" value={descuento} onChange={(e) => setDescuento(e.target.value.replace(/\D/g, ''))} />
             <Input label="Notas (opcional)" value={notas} onChange={(e) => setNotas(e.target.value)} />
+            </FormSection><div className="checkout-totals">
             <div className="flex justify-between text-sm"><span className="text-muted">Subtotal</span><b>{money(subtotal)}</b></div>
             {desc > 0 && <div className="flex justify-between text-sm"><span className="text-muted">Descuento</span><b>-{money(desc)}</b></div>}
             <div className="flex justify-between text-lg mt-1"><span>Total</span><b>{money(total)}</b></div>
+            </div>
           </div>
         </Modal>
       )}

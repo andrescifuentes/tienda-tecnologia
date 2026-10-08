@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import Modal from './Modal'
 import { monetaryError } from '../lib/money'
 import Scanner from './Scanner'
+import DateField from './DateField'
+import { FormSection } from './AdminPrimitives'
+import { ProductThumbnail } from './TechVisuals'
 import { Input, Select, ErrorBox, Empty, SearchBar } from './ui'
 import { useAction } from '../lib/useAction'
 import { imageKey } from '../lib/demo/images'
@@ -67,24 +70,26 @@ export default function CompraForm({ proveedorId, onClose, onSaved }) {
   }
 
   return (
-    <Modal title="Ingreso de mercancía" onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={busy || pendingSave}>{busy ? 'Guardando…' : `Registrar compra · ${money(total)}`}</button>}>
+    <Modal title="Ingreso de mercancía" subtitle="Tu inventario, siempre al día" className="experience-sheet purchase-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={busy || pendingSave}>{busy ? 'Guardando…' : `Registrar compra · ${money(total)}`}</button>}>
       <ErrorBox text={err} />
+      <FormSection number="01" title="Proveedor y documento">
       <Select required label="Proveedor" value={prov} onChange={(e) => setProv(e.target.value)}>
         <option value="">Elegir…</option>{provs.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
       </Select>
       <Input label="N.º factura del proveedor" value={doc} onChange={(e) => setDoc(e.target.value)} />
+      </FormSection><FormSection number="02" title="Pago y fechas">
       <div className="grid grid-cols-2 gap-2">
         <Select label="Forma de pago" value={forma} onChange={(e) => setForma(e.target.value)}><option value="contado">Contado</option><option value="credito">Crédito</option></Select>
         {forma === 'contado'
           ? <Select label="Método" value={metodo} onChange={(e) => setMetodo(e.target.value)}><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="tarjeta">Tarjeta</option></Select>
-          : <Input label="Vence el" type="date" min={hoyBogota()} value={vence} onChange={(e) => setVence(e.target.value)} />}
+          : <DateField label="Vence el" min={hoyBogota()} value={vence} onChange={setVence} />}
       </div>
-      {isDemoMode && <><Input label="Fecha compra" type="date" required value={date} onChange={e=>setDate(e.target.value)} /><Input label="Notas compra" value={notes} onChange={e=>setNotes(e.target.value)} /></>}
-      <h4 className="text-sm text-muted uppercase mb-1">Productos</h4>
-      {items.length === 0 && <Empty text="Agrega productos" />}
+      {isDemoMode && <><DateField label="Fecha compra" value={date} onChange={setDate}/><Input label="Notas compra" value={notes} onChange={e=>setNotes(e.target.value)} /></>}
+      </FormSection><FormSection number="03" title="Productos">
+      {items.length === 0 && <Empty text="Prepara tu ingreso" description="Selecciona la mercancía y registra cantidades, costos y seriales cuando corresponda."/>}
       {items.map((i, idx) => (
-        <div key={i.producto.id} className="card !p-3 mb-2">
-          <div className="flex justify-between"><b className="text-sm">{i.producto.nombre}</b><button className="btn bad sm" onClick={() => setItems(items.filter((_, k) => k !== idx))}>✕</button></div>
+        <div key={i.producto.id} className="card purchase-item !p-3 mb-2">
+          <div className="purchase-item-heading"><ProductThumbnail product={i.producto}/><b className="text-sm">{i.producto.nombre}</b><button aria-label={`Quitar ${i.producto.nombre}`} className="btn bad sm" onClick={() => setItems(items.filter((_, k) => k !== idx))}>✕</button></div>
           <div className="grid grid-cols-2 gap-2 mt-2">
             <Input label="Cantidad" type="number" min="1" value={i.cantidad} onChange={(e) => upd(idx, 'cantidad', e.target.value)} />
             <Input label="Costo unitario" type="number" min="0" value={i.costo} onChange={(e) => upd(idx, 'costo', e.target.value)} />
@@ -96,7 +101,7 @@ export default function CompraForm({ proveedorId, onClose, onSaved }) {
         </div>
       ))}
       <button className="btn sec full" onClick={() => setBuscar(true)}>+ Agregar producto</button>
-      <div className="flex justify-between text-base mt-3"><span>Total compra</span><b>{money(total)}</b></div>
+      </FormSection><div className="purchase-total"><span>Total compra<small>{items.length} productos</small></span><b>{money(total)}</b></div>
       {buscar && <BuscarProducto onClose={() => setBuscar(false)} onPick={add} onScan={() => setScan(true)} />}
       {scan && <Scanner onClose={() => setScan(false)} onScan={async (c) => {
         setScan(false)
@@ -119,9 +124,9 @@ function BuscarProducto({ onPick, onClose, onScan }) {
     return () => clearTimeout(t)
   }, [q])
   return (
-    <Modal title="Elegir producto" onClose={onClose}>
+    <Modal title="Elegir producto" className="experience-sheet product-picker-sheet" keyboardAware onClose={onClose}>
       <SearchBar value={q} onChange={setQ} onScan={onScan} placeholder="Nombre o código" />
-      {lista.map((p) => <div key={p.id} className="row cursor-pointer" onClick={() => onPick(p)}><div className="flex-1"><p className="m-0 text-sm font-semibold">{p.nombre}</p><p className="m-0 text-xs text-muted">{p.codigo} · stock {p.stock}</p></div></div>)}
+      {lista.map((p) => <button type="button" key={p.id} className="row product-pick" onClick={() => onPick(p)}><ProductThumbnail product={p}/><div className="flex-1"><p className="m-0 text-sm font-semibold">{p.nombre}</p><p className="m-0 text-xs text-muted">{p.codigo} · stock {p.stock}</p></div><span aria-hidden="true">›</span></button>)}
     </Modal>
   )
 }

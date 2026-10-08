@@ -37,7 +37,7 @@ export function SearchBar({ value, onChange, placeholder = 'Buscar…', onScan }
     <div className="search-bar flex gap-2 mb-3">
       <div className="relative flex-1 min-w-0">
         <Icon name="search" className="w-4 h-4 absolute left-3 top-3.5 text-muted" />
-        <input className="inp !pl-9" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} autoCapitalize="none" />
+        <input type="search" enterKeyHint="search" autoCorrect="off" spellCheck={false} className="inp !pl-9" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} autoCapitalize="none" />
       </div>
       {onScan && <button className="btn sec scan-button !px-3" onClick={onScan} aria-label="Escanear"><Icon name="scan" className="w-5 h-5" /></button>}
     </div>

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 // No npm dependencies, production accounts, real camera, or remote requests.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const artifacts = join(root, 'artifacts', process.env.UI_ARTIFACTS || 'iphone-themes')
+const artifacts = join(root, 'artifacts', process.env.UI_ARTIFACTS || 'invoice-card-layout')
 const base = process.env.UI_BASE_URL || 'http://127.0.0.1:5173'
 assert.ok(new URL(base).protocol === 'http:' && esEntornoDemoPermitido(new URL(base)), 'Use HTTP localhost or a private LAN server for these tests')
 const browserPath = process.env.UI_BROWSER_PATH || [
@@ -23,6 +23,7 @@ const profile = await mkdtemp(join(tmpdir(), 'angie-tech-ui-'))
 await mkdir(artifacts, { recursive: true })
 const results = [], externalRequests = [], browserErrors = []
 const browser = spawn(browserPath, [
+  '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
   '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
   '--disable-background-networking', '--disable-component-update', '--disable-sync',
   '--disable-default-apps', '--no-first-run', '--no-default-browser-check',
@@ -90,6 +91,7 @@ try {
   async function waitFor(expression, timeout = 25000) {
     const deadline = Date.now() + timeout
     do { if (await evaluate(expression)) return; await delay(150) } while (Date.now() < deadline)
+    await screenshot("failure"); await writeFile(join(artifacts,"failure.json"),JSON.stringify(await evaluate("({alerts:[...document.querySelectorAll(\"[role=alert]\")].map(e=>e.textContent),body:document.body.innerText})"),null,2));
     throw new Error(`Timed out waiting for ${expression}`)
   }
   async function navigate(path, role = 'admin') {
@@ -131,57 +133,20 @@ try {
     results.push({ name, width, height, status: 'PASS' })
   }
 
-  await send('Page.enable');await send('Runtime.enable');await send('Log.enable')
-  await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]})
-  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'},{name:'prefers-color-scheme',value:'light'}]})
-  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'dark','Default must ignore OS light preference')
-  results.push({name:'Dark default under OS light',status:'PASS'})
-  const routes=[['/','.stat-card','inicio'],['/inventario','.product-card','inventario'],['/vender','.sale-product','ventas'],['/facturas','.invoice-card','facturas'],['/clientes','.row','clientes'],['/proveedores','.row','proveedores'],['/empleados','.row','empleados'],['/finanzas','.row','finanzas'],['/garantias','.row','garantias'],['/mas','.menu-row','mas'],['/configuracion','.settings-panel','configuracion']]
-  const dimensions=[[320,700],[360,800],[390,844],[430,932]],measurements=[]
-  const applyTheme=theme=>evaluate('import("/src/lib/theme.js").then(m=>m.setTheme('+JSON.stringify(theme)+'))')
-  for(const theme of ['dark','light']){
-    await applyTheme(theme)
-    for(const[width,height]of dimensions){
-      await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true})
-      await evaluate('document.fonts.ready.then(()=>true)');await delay(150)
-      await evaluate("document.querySelector('.login-screen').scrollTop=0")
-      const name=width+'-login-'+theme;await geometry(name,width,height,false);await screenshot(name)
-      const m=await evaluate("(()=>{const s=document.querySelector('.login-screen'),l=document.querySelector('.login-layout');return {height:l.getBoundingClientRect().height,scroll:s.scrollHeight,viewport:s.clientHeight,demoBottom:document.querySelector('.demo-access').getBoundingClientRect().bottom,hero:document.querySelector('.login-hero').getBoundingClientRect().height,input:document.querySelector('.login-input .inp').getBoundingClientRect().height,cta:document.querySelector('.login-form .btn').getBoundingClientRect().height}})()")
-      measurements.push({name,...m});assert.equal(m.hero,150);assert.equal(m.input,50);assert.equal(m.cta,50)
-      if(width===390){assert.ok(m.demoBottom<=height,'Login demo must be visible at 390x844');assert.ok(m.scroll<=height+2,'Login must fit at 390x844')}
-    }
-  }
-  await evaluate("document.querySelector('.login-form button.btn').click()");await waitFor("!!document.querySelector('.stat-card')")
-  for(const theme of ['dark','light']){
-    await applyTheme(theme)
-    for(const[width,height]of dimensions){
-      await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true})
-      for(const[path,selector,label]of routes){
-        await send('Page.navigate',{url:base+path});await waitFor("!!document.querySelector('.nav') && document.readyState==='complete'");await waitFor('!!document.querySelector('+JSON.stringify(selector)+')');await evaluate('document.fonts.ready.then(()=>true)');await delay(120)
-        const name=width+'-'+label+'-'+theme;await geometry(name,width,height);await screenshot(name)
-        assert.equal(await evaluate('document.documentElement.dataset.theme'),theme,'Saved theme must survive navigation/reload')
-        const styles=await evaluate("(()=>{const root=getComputedStyle(document.documentElement),sel=['.stat-card','.product-card','.invoice-card','.profile-card'];return {ink:root.getPropertyValue('--text').trim(),surfaces:sel.flatMap(s=>[...document.querySelectorAll(s)].map(e=>({selector:s,bg:getComputedStyle(e).backgroundColor,image:getComputedStyle(e).backgroundImage}))),header:document.querySelector('.top').getBoundingClientRect().height}})()")
-        if(theme==='light'){assert.equal(styles.ink,'#17130e');for(const s of styles.surfaces){assert.equal(s.image,'none',name+': no dirty gradients');assert.equal(s.bg,'rgb(255, 252, 247)',name+': light surfaces')}}
-        if(path==='/'&&width===390){assert.ok(styles.header>=100&&styles.header<=140,'Compact home header');measurements.push({name,header:styles.header})}
-      }
-    }
-  }
-  // The header toggle and settings segments subscribe to the same preference.
-  await send('Page.navigate',{url:base+'/configuracion'});await waitFor("!!document.querySelector('[aria-label=\"Cambiar tema\"]') && document.querySelectorAll('.theme-segments button').length===2")
-  await evaluate("document.querySelector('[aria-label=\"Cambiar tema\"]').click()")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'dark')
-  await waitFor("document.querySelector('.theme-segments button:first-child').getAttribute('aria-pressed')==='true'")
-  await evaluate("document.querySelector('.theme-segments button:last-child').click()")
-  assert.equal(await evaluate('document.documentElement.dataset.theme'),'light')
-  assert.equal(await evaluate("localStorage.getItem('tema')"),'light')
-  await send('Page.reload');await waitFor("!!document.querySelector('.nav')");assert.equal(await evaluate('document.documentElement.dataset.theme'),'light')
-  await waitFor("document.querySelector('.theme-segments button:last-child').getAttribute('aria-pressed')==='true'")
-  results.push({name:'Header toggle, settings segments and saved theme after reload',status:'PASS'})
-  assert.deepEqual(externalRequests,[]);assert.deepEqual(browserErrors,[])
-  await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'PASS',cases:results.length,measurements,results,externalRequests,browserErrors},null,2))
-  console.log(JSON.stringify({status:'PASS',cases:results.length,measurements,artifacts}));await send('Browser.close').catch(()=>{})
 
+  await send('Page.enable');await send('Runtime.enable');await send('Log.enable');await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')");await evaluate("document.querySelector('.login-form .btn').click()");await waitFor("!!document.querySelector('.stat-card')")
+  const measurements=[]
+  for(const theme of ['dark','light'])for(const[width,height]of [[320,700],[360,800],[390,844],[430,932]]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await evaluate(`import('/src/lib/theme.js').then(m=>m.setTheme(${JSON.stringify(theme)}))`);await send('Page.navigate',{url:base+'/facturas'});await waitFor("!!document.querySelector('.invoice-card')");await evaluate('document.fonts.ready.then(()=>true)')
+    for(const amount of ['$999.900','$4.799.900','$10.000.000','$123.456.789']){
+      // Layout-only fixtures. Stored invoices and business amounts are never changed.
+      await evaluate(`[...document.querySelectorAll('.invoice-amount')].forEach(e=>e.textContent=${JSON.stringify(amount)})`)
+      const m=await evaluate("[...document.querySelectorAll('.invoice-card')].map(c=>{const r=c.getBoundingClientRect(),l=c.querySelector('.invoice-main').getBoundingClientRect(),s=c.querySelector('.invoice-side').getBoundingClientRect(),a=c.querySelector('.invoice-amount'),ch=c.querySelector('.invoice-chevron').getBoundingClientRect();return{height:r.height,aligned:l.right<=s.left+1&&ch.right<=s.right+1&&Math.abs(ch.right-s.right)<1,amountFits:a.scrollWidth<=a.clientWidth+1,cardFits:c.scrollWidth<=c.clientWidth+1}})")
+      assert.ok(m.every(c=>c.height>=44&&c.height<=83&&c.aligned&&c.amountFits&&c.cardFits),JSON.stringify({theme,width,amount,m}));measurements.push({theme,width,amount,heights:m.map(c=>c.height)})
+    }
+    await geometry(theme+'-'+width+'-compact-invoices',width,height);await screenshot(theme+'-'+width+'-compact-invoices')
+  }
+  assert.deepEqual(externalRequests,[]);assert.deepEqual(browserErrors,[]);await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'PASS',cases:results.length,results,measurements},null,2));console.log(JSON.stringify({status:'PASS',cases:results.length,artifacts}));await send('Browser.close').catch(()=>{})
 } catch (error) {
   await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'FAIL',error:error.stack,results,externalRequests,browserErrors},null,2)+'\n')
   console.error(error.stack)

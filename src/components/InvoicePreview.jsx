@@ -1,6 +1,9 @@
 import { money, fechaHora, numFactura } from '../lib/format'
+import { invoiceBusiness, invoiceIdentity } from '../lib/invoiceSnapshot'
 
 export default function InvoicePreview({ invoice, items, tienda, demo = false }) {
+  invoice = invoiceIdentity(invoice)
+  tienda = invoiceBusiness(invoice, tienda)
   return <article className="print-invoice" data-print-invoice>
     <header className="invoice-paper-header"><div><span className="invoice-paper-mark" aria-hidden="true" /><h2>ANGIE TECH</h2><p>{tienda?.nit ? 'NIT '+tienda.nit : 'Tecnología y accesorios'}</p></div><div className="invoice-paper-reference"><small>FACTURA DE VENTA</small><h3>{numFactura(invoice)}</h3><span>{invoice.estado}</span></div></header>
     <p className="invoice-paper-date">Fecha de emisión · {fechaHora(invoice.fecha)} · {new Date(invoice.fecha).toLocaleDateString('es-CO',{year:'numeric',timeZone:'America/Bogota'})}</p>
