@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppShell from '../components/AppShell'
+import { monetaryError } from '../lib/money'
 import { useSearchParams } from 'react-router-dom'
 import CompraDetalle from '../components/CompraDetalle'
 import Modal from '../components/Modal'
@@ -101,6 +102,7 @@ function Detalle({ compraId,p, onClose, onEditar, onCambio }) {
   const [registrarPago, pendingPayment] = useAction(registrarPagoImpl)
   async function registrarPagoImpl() {
     setErr('')
+    if (monetaryError(monto)) return setErr(monetaryError(monto))
     const { error } = await supabase.rpc('registrar_pago_proveedor', { p_compra_id: pagar.id, p_monto: Number(monto), p_metodo_pago: 'efectivo' })
     if (error) return setErr(mensajeError(error))
     toast('Pago registrado'); setPagar(null); setMonto(''); cargar(); onCambio()

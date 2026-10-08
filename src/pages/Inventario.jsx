@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AppShell from '../components/AppShell'
+import { useDemoRevision } from '../lib/demo/useDemoRevision'
 import { useSearchParams } from 'react-router-dom'
 import { AnimatedCard, ProductThumbnail } from '../components/TechVisuals'
 import { Icon } from '../components/Icons'
@@ -16,6 +17,7 @@ import { money, fechaHora, limpiarBusqueda, mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
 
 export default function Inventario() {
+  const revision = useDemoRevision()
   const { can } = useAuth()
   const editar = can('editar_inventario')
   const costos = can('ver_costos')
@@ -41,7 +43,7 @@ export default function Inventario() {
       if (active && data?.[0]) setSel(data[0])
     })
     return () => { active = false }
-  }, [productoId, costos, editar])
+  }, [productoId, costos, editar, revision])
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -52,9 +54,10 @@ export default function Inventario() {
       if (s) qq = qq.or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,codigo_barras.ilike.%${s}%,marca.ilike.%${s}%`)
       const { data } = await qq
       setLista((data || []).map((p) => ({ ...p, categoria: p.categoria || p.categorias?.nombre })))
+      setSel(previous => previous ? (data || []).find(p => p.id === previous.id) || previous : null)
     }, 250)
     return () => clearTimeout(t)
-  }, [q, tick, costos, editar, filtro])
+  }, [q, tick, costos, editar, filtro, revision])
 
   const visible = (lista || []).filter((p) => (categoria === 'Todas' || p.categoria === categoria) && (filtro === 'bajo' ? p.stock <= p.stock_min : filtro === 'agotado' ? p.stock === 0 : true))
   const refrescar = () => { setLista(null); setTick((t) => t + 1); setSel(null) }

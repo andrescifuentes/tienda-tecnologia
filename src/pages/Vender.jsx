@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import AppShell from '../components/AppShell'
+import { monetaryError } from '../lib/money'
 import { AnimatedCard, ProductThumbnail } from '../components/TechVisuals'
 import { Icon } from '../components/Icons'
 import Modal from '../components/Modal'
@@ -112,6 +113,7 @@ export default function Vender() {
 
   const [facturar, pendingSale] = useAction(facturarImpl, () => setBusy(false))
   async function facturarImpl() {
+    for (const value of [descuento,subtotal,total,...carrito.flatMap(i=>[i.producto.precio_venta,i.producto.precio_compra ?? 0])]) if (monetaryError(value)) return setErr(monetaryError(value))
     if (carrito.some(i=>!Number.isInteger(i.cantidad)||i.cantidad<=0||i.cantidad>i.producto.stock||i.producto.activo===false)) return setErr('Revisa el carrito: un producto está desactivado o no tiene stock suficiente. Reduce su cantidad o quítalo.')
     setErr(''); setBusy(true)
     const items = carrito.map((i) => (i.unidad ? { producto_id: i.producto.id, cantidad: 1, unidad_id: i.unidad.id } : { producto_id: i.producto.id, cantidad: i.cantidad, descuento: 0 }))

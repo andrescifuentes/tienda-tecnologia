@@ -1,10 +1,15 @@
 import { createDemoSeed, DEMO_KEY, demoDate } from './seed.js'
 import { exigirEntornoDemoPermitido } from './environment.js'
 import { hashDemoPassword } from './password.js'
+import { coordinateDemoWrite, readDemoState } from './writeCoordinator.js'
+import { monetaryAmount } from '../money.js'
 
 const clone = (value) => structuredClone(value)
 const fail = (message) => { throw new Error(message) }
-const amount = (value, label = 'Monto') => { const n = Number(value); if (!Number.isFinite(n) || n < 0) fail(`${label} inválido`); return n }
+const amount = monetaryAmount
+const percentage = value => { const n = Number(value); if (!Number.isFinite(n) || n < 0 || n > 100) fail('Comisión fuera de rango'); return n }
+const moneyFields = new Set(['precio_compra','precio_venta','precio_unitario','costo_unitario','subtotal','descuento','total','costo_total','comision','monto','total_devuelto','comision_revertida'])
+function validateMoney(data) { for (const [key,value] of Object.entries(data)) if (moneyFields.has(key) && value != null) data[key] = amount(value) }
 const quantity = (value) => { const n = Number(value); if (!Number.isInteger(n) || n <= 0) fail('La cantidad debe ser un entero mayor que cero'); return n }
 const sum = (rows, field) => rows.reduce((total, row) => total + Number(row[field] || 0), 0)
 const safe = async (action) => { try { return { data: await action(), error: null } } catch (error) { return { data: null, error: { message: error.message } } } }
@@ -12,10 +17,26 @@ const requiredPermission = { productos:'editar_inventario', clientes:'crear_clie
 
 export function createDemoClient({ storage = globalThis.localStorage, now = () => new Date(), location = globalThis.location, crypto = globalThis.crypto } = {}) {
   const listeners = new Set()
-  function read() {
+  const sharedBrowserStorage = !!globalThis.window && storage === globalThis.localStorage
+  const coordinate = action => {
+    if (!sharedBrowserStorage) return action(undefined, () => {})
+    let entered = false, previous
+    return coordinateDemoWrite((raw,save) => { entered=true; previous=storage.getItem(DEMO_KEY); return action(raw,save) }).catch(async error => {
+      // If IndexedDB aborts after the compatibility mirror was written (e.g.
+      // quota), repair it under another exclusive transaction using the latest
+      // authoritative state, never an outdated pre-transaction snapshot.
+      if (entered) try { await coordinateDemoWrite(raw => { const restored=raw ?? previous; if(restored == null)storage.removeItem(DEMO_KEY);else storage.setItem(DEMO_KEY,restored) }) } catch { /* Retain original failure; authoritative data is unchanged. */ }
+      throw error
+    })
+  }
+  let initialState
+  const readCurrent = action => sharedBrowserStorage ? readDemoState().then(raw => action(read(raw))) : action(read())
+  function read(persisted) {
     exigirEntornoDemoPermitido(location)
-    const raw = storage.getItem(DEMO_KEY)
-    if (!raw) { const state = createDemoSeed(now()); storage.setItem(DEMO_KEY, JSON.stringify(state)); return state }
+    const raw = persisted ?? storage.getItem(DEMO_KEY)
+    // Reads never write: otherwise an uncoordinated first read could overwrite
+    // another tab's first committed transaction.
+    if (!raw) return clone(initialState ||= createDemoSeed(now()))
     const state = JSON.parse(raw)
     if (state.version !== 1 || !state.tables?.productos) fail('Los datos demo locales no son compatibles. Restablece la demo desde Configuración.')
     // Additive migration: keep all existing transactions and sessions.
@@ -31,12 +52,16 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     return state
   }
   function transaction(action) {
-    const state = read()
+    return coordinate((persisted, save) => {
+    const state = read(persisted)
     const result = action(state)
     // Commit all related modules together; failed validation/quota leaves the previous store intact.
-    storage.setItem(DEMO_KEY, JSON.stringify(state))
+    const serialized = JSON.stringify(state)
+    save(serialized)
+    storage.setItem(DEMO_KEY, serialized)
     globalThis.window?.dispatchEvent(new Event('demo-data-change'))
     return clone(result ?? null)
+    })
   }
   const user = (state) => state.tables.perfiles.find((p) => p.id === state.session?.user.id)
   function permit(state, permission) {
@@ -46,12 +71,14 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
   }
   function authenticated(state) { if (!user(state)?.activo) fail('Inicia sesión en la demo para continuar') }
   function add(state, table, data) {
+    validateMoney(data)
     const id = state.sequences[table] = (state.sequences[table] || 0) + 1
     const row = { id, ...data }; state.tables[table].push(row); return row
   }
   const find = (state, table, id) => state.tables[table].find((row) => String(row.id) === String(id)) || fail('El registro no existe')
   function activity(state, accion, entidad, id, detalle = {}) { add(state,'actividad',{perfil_id:state.session?.user.id,accion,entidad,entidad_id:String(id),detalle,fecha:now().toISOString()}) }
   function move(state, product, count, type, reference, id, cost = product.precio_compra, reason = null) {
+    if (!Number.isSafeInteger(product.stock + count)) fail('La cantidad ingresada es demasiado grande.')
     if (product.stock + count < 0) fail(`Stock insuficiente para ${product.nombre}`)
     product.stock += count
     add(state,'movimientos_inventario',{producto_id:product.id,tipo:type,cantidad:count,stock_despues:product.stock,costo_unitario:cost,referencia_tipo:reference,referencia_id:id,motivo:reason,creado_por:state.session?.user.id,fecha:now().toISOString()})
@@ -85,6 +112,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     return data.map(row=>hydrate(state,table,row))
   }
   function validate(state, table, data, id) {
+    validateMoney(data)
     if(table==='productos') { if(!data.codigo?.trim()||!data.nombre?.trim())fail('Código y nombre son obligatorios.'); for(const key of ['codigo','codigo_barras'])if(data[key]&&state.tables.productos.some(p=>p.id!==id&&p[key]===data[key]))fail(`duplicate key ${key}`); for(const key of ['precio_compra','precio_venta','stock_min','garantia_meses'])data[key]=amount(data[key]??0,key); if(!Number.isInteger(data.stock_min)||!Number.isInteger(data.garantia_meses))fail('Stock mínimo y garantía deben ser enteros'); if(data.proveedor_id)find(state,'proveedores',data.proveedor_id); if(data.categoria_id)find(state,'categorias',data.categoria_id) }
     if(table==='clientes') { if(!data.nombre?.trim())fail('El nombre es obligatorio.'); if(data.documento&&state.tables.clientes.some(c=>c.id!==id&&c.documento===data.documento))fail('duplicate key documento') }
     if (['clientes','proveedores','perfiles'].includes(table) && data.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.correo)) fail('Escribe un correo válido.')
@@ -94,7 +122,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     }
     if(table==='proveedores'&&!data.nombre?.trim())fail('El nombre del proveedor es obligatorio.')
     if(table==='movimientos') { if(!data.categoria?.trim()||!['gasto','ingreso'].includes(data.tipo)||!(amount(data.monto)>0))fail('Categoría, tipo y monto válido son obligatorios.'); if(!/^\d{4}-\d{2}-\d{2}$/.test(data.fecha||''))fail('La fecha es obligatoria.') }
-    if(table==='perfiles'&&data.comision_pct!=null&&(amount(data.comision_pct)>100))fail('Comisión fuera de rango')
+    if(table==='perfiles'&&data.comision_pct!=null)percentage(data.comision_pct)
   }
   class Query {
     constructor(table) { this.table=table; this.filters=[]; this.sort=[]; this.operation='read'; this.returning=true }
@@ -129,7 +157,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
         if(this.mustExist&&data.length!==1)fail('No se encontró un único registro')
         return !this.returning?null:this.one?data[0]||null:data
       }
-      return this.operation==='read'?action(read()):transaction(action)
+      return this.operation==='read'?readCurrent(action):transaction(action)
     }
     then(resolve,reject) { this.promise ||= safe(()=>this.execute()); return this.promise.then(resolve,reject) }
   }
@@ -145,7 +173,8 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     const discount=amount(args.p_descuento||0,'Descuento'); if(discount)permit(state,'editar_precios')
     const prepared=items.map(item=>{const p=find(state,'productos',item.producto_id),qty=quantity(item.cantidad),lineDiscount=amount(item.descuento||0);if(!p.activo)fail('Producto inactivo');if(lineDiscount)permit(state,'editar_precios');if(lineDiscount>qty*p.precio_venta)fail('Descuento de línea inválido');let unit=null;if(p.maneja_serial){unit=find(state,'unidades_serializadas',item.unidad_id);if(qty!==1||unit.producto_id!==p.id||unit.estado!=='disponible')fail('Serial no disponible')}return {p,qty,lineDiscount,unit}})
     const seen=new Set();for(const item of prepared){if(item.unit){if(seen.has(item.unit.id))fail('Serial repetido en la venta');seen.add(item.unit.id)}const totalQty=prepared.filter(i=>i.p.id===item.p.id).reduce((n,i)=>n+i.qty,0);if(totalQty>item.p.stock)fail(`Stock insuficiente para ${item.p.nombre}`)}
-    const subtotal=prepared.reduce((n,i)=>n+i.qty*i.p.precio_venta,0), totalDiscount=discount+sum(prepared,'lineDiscount')
+    for (const {p} of prepared) { amount(p.precio_venta); amount(p.precio_compra) }
+    const subtotal=amount(prepared.reduce((n,i)=>n+i.qty*i.p.precio_venta,0)), totalDiscount=amount(discount+sum(prepared,'lineDiscount'))
     if(totalDiscount>subtotal)fail('El descuento no puede superar el subtotal')
     const settings=state.tables.tienda[0], date=demoDate(now())
     const invoice=add(state,'facturas',{prefijo:settings.factura_prefijo,numero:++settings.ultimo_numero_factura,cliente_id:args.p_cliente_id||null,vendedor_id:profile.id,creado_por:actor.id,request_id:args.p_request_id||null,subtotal,descuento:totalDiscount,total:subtotal-totalDiscount,costo_total:prepared.reduce((n,i)=>n+i.qty*i.p.precio_compra,0),estado:'emitida',fecha:now().toISOString(),metodo_pago:args.p_metodo_pago,notas:args.p_notas,comision_pct:profile.comision_pct,comision:profile.comision_pct==null?null:Math.round((subtotal-totalDiscount)*profile.comision_pct/100)})
@@ -226,14 +255,14 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
   const emit=(event,session)=>{for(const callback of listeners)queueMicrotask(()=>callback(event,clone(session)))}
   return {
     from:(table)=>new Query(table),
-    rpc:(name,args={})=>safe(()=>name==='resumen_dashboard'?dashboard(read(),args):name==='ventas_por_empleado'?employeeSales(read(),args):transaction(state=>rpcAction(state,name,args))),
+    rpc:(name,args={})=>safe(()=>name==='resumen_dashboard'?readCurrent(state=>dashboard(state,args)):name==='ventas_por_empleado'?readCurrent(state=>employeeSales(state,args)):transaction(state=>rpcAction(state,name,args))),
     auth:{
-      getSession:async()=>{const result=await safe(()=>read().session);return {data:{session:result.data},error:result.error}},
+      getSession:async()=>{const result=await safe(()=>readCurrent(state=>state.session));return {data:{session:result.data},error:result.error}},
       onAuthStateChange:(callback)=>{listeners.add(callback);return {data:{subscription:{unsubscribe:()=>listeners.delete(callback)}}}},
       signInWithPassword:async({email,password})=>{const result=await safe(async()=>{const digest=await hash(password);return transaction(state=>{const p=state.tables.perfiles.find(p=>p.correo===email.toLowerCase().trim()&&p.password_hash===digest);if(!p)fail('Invalid login credentials');if(!p.activo)fail('Este usuario demo está desactivado');state.session={user:{id:p.id,email:p.correo},access_token:'local-demo-only'};return {session:state.session,user:state.session.user}})});if(!result.error)emit('SIGNED_IN',result.data.session);return result},
       signOut:async()=>{const result=await safe(()=>transaction(state=>{state.session=null}));if(!result.error)emit('SIGNED_OUT',null);return result},
     },
-    functions:{invoke:async(name,{body})=>safe(async()=>{if(name!=='crear-empleado')fail('Función demo desconocida');const password_hash=await hash(body.password);return transaction(state=>{permit(state,'admin');if(!body.nombre?.trim()||!body.correo?.trim()||body.password.length<8)fail('Nombre, correo y contraseña de al menos 8 caracteres son obligatorios');if(state.tables.perfiles.some(p=>p.correo===body.correo))fail('duplicate key correo');if(body.comision_pct!=null)amount(body.comision_pct);const {password,permisos,...rest}=body;const p=add(state,'perfiles',{...rest,id:newProfileId(state),password_hash,activo:true});validate(state,'perfiles',p,p.id);for(const permiso of permisos||[])add(state,'perfil_permisos',{perfil_id:p.id,permiso});activity(state,'Empleado creado','perfil',p.id);return {id:p.id}})})},
-    demo:{snapshot:()=>clone(read()),reset:()=>{exigirEntornoDemoPermitido(location);permit(read(),'admin');storage.setItem(DEMO_KEY,JSON.stringify(createDemoSeed(now())));emit('SIGNED_OUT',null)}},
+    functions:{invoke:async(name,{body})=>safe(async()=>{if(name!=='crear-empleado')fail('Función demo desconocida');const password_hash=await hash(body.password);return transaction(state=>{permit(state,'admin');if(!body.nombre?.trim()||!body.correo?.trim()||body.password.length<8)fail('Nombre, correo y contraseña de al menos 8 caracteres son obligatorios');if(state.tables.perfiles.some(p=>p.correo===body.correo))fail('duplicate key correo');if(body.comision_pct!=null)percentage(body.comision_pct);const {password,permisos,...rest}=body;const p=add(state,'perfiles',{...rest,id:newProfileId(state),password_hash,activo:true});validate(state,'perfiles',p,p.id);for(const permiso of permisos||[])add(state,'perfil_permisos',{perfil_id:p.id,permiso});activity(state,'Empleado creado','perfil',p.id);return {id:p.id}})})},
+    demo:{snapshot:()=>clone(read()),reset:()=>coordinate((persisted,save)=>{exigirEntornoDemoPermitido(location);permit(read(persisted),'admin');const serialized=JSON.stringify(createDemoSeed(now()));save(serialized);storage.setItem(DEMO_KEY,serialized);globalThis.window?.dispatchEvent(new Event('demo-data-change'));emit('SIGNED_OUT',null)})},
   }
 }

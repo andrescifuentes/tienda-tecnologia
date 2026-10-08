@@ -11,7 +11,12 @@ export const DEMO_ACCOUNTS = [
 ]
 export function createDemoSeed(now = new Date()) {
   const today = demoDate(now), month = today.slice(0, 7), day = Number(today.slice(8))
-  const when = (i) => `${month}-${String(Math.max(1, day - Math.floor(i / 3))).padStart(2, '0')}T${String(15 + i % 5).padStart(2, '0')}:20:00Z`
+  const when = (i) => {
+    const historical = `${month}-${String(Math.max(1, day - Math.floor(i / 3))).padStart(2, '0')}T${String(15 + i % 5).padStart(2, '0')}:20:00Z`
+    // Keep historical dates where valid; examples on the current day must
+    // precede real actions, even at midnight or on the first of the month.
+    return new Date(Math.min(Date.parse(historical), now.getTime() - (i + 1) * 60000)).toISOString()
+  }
   const rows = [
     ['IP15P-128', 'iPhone 15 Pro 128GB', 1, 'Apple', 3350000, 4299900, 3, 5, true],
     ['SGS24-256', 'Samsung Galaxy S24 256GB', 1, 'Samsung', 2700000, 3499900, 0, 3, true],

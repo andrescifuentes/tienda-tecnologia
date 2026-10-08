@@ -250,3 +250,31 @@ input,select,textarea { accent-color:var(--brand); }
 @media(min-width:360px){.product-form .product-fields-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:480px){.product-form .product-price-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.product-form{padding-inline:22px}.product-form .product-section,.product-form .photo-editor{padding:20px}}
 @media print{html,body{position:static!important;top:auto!important;left:auto!important;width:auto!important;overflow:visible!important;height:auto!important;background:white!important;color:black!important}body>#root{display:none!important}.overlay{position:static!important;display:block!important;background:white!important}.sheet{position:static!important;display:block!important;max-height:none!important;width:100%!important;max-width:none!important;border:0!important;padding:0!important;background:white!important}.sheet>*:not(.sheet-body){display:none!important}.sheet-body{overflow:visible!important}.sheet-body>*{display:none!important}.sheet-body>.invoice-preview{display:block!important;margin:0;border:0;background:white!important}.invoice-preview>*{display:none!important}.invoice-preview>.print-invoice{display:block!important;color:black!important;background:white!important}.print-invoice p,.print-invoice h2{color:black!important}.invoice-table-scroll{overflow:visible!important}.print-invoice table{min-width:0!important;font-size:11pt}.print-invoice th,.print-invoice td{border-color:#ccc!important}}
+
+/* Local invoice export and shared finance controls. */
+.invoice-pdf-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.invoice-pdf-actions>.btn{flex:1;min-width:100px}
+.movement-form{padding:26px 16px calc(12px + env(safe-area-inset-bottom));max-height:calc(var(--dialog-viewport-height,100dvh) - max(16px,env(safe-area-inset-top)));background:var(--bg);overflow:hidden;isolation:isolate}
+.movement-form>h3{font-family:'Playfair Display',serif;font-size:25px;line-height:1.2;font-weight:500;margin:0 35px 5px 0;letter-spacing:-.03em}
+.movement-form .sheet-subtitle{font-size:12px;color:var(--muted);margin:0 30px 15px 0;flex:none}
+.movement-form .sheet-body{flex:1;background:var(--bg);scroll-padding-block:12px;-webkit-overflow-scrolling:touch}
+.movement-form .inp{font-size:16px;background:var(--surface);border-radius:11px;min-height:48px}
+.movement-form [data-cop-input]{font-size:24px;font-variant-numeric:tabular-nums;height:57px}
+.movement-segments{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--surface);margin-bottom:14px}
+.movement-segments button{flex:1;min-height:43px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);font-size:14px;font-weight:600}
+.movement-segments .gasto.active{color:var(--text);background:color-mix(in srgb,#ae7661 15%,var(--surface));border-color:color-mix(in srgb,#ae7661 35%,var(--line))}
+.movement-segments .ingreso.active{color:var(--text);background:color-mix(in srgb,#76927a 15%,var(--surface));border-color:color-mix(in srgb,#76927a 35%,var(--line))}
+.movement-amounts{display:flex;gap:6px;flex-wrap:wrap;margin:-3px 0 15px}
+.movement-amounts button{flex:1;min-width:65px;min-height:38px;padding:6px;border:1px solid var(--accent-border);border-radius:9px;background:var(--accent-soft);color:var(--gold);font-size:11px;white-space:nowrap}
+.date-field{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:0 12px;margin-bottom:14px;min-height:51px;font-size:13px}
+.date-field>label{color:var(--muted)}.date-field>button{display:flex;justify-content:flex-end;align-items:center;gap:15px;flex:1;min-height:49px;border:0;background:transparent;color:var(--text);font-size:14px}.date-field>button>span:last-child{color:var(--gold);font-size:23px}
+.movement-description{resize:vertical;max-height:140px;margin-bottom:5px}
+.movement-form .sheet-foot{background:var(--bg);margin-top:0;padding-top:10px;z-index:1;flex:none}.movement-form .sheet-foot>.btn{min-height:51px;border-radius:12px}
+.movement-summary{font-size:11px;line-height:1.5;color:var(--muted);margin:0 0 9px;font-variant-numeric:tabular-nums}
+.keyboard-open .movement-form{height:100%;max-height:100%;padding-top:max(22px,env(safe-area-inset-top));padding-bottom:0}
+.keyboard-open .movement-form .sheet-subtitle,.keyboard-open .movement-summary{display:none}.keyboard-open .movement-form .sheet-foot{padding-block:8px;background:var(--bg)}
+.angie-calendar{background:var(--surface);padding:25px 14px calc(14px + env(safe-area-inset-bottom));max-width:420px}.angie-calendar>h3{font-family:'Playfair Display',serif;font-size:24px;margin-right:35px}
+.calendar-month{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 18px}.calendar-month b{text-transform:capitalize;font-size:16px}.calendar-month .btn{width:42px;min-height:42px;padding:0;font-size:25px}
+.calendar-week,.calendar-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.calendar-week{margin-bottom:8px;color:var(--muted);font-size:9px;text-align:center;font-weight:600;letter-spacing:.03em}.calendar-days button{width:100%;min-height:39px;aspect-ratio:1;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--text);font-size:14px;padding:0;touch-action:manipulation}.calendar-days .outside{color:var(--muted);opacity:.55}.calendar-days .today{border-color:var(--gold)}.calendar-days .selected{background:var(--gold);color:#101010;opacity:1;font-weight:700}.calendar-actions{display:flex;gap:7px}.calendar-actions .btn{flex:1;padding-inline:7px;min-height:44px;font-size:12px}
+@media(min-width:480px){.movement-form{padding-inline:22px}}
+
+:root[data-theme="light"] .angie-calendar .calendar-days .selected{background:#b68539}

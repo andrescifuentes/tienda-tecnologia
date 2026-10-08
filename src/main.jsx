@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext'
 import App from './App'
 import { supabaseConfigurationError } from './lib/supabase'
 import './index.css'
+import './styles/premium-finance.css'
 import { initializeTheme } from './lib/theme'
 
 initializeTheme()

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { Input } from './ui'
+import { monetaryError } from '../lib/money'
 
 export function formatProductPrice(value) {
   if (value === '') return ''
@@ -30,6 +31,7 @@ export function ProductPriceInput({ value, onValueChange, onFocus, ...props }) {
     caret.current = null
   })
   return <Input {...props} type="text" inputMode="numeric" autoComplete="off"
+    aria-invalid={value !== '' && !!monetaryError(value)}
     pattern="(?:[0-9]+|[0-9]{1,3}(?:[.][0-9]{3})+)" data-cop-input
     inputRef={input} value={formatProductPrice(value)} placeholder="0"
     onFocus={event => {

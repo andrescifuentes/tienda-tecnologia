@@ -23,7 +23,7 @@ export default function Configuracion() {
   })
   async function reset() {
     // Commit first: a quota failure must not delete photos referenced by current data.
-    supabase.demo.reset()
+    await supabase.demo.reset()
     for(const key of Object.keys(sessionStorage))if(key.startsWith('angie:cart:'))sessionStorage.removeItem(key)
     await clearImages()
     toast('Datos demo restablecidos')

@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useDemoRevision } from '../lib/demo/useDemoRevision'
 import AppShell from '../components/AppShell'
+import SalesMetricDetail from '../components/SalesMetricDetail'
 import TechHero from '../components/TechVisuals'
 import Modal from '../components/Modal'
 import Scanner from '../components/Scanner'
@@ -43,6 +45,7 @@ const bogotaDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' 
 const dateLabel=()=>new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})
 
 function DashboardAdmin() {
+  const revision = useDemoRevision()
   const navigate=useNavigate()
   const [activity,setActivity]=useState([]),[d,setD]=useState(null),[bajo,setBajo]=useState([]),[emp,setEmp]=useState([]),[rec,setRec]=useState([]),[err,setErr]=useState(''),[detail,setDetail]=useState(null),[targets,setTargets]=useState({}),[agotados,setAgotados]=useState(0)
   useEffect(()=>{
@@ -55,7 +58,7 @@ function DashboardAdmin() {
 
       setD(r.data?.[0]||r.data);setBajo(b.data||[]);setEmp(e.data||[]);setRec(f.data||[])
     })()
-  },[])
+  },[revision])
   const activities=isDemoMode?activity:rec.map(f=>({id:f.id,entidad:'factura',entidad_id:f.id,accion:numFactura(f),fecha:f.fecha,detalle:{numero:money(f.total)}}))
   const destination = a => {
     const kind = {productos:'producto',facturas:'factura',venta:'factura',compras:'compra',garantias:'garantia'}[a.entidad] || a.entidad
@@ -79,8 +82,8 @@ function DashboardAdmin() {
       </div>
       <div className="home-section"><h2>Actividad reciente</h2><button onClick={()=>setDetail('activity')}>Ver todo ›</button></div>
       <div className="card activity-list">{activityRows(activities.slice(0,3))}</div>
-      {detail&&<Modal title={{activity:'Historial completo',day:'Ventas de hoy',month:'Ventas del mes',summary:'Detalle del negocio'}[detail]} onClose={()=>setDetail(null)}>
-        {detail==='activity'?activityRows(activities):['day','month'].includes(detail)?<><p className="text-sm">Total de ventas: <b>{money(detail==='day'?d.ventas_hoy:d.ventas_mes)}</b></p>{sales.length?sales.map(f=><button className="row menu-row" key={f.id} onClick={()=>navigate('/facturas?factura='+f.id)}><span className="flex-1"><b>{numFactura(f)}</b><p className="text-xs text-muted">{fechaHora(f.fecha)}</p></span><b>{money(f.total)}</b><span>›</span></button>):<Empty text="Sin ventas en este período"/>}</>:<>
+      {detail&&<Modal title={{activity:'Historial completo',day:'Ventas de hoy',month:'Ventas del mes',summary:'Detalle del negocio'}[detail]} className={['day','month'].includes(detail)?'sales-metric-sheet':''} subtitle={['day','month'].includes(detail)?'El detalle detrás de tus resultados':undefined} onClose={()=>setDetail(null)}>
+        {detail==='activity'?activityRows(activities):['day','month'].includes(detail)?<SalesMetricDetail total={detail==='day'?d.ventas_hoy:d.ventas_mes} invoices={sales} period={detail} onOpen={id=>navigate('/facturas?factura='+id)} />:<>
           <div className="grid grid-cols-2 gap-2"><Stat label="Ventas de hoy" value={money(d.ventas_hoy)}/><Stat label="Ventas del mes" value={money(d.ventas_mes)}/><Stat label="Ingresos del mes" value={money(d.ingresos_mes)}/><Stat label="Stock bajo" value={d.productos_stock_bajo}/><Stat label="Agotados" value={agotados}/></div>
           <div className="grid grid-cols-2 gap-2"><Stat label="Gastos del mes" value={money(d.gastos_mes)} tone="bad"/><Stat label="Utilidad del mes" value={money(d.utilidad_mes)} tone={d.utilidad_mes>=0?'good':'bad'}/><Stat label="Valor inventario" value={money(d.valor_inventario)}/><Stat label="Facturas del día" value={d.facturas_hoy}/></div>
           <h2 className="section-heading">Ventas por empleado (mes)</h2>{emp.length?emp.map(e=><div className="row" key={e.vendedor_id}><div className="flex-1"><b className="text-sm">{e.nombre}</b><p className="text-xs text-muted m-0">{e.facturas} facturas</p><div className="sales-track"><span style={{width:Math.max(3,e.total_vendido/Math.max(...emp.map(x=>x.total_vendido),1)*100)+'%'}}/></div></div><div className="text-right"><b className="text-sm">{money(e.total_vendido)}</b><p className="text-xs text-muted m-0">Comisión {money(e.comision)}</p></div></div>):<Empty text="Sin ventas este mes"/>}
@@ -92,8 +95,9 @@ function DashboardAdmin() {
   </AppShell>
 }
 function MisVentas({perfil}) {
+  const revision = useDemoRevision()
   const[hoy,setHoy]=useState(null),[mes,setMes]=useState(null),[lista,setLista]=useState([]),[err,setErr]=useState(''),[detail,setDetail]=useState(false)
-  useEffect(()=>{const m=rangoMes(),h=hoyBogota();(async()=>{const[a,b,c]=await Promise.all([supabase.rpc('ventas_por_empleado',{p_desde:h,p_hasta:h}),supabase.rpc('ventas_por_empleado',{p_desde:m.ini,p_hasta:m.fin}),supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha').eq('vendedor_id',perfil.id).order('fecha',{ascending:false}).limit(15)]);if(a.error)return setErr(mensajeError(a.error));setHoy(a.data?.[0]||{facturas:0,total_vendido:0,comision:0});setMes(b.data?.[0]||{facturas:0,total_vendido:0,comision:0});setLista(c.data||[])})()},[perfil.id])
+  useEffect(()=>{const m=rangoMes(),h=hoyBogota();(async()=>{const[a,b,c]=await Promise.all([supabase.rpc('ventas_por_empleado',{p_desde:h,p_hasta:h}),supabase.rpc('ventas_por_empleado',{p_desde:m.ini,p_hasta:m.fin}),supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha').eq('vendedor_id',perfil.id).order('fecha',{ascending:false}).limit(15)]);if(a.error)return setErr(mensajeError(a.error));setHoy(a.data?.[0]||{facturas:0,total_vendido:0,comision:0});setMes(b.data?.[0]||{facturas:0,total_vendido:0,comision:0});setLista(c.data||[])})()},[perfil.id,revision])
   const rows=items=>items.length?items.map(f=><div className="row" key={f.id}><div className="flex-1"><b className="text-sm">{numFactura(f)}</b><p className="text-xs text-muted m-0">{fechaHora(f.fecha)}</p></div><div className="text-right"><b className="text-sm">{money(f.total)}</b>{f.estado==='anulada'&&<Badge tone="bad">Anulada</Badge>}</div></div>):<Empty text="Aún no has vendido"/>
   return <AppShell title={'Hola, '+perfil.nombre.split(' ')[0]} sub={dateLabel()}><HomeTools/><TechHero/><ErrorBox text={err}/>{!hoy&&!err?<Loader/>:hoy&&<><div className="home-section"><h2>Mis ventas</h2></div><div className="grid grid-cols-2 gap-2.5 mb-3"><Stat label="Vendido hoy" value={money(hoy.total_vendido)} sub={hoy.facturas+' facturas'}/><Stat label="Vendido en el mes" value={money(mes.total_vendido)} sub={mes.facturas+' facturas'}/>{perfil.comision_pct!=null&&<><Stat label="Comisión hoy" value={money(hoy.comision)} tone="good"/><Stat label="Comisión del mes" value={money(mes.comision)} tone="good" sub={perfil.comision_pct+'%'}/></>}</div><div className="home-section"><h2>Mis últimas facturas</h2><button onClick={()=>setDetail(true)}>Ver todo ›</button></div><div className="card activity-list">{rows(lista.slice(0,3))}</div>{detail&&<Modal title="Mis últimas facturas" onClose={()=>setDetail(false)}>{rows(lista)}</Modal>}</>}</AppShell>
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Modal from './Modal'
+import { monetaryError } from '../lib/money'
 import Scanner from './Scanner'
 import { Input, Select, ErrorBox, Empty, SearchBar } from './ui'
 import { useAction } from '../lib/useAction'
@@ -39,6 +40,8 @@ export default function CompraForm({ proveedorId, onClose, onSaved }) {
     setErr('')
     if (!prov) return setErr('Elige el proveedor.')
     if (items.length === 0) return setErr('Agrega al menos un producto.')
+    for (const item of items) if (monetaryError(item.costo)) return setErr(monetaryError(item.costo))
+    if (monetaryError(total)) return setErr(monetaryError(total))
     if (forma === 'credito' && !vence) return setErr('Indica la fecha de vencimiento del crédito.')
     const p_items = [], p_seriales = []
     for (const i of items) {

@@ -96,7 +96,7 @@ try {
   async function navigate(path, role = 'admin') {
     await evaluate(`sessionStorage.setItem('ui-test-role', ${JSON.stringify(role)})`)
     await send('Page.navigate', { url: base + path })
-    await waitFor(`location.pathname + location.search === ${JSON.stringify(path)} && document.readyState === 'complete'`)
+    await waitFor(`location.pathname === ${JSON.stringify(path)} && document.readyState === 'complete'`)
     await waitFor(role === 'login' ? "!!document.querySelector('.login-form')" : "!!document.querySelector('.nav')")
   }
   async function tap(selector) {

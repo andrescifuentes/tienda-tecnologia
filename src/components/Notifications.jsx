@@ -5,6 +5,7 @@ import { Badge, Empty, ErrorBox } from './ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { localNotifications } from '../lib/demo/notifications'
+import { subscribeDemoChanges } from '../lib/demo/useDemoRevision'
 import { hoyBogota, mensajeError } from '../lib/format'
 
 export function useNotifications() {
@@ -18,8 +19,8 @@ export function useNotifications() {
       const read = new Set((r.data || []).map(row => row.notificacion_id))
       if (live) setItems(localNotifications({productos:p.data||[],garantias:g.data||[],actividad:a.data||[]},hoyBogota()).map(n=>({...n,read:read.has(n.id)})))
     }
-    load(); window.addEventListener('demo-data-change',load)
-    return () => { live=false; window.removeEventListener('demo-data-change',load) }
+    load(); const unsubscribe = subscribeDemoChanges(load)
+    return () => { live=false; unsubscribe() }
   }, [perfil.id, esAdmin])
   return items
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Modal from './Modal'
+import { monetaryError } from '../lib/money'
 import Scanner from './Scanner'
 import ProductPhotoEditor from './ProductPhotoEditor'
 import { ProductPriceInput, ProductQuantityInput, formatProductPrice } from './ProductNumberInput'
@@ -30,7 +31,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
     if (!precios) return
     const input = document.activeElement
     if (input?.matches('[data-cop-input]')) input.blur()
-    setF(previous => ({ ...previous, [activePrice]: String(Math.max(0, Number(previous[activePrice]) || 0) + amount) }))
+    setF(previous => ({ ...previous, [activePrice]: String(BigInt(previous[activePrice] || '0') + BigInt(amount)) }))
   }
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
   const [guardar, pendingSave] = useAction(guardarImpl, () => setBusy(false))
   async function guardarImpl() {
     if (!f.codigo.trim() || !f.nombre.trim()) return setErr('Código y nombre son obligatorios.')
+    for (const key of ['precio_compra','precio_venta']) if (monetaryError(f[key])) return setErr(monetaryError(f[key]))
     for (const key of ['precio_compra','precio_venta','stock_min','garantia_meses']) if (!Number.isFinite(Number(f[key])) || Number(f[key]) < 0) return setErr('Los precios, el stock y la cobertura no pueden ser negativos.')
     if (!Number.isInteger(Number(f.stock_min)) || !Number.isInteger(Number(stock)) || Number(stock) < 0) return setErr('Stock y stock minimo deben ser enteros no negativos.')
     setBusy(true); setErr('')
