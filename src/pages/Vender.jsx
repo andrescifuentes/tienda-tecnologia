@@ -16,6 +16,7 @@ import { imageKey } from '../lib/demo/images'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { money, limpiarBusqueda, mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
+import '../styles/sale-quantity.css'
 
 export default function Vender() {
   const { perfil, esAdmin, can } = useAuth()
@@ -78,13 +79,14 @@ export default function Vender() {
     }
     if (enCarrito(p.id) >= p.stock) return toast('No hay más stock de este producto')
     setCarrito((c) => {
+      if (c.filter(x=>x.producto.id===p.id).reduce((n,x)=>n+x.cantidad,0) >= p.stock) return c
       const i = c.find((x) => x.producto.id === p.id && !x.unidad)
       return i ? c.map((x) => (x === i ? { ...x, cantidad: x.cantidad + 1 } : x)) : [...c, { key: 'p' + p.id, producto: p, cantidad: 1 }]
     })
     toast(`${p.nombre} agregado`)
   }
   function agregarUnidad(u) {
-    setCarrito((c) => [...c, { key: 'u' + u.id, producto: serialDe, cantidad: 1, unidad: u }])
+    setCarrito((c) => c.some(i=>i.unidad?.id===u.id) ? c : [...c, { key: 'u' + u.id, producto: serialDe, cantidad: 1, unidad: u }])
     setSerialDe(null); toast('Agregado con serial ' + u.serial)
   }
   async function alEscanear(codigo) {
@@ -111,6 +113,14 @@ export default function Vender() {
 
   function cambiarCant(i, n) { setCarrito((c) => c.map((x) => (x === i ? { ...x, cantidad: Math.min(n, i.producto.stock) } : x))) }
   function quitar(i) { setRemove(i) }
+  function disminuir(p) {
+    setCarrito(c=>{
+      // A serialized line always represents one explicitly selected unit.
+      const item = [...c].reverse().find(i=>i.producto.id===p.id)
+      if (!item) return c
+      return item.cantidad<=1 ? c.filter(i=>i.key!==item.key) : c.map(i=>i.key===item.key?{...i,cantidad:i.cantidad-1}:i)
+    })
+  }
 
   const [facturar, pendingSale] = useAction(facturarImpl, () => setBusy(false))
   async function facturarImpl() {
@@ -144,17 +154,22 @@ export default function Vender() {
       {res.filter(p=>categoria==='Todos'||p.categoria===categoria).length === 0 ? <Empty text="Sin productos" /> : (
         <div className="product-list">
           {res.filter(p=>categoria==='Todos'||p.categoria===categoria).map((p, index) => (
-            <AnimatedCard as="button" type="button" index={index} key={p.id} className="row product-card sale-product" aria-label={`Agregar ${p.nombre}`} disabled={p.stock <= 0} onClick={() => p.stock > 0 && agregar(p)} style={{ opacity: p.stock > 0 ? 1 : 0.5 }}>
+            <AnimatedCard index={index} key={p.id} className="row product-card sale-product inline-sale-product" onClick={e=>{if(!e.target.closest('button')&&p.stock>enCarrito(p.id))agregar(p)}} style={{ opacity: p.stock > 0 ? 1 : 0.5 }}>
+              <button type="button" className="sale-product-main" aria-label={`Agregar ${p.nombre}`} disabled={enCarrito(p.id)>=p.stock} onClick={()=>agregar(p)}>
               <ProductThumbnail product={p} />
               <div className="flex-1 min-w-0">
                 <p className="m-0 text-sm font-semibold">{p.nombre}</p>
                 <p className="m-0 text-xs text-muted">{p.codigo}{p.marca ? ' · ' + p.marca : ''}{p.maneja_serial ? ' · serial' : ''}</p>
+                <Badge tone={p.stock === 0 ? 'bad' : p.stock-enCarrito(p.id) <= p.stock_min ? 'warn' : 'good'}>{p.stock === 0 ? 'Agotado' : (p.stock-enCarrito(p.id)) + ' disp.'}</Badge>
               </div>
               <div className="text-right">
                 <p className="m-0 text-sm font-bold">{money(p.precio_venta)}</p>
-                <Badge tone={p.stock === 0 ? 'bad' : p.stock <= p.stock_min ? 'warn' : 'good'}>{p.stock === 0 ? 'Agotado' : p.stock + ' disp.'}</Badge>
               </div>
-              <span key={enCarrito(p.id)} className={'add-product' + (enCarrito(p.id) > 0 ? ' motion-added' : '')}><Icon name="plus" /></span>
+              </button>
+              <div className={'sale-inline-control'+(enCarrito(p.id)>0?' selected':'')} role="group" aria-label={`Cantidad de ${p.nombre}`}>
+                {enCarrito(p.id)>0&&<><button type="button" aria-label={`Disminuir ${p.nombre}`} title={p.maneja_serial?'Quita el último serial seleccionado':undefined} onClick={()=>disminuir(p)}>−</button><output aria-label={`Unidades de ${p.nombre}`} aria-live="polite">{enCarrito(p.id)}</output></>}
+                <button type="button" aria-label={`Aumentar ${p.nombre}`} disabled={enCarrito(p.id)>=p.stock} onClick={()=>agregar(p)}><Icon name="plus"/></button>
+              </div>
             </AnimatedCard>
           ))}
         </div>

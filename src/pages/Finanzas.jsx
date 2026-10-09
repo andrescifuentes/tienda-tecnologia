@@ -14,6 +14,8 @@ import { Empty, Loader, Input, Select, ErrorBox, Stat, Chips } from '../componen
 import { supabase, isDemoMode } from '../lib/supabase'
 import { money, fecha, rangoMes, hoyBogota, mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
+import FinanceDetail from '../components/FinanceDetail'
+import { financeDetails } from '../lib/financeDetails'
 
 const CATS_G = ['Proveedores', 'Servicios', 'Arriendo', 'Servicios públicos', 'Nómina', 'Transporte', 'Publicidad', 'Mantenimiento', 'Impuestos', 'Otros']
 const CATS_I = ['Venta adicional', 'Servicio', 'Abono', 'Otro ingreso', 'Servicio técnico', 'Otros ingresos']
@@ -30,23 +32,35 @@ export default function Finanzas() {
   const [ventas, setVentas] = useState(0)
   const [form, setForm] = useState(null)
   const [tick, setTick] = useState(0)
+  const [detail, setDetail] = useState(null)
+  const [invoices, setInvoices] = useState([])
+  const [detailError, setDetailError] = useState('')
   const r = rangoMes(mes)
 
   useEffect(() => {
+    let live = true
     setMovs(null)
+    setDetailError('')
     ;(async () => {
-      const [m, v] = await Promise.all([
+      const [m, v, f, summary] = await Promise.all([
         supabase.from('movimientos').select('*').gte('fecha', r.ini).lte('fecha', r.fin).order('fecha', { ascending: false }).order('id', { ascending: false }),
         supabase.rpc('ventas_por_empleado', { p_desde: r.ini, p_hasta: r.fin }),
+        supabase.from(isDemoMode?'facturas_netas':'facturas').select('*').eq('estado','emitida'),
+        isDemoMode?supabase.rpc('resumen_dashboard',{p_desde:r.ini,p_hasta:r.fin}):Promise.resolve(null),
       ])
-      if(isDemoMode){const summary=await supabase.rpc('resumen_dashboard',{p_desde:r.ini,p_hasta:r.fin});setProfit(summary.data?.[0]?.utilidad_mes||0)}
+      if (!live) return
+      if(isDemoMode)setProfit(summary.data?.[0]?.utilidad_mes||0)
+      setInvoices(f.data||[])
+      setDetailError([m,v,f].some(result=>result.error)?'No se pudo cargar el detalle financiero completo. Intenta de nuevo.':'')
       setMovs(m.data || []); setVentas((v.data || []).reduce((a, x) => a + Number(x.total_vendido), 0))
     })()
+    return () => { live=false }
   }, [mes, tick, revision]) // eslint-disable-line
 
   const ing = (movs || []).filter((m) => m.tipo === 'ingreso' && (!isDemoMode || !m.origen)).reduce((a, m) => a + Number(m.monto), 0)
   const gas = (movs || []).filter((m) => m.tipo === 'gasto' && (!isDemoMode || !m.origen)).reduce((a, m) => a + Number(m.monto), 0)
   const lista = (movs || []).filter((m) => tipo === 'todos' || m.tipo === tipo)
+  const details = detail ? financeDetails({invoices,movements:movs||[],period:r,demo:isDemoMode}) : null
 
   async function borrar(m) {
     const { error } = await supabase.from('movimientos').delete().eq('id', m.id)
@@ -62,8 +76,8 @@ export default function Finanzas() {
         <button className="btn sec sm" aria-label="Mes financiero siguiente" disabled={mes >= 0} onClick={() => setMes(mes + 1)}>›</button>
       </section>
       <div className="grid finance-stats mb-3">
-        <Stat label="Ingresos" icon="cash" value={money(ventas + ing)} sub="Ventas y otros ingresos" tone="good" />
-        <Stat label="Gastos" icon="out" value={money(gas)} sub="Movimientos manuales" tone="bad" />
+        <Stat label="Ingresos" icon="cash" value={money(ventas + ing)} sub="Ver detalle de ingresos ›" tone="good" onClick={()=>setDetail('ingreso')} />
+        <Stat label="Gastos" icon="out" value={money(gas)} sub="Ver detalle de gastos ›" tone="bad" onClick={()=>setDetail('gasto')} />
         {costos && <Stat label={isDemoMode ? "Utilidad neta" : "Resultado (sin costo de mercancía)"} value={money(isDemoMode ? profit : ventas + ing - gas)} tone={(isDemoMode ? profit : ventas + ing - gas) >= 0 ? 'good' : 'bad'} />}
       </div>
       <BalanceChart showProfit={costos} ventas={ventas} ingresos={ing} gastos={gas} utilidad={isDemoMode?profit:ventas+ing-gas} demo={isDemoMode}/>
@@ -82,6 +96,7 @@ export default function Finanzas() {
       )}
       {remove && <ConfirmAction className="finance-confirm-sheet" title="Eliminar movimiento" label="Eliminar" onClose={()=>setRemove(null)} onConfirm={()=>borrar(remove)}><div className="finance-delete-preview"><b>{remove.categoria}</b><strong>{money(remove.monto)}</strong><small>{fecha(remove.fecha)} · {remove.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} manual</small></div><p>Se eliminará este movimiento manual. Las operaciones automáticas se revierten desde su registro original.</p></ConfirmAction>}
       {form && <Form inicial={form} onClose={() => setForm(null)} onSaved={() => { setForm(null); setTick((t) => t + 1) }} />}
+      {detail && <FinanceDetail type={detail} rows={details[detail]} total={detail==='ingreso'?ventas+ing:gas} period={r} month={mes} onMonth={setMes} loading={!movs} error={detailError} onClose={()=>setDetail(null)}/>}
     </AppShell>
   )
 }
