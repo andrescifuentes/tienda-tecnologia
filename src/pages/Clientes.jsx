@@ -63,7 +63,6 @@ function Ficha({ c, onClose, onEditar, puedeEditar }) {
       <p className="text-sm text-muted m-0">{c.telefono || 'Sin teléfono'} · {c.correo || 'Sin correo'}</p>
       {c.direccion && <p className="text-sm text-muted m-0">{c.direccion}</p>}
       {c.ciudad && <p className="text-sm text-muted m-0">{c.ciudad}</p>}
-      <GarantiasCliente id={c.id} />
       {fac && <div className="card mt-3"><span className="text-xs text-muted">Total comprado · ventas vigentes</span><p className="m-0 font-bold">{money(fac.filter(f=>f.estado==='emitida').reduce((n,f)=>n+Number(f.total_neto??f.total),0))}</p></div>}
       {c.notas && <p className="text-sm text-muted">{c.notas}</p>}
       {isDemoMode && puedeEditar && <RecordStatus table="clientes" record={c} onSaved={onClose} />}

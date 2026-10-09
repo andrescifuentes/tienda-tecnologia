@@ -261,8 +261,8 @@ input,select,textarea { accent-color:var(--brand); }
 .movement-form [data-cop-input]{font-size:24px;font-variant-numeric:tabular-nums;height:57px}
 .movement-segments{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--surface);margin-bottom:14px}
 .movement-segments button{flex:1;min-height:43px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);font-size:14px;font-weight:600}
-.movement-segments .gasto.active{color:var(--text);background:color-mix(in srgb,#ae7661 15%,var(--surface));border-color:color-mix(in srgb,#ae7661 35%,var(--line))}
-.movement-segments .ingreso.active{color:var(--text);background:color-mix(in srgb,#76927a 15%,var(--surface));border-color:color-mix(in srgb,#76927a 35%,var(--line))}
+.movement-segments .gasto.active{color:var(--text);background:rgba(174,118,97,.12);border-color:rgba(174,118,97,.35)}
+.movement-segments .ingreso.active{color:var(--text);background:rgba(118,146,122,.12);border-color:rgba(118,146,122,.35)}
 .movement-amounts{display:flex;gap:6px;flex-wrap:wrap;margin:-3px 0 15px}
 .movement-amounts button{flex:1;min-width:65px;min-height:38px;padding:6px;border:1px solid var(--accent-border);border-radius:9px;background:var(--accent-soft);color:var(--gold);font-size:11px;white-space:nowrap}
 .date-field{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:0 12px;margin-bottom:14px;min-height:51px;font-size:13px}

@@ -13,7 +13,7 @@ import { money, limpiarBusqueda, mensajeError, hoyBogota } from '../lib/format'
 import { toast } from '../lib/toast'
 
 // Ingreso de mercancía = registrar compra a un proveedor
-export default function CompraForm({ proveedorId, onClose, onSaved }) {
+export default function CompraForm({ proveedorId, productoInicial, onClose, onSaved }) {
   const [provs, setProvs] = useState([])
   const [prov, setProv] = useState(proveedorId || '')
   const requestId = useRef(imageKey())
@@ -22,7 +22,7 @@ export default function CompraForm({ proveedorId, onClose, onSaved }) {
   const [forma, setForma] = useState('contado')
   const [vence, setVence] = useState('')
   const [metodo, setMetodo] = useState('efectivo')
-  const [items, setItems] = useState([]) // {producto, cantidad, costo, seriales:''}
+  const [items, setItems] = useState(() => productoInicial ? [{ producto: productoInicial, cantidad: 1, costo: productoInicial.precio_compra || 0, seriales: '' }] : []) // {producto, cantidad, costo, seriales:''}
   const [buscar, setBuscar] = useState(false)
   const [scan, setScan] = useState(false)
   const [err, setErr] = useState('')

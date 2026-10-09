@@ -14,7 +14,6 @@ export default function Mas() {
     esAdmin && { to: '/empleados', icon: 'users', t: 'Empleados', s: 'Crear vendedores, permisos y actividad' },
     can('registrar_compras') && { to: '/proveedores', icon: 'truck', t: 'Proveedores', s: 'Compras, cuentas por pagar' },
     can('ver_finanzas') && { to: '/finanzas', icon: 'cash', t: 'Finanzas', s: 'Ingresos y gastos' },
-    esAdmin && { to: '/garantias', icon: 'shield', t: 'Garantías', s: 'Vigentes y reclamos' },
     { to: '/clientes', icon: 'users', t: 'Clientes', s: 'Buscar y registrar' },
     { to: '/facturas', icon: 'doc', t: esAdmin ? 'Facturas' : 'Mis facturas', s: 'Buscar, enviar, reimprimir' },
     { to: '/configuracion', icon: 'shield', t: 'Configuración', s: 'Preferencias y datos locales' },

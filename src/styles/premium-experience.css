@@ -77,7 +77,7 @@
   .action-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
   .action-grid>.btn { width:100%; min-width:0; padding-inline:8px; }
   .destructive-zone { padding-top:17px; margin-top:20px; border-top:1px solid var(--line); }
-  .destructive-zone .btn.bad { min-height:44px; color:var(--bad); background:transparent; border:1px solid color-mix(in srgb,var(--bad) 30%,var(--line)); }
+  .destructive-zone .btn.bad { min-height:44px; color:var(--bad); background:transparent; border:1px solid rgba(188,88,88,.28); }
   .destructive-zone .btn.full { margin-top:0; }
 
   .notice-summary { border-bottom:1px solid var(--line); padding:0 0 16px; margin-bottom:15px; }

@@ -14,7 +14,6 @@ const Mas = lazy(() => import('./pages/Mas'))
 const Empleados = lazy(() => import('./pages/Empleados'))
 const Proveedores = lazy(() => import('./pages/Proveedores'))
 const Finanzas = lazy(() => import('./pages/Finanzas'))
-const Garantias = lazy(() => import('./pages/Garantias'))
 
 function Privada({ children, ...p }) {
   return <ProtectedRoute {...p}><Suspense fallback={<div className="p-10"><Loader /></div>}>{children}</Suspense></ProtectedRoute>
@@ -34,7 +33,6 @@ export default function App() {
       <Route path="/empleados" element={<Privada soloAdmin><Empleados /></Privada>} />
       <Route path="/proveedores" element={<Privada permiso="registrar_compras"><Proveedores /></Privada>} />
       <Route path="/finanzas" element={<Privada permiso="ver_finanzas"><Finanzas /></Privada>} />
-      <Route path="/garantias" element={<Privada soloAdmin><Garantias /></Privada>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

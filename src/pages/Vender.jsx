@@ -30,7 +30,7 @@ export default function Vender() {
   const [categoryOptions,setCategoryOptions]=useState([])
   useEffect(()=>{supabase.from('categorias').select('*').eq('activa',true).order('nombre').then(({data})=>setCategoryOptions(data||[]))},[])
   const [categoria, setCategoria] = useState('Todos'); const [refresh, setRefresh] = useState(0)
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get('q') || '')
   const [res, setRes] = useState([])
   const [carrito, setCarrito] = useState(draft.carrito || []) // Temporary per-user tab draft.
   const [cliente, setCliente] = useState(draft.cliente || null)

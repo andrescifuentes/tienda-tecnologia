@@ -5,8 +5,8 @@ import { useAuth } from '../context/AuthContext'
 const ADMIN = [
   { to: '/', icon: 'home', label: 'Inicio' },
   { to: '/inventario', icon: 'box', label: 'Inventario' },
-  { to: '/vender', icon: 'cart', label: 'Vender' },
   { to: '/facturas', icon: 'doc', label: 'Facturas' },
+  { to: '/vender', icon: 'cart', label: 'Vender' },
   { to: '/mas', icon: 'menu', label: 'Más' },
 ]
 const VENDEDOR = [

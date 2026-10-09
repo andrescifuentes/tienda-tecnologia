@@ -3,7 +3,7 @@ export function getTheme() { return document.documentElement.dataset.theme === '
 export function setTheme(theme, persist = true) {
   const next = valid(theme) ? theme : 'dark'
   document.documentElement.dataset.theme = next
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#090909' : '#f4f0e8')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#090909' : '#efe5d2')
   if (persist) { try { localStorage.setItem('tema', next); localStorage.setItem('theme', next) } catch { /* Preference is optional. */ } }
   window.dispatchEvent(new Event('app-theme-change'))
 }

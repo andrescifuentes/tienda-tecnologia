@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { AnimatedCard } from '../components/TechVisuals'
 import FacturaDetalle from '../components/FacturaDetalle'
 import { SearchBar, Empty, Loader, Badge, Chips } from '../components/ui'
-import { supabase } from '../lib/supabase'
+import { supabase, isDemoMode } from '../lib/supabase'
 import { money, fechaHora, numFactura, limpiarBusqueda } from '../lib/format'
 
 export default function Facturas() {
@@ -21,7 +21,7 @@ export default function Facturas() {
 
   useEffect(() => {
     const t = setTimeout(async () => {
-      let qq = supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,clientes(nombre),perfiles(nombre)').order('fecha', { ascending: false }).limit(60)
+      let qq = supabase.from('facturas').select(isDemoMode ? 'id,prefijo,numero,total,estado,fecha,clientes(nombre),perfiles(nombre)' : 'id,prefijo,numero,total,estado,fecha,clientes(nombre),perfiles!facturas_vendedor_id_fkey(nombre)').order('fecha', { ascending: false }).limit(60)
       if (estado !== 'todas') qq = qq.eq('estado', estado)
       const s = limpiarBusqueda(q).replace(/^[A-Za-z]+-0*/, '')
       if (/^\d+$/.test(s)) qq = qq.or(`numero.eq.${Number(s)},total.eq.${Number(s)}`)

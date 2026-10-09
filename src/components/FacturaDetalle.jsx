@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import Modal from './Modal'
 import InvoicePreview from './InvoicePreview'
-import { createInvoicePdf, invoicePdfFile, canSharePdf, saveInvoicePdf } from '../lib/invoicePdf'
+import { createInvoicePdf, invoicePdfFile, canSharePdf, saveInvoicePdf, logoListo } from '../lib/invoicePdf'
 import ConfirmAction from './ConfirmAction'
-import { NuevaGarantia } from '../pages/Garantias'
 import { useAction } from '../lib/useAction'
 import { Loader, Badge, ErrorBox, Input } from './ui'
 import { supabase, isDemoMode } from '../lib/supabase'
@@ -12,6 +11,9 @@ import { money, fechaHora, numFactura, mensajeError } from '../lib/format'
 import { textoFactura } from '../lib/factura'
 import { enlaceWhatsApp } from '../lib/whatsapp'
 import { toast } from '../lib/toast'
+import { subirFacturaPdf, mensajeWhatsApp, correoFactura } from '../lib/facturaEnvio'
+
+const soloNum = (t) => String(t || '').replace(/\D/g, '')
 
 export default function FacturaDetalle({ id, onClose, nueva = false, onCambio }) {
   const { can, tienda, perfil } = useAuth()
@@ -24,18 +26,31 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
   const [cants, setCants] = useState({})
   const [reintegra, setReintegra] = useState(true)
   const [tel, setTel] = useState('')
+  const [correo, setCorreo] = useState('')
+  const [enlacePdf, setEnlacePdf] = useState('')
+  const [enviando, setEnviando] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirmRefund,setConfirmRefund] = useState(false), [newWarranty,setNewWarranty] = useState(false)
 
   async function cargar() {
-    const { data, error } = await supabase.from('facturas').select('*, clientes(*), perfiles(nombre)').eq('id', id).single()
+    const { data, error } = await supabase.from('facturas').select(isDemoMode ? '*, clientes(*), perfiles(nombre)' : '*, clientes(*), perfiles!facturas_vendedor_id_fkey(nombre,correo,telefono)').eq('id', id).single()
     if (error) return setErr(mensajeError(error))
     const [it, dv] = await Promise.all([
       supabase.from('factura_items').select('*').eq('factura_id', id).order('id'),
       supabase.from('devoluciones').select('id, motivo, total_devuelto, fecha, devolucion_items(factura_item_id, cantidad)').eq('factura_id', id),
     ])
-    setF(data); setItems(it.data || []); setDevs(dv.data || [])
+    let lineas = it.data || []
+    // Código del producto (las líneas guardan nombre y precio; el código se toma del inventario)
+    const sinCodigo = [...new Set(lineas.filter(l => !l.codigo).map(l => l.producto_id))]
+    if (sinCodigo.length) {
+      let { data: cods } = await supabase.from('productos').select('id,codigo').in('id', sinCodigo)
+      if (!cods?.length) ({ data: cods } = await supabase.from('productos_venta').select('id,codigo').in('id', sinCodigo))
+      const mapa = Object.fromEntries((cods || []).map(r => [r.id, r.codigo]))
+      lineas = lineas.map(l => l.codigo ? l : { ...l, codigo: mapa[l.producto_id] || '' })
+    }
+    setF(data); setItems(lineas); setDevs(dv.data || [])
     setTel(data.clientes?.telefono || '')
+    setCorreo(data.clientes?.correo || '')
   }
   useEffect(() => { cargar() }, [id]) // eslint-disable-line
 
@@ -56,18 +71,39 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
     if(error) return setErr(mensajeError(error))
     setPreview(canal); toast('Vista previa preparada')
   }
+  async function obtenerEnlace() {
+    if (enlacePdf) return enlacePdf
+    const url = await subirFacturaPdf(f, items, tienda)
+    setEnlacePdf(url); return url
+  }
   async function porWhatsApp() {
-    if (!tel.trim()) return setErr('Escribe el teléfono del cliente.')
-    if (isDemoMode) return simulate('whatsapp',tel.trim())
-    await registrarEnvio('whatsapp', tel.trim())
-    window.open(enlaceWhatsApp(tel, texto()), '_blank')
+    const t = tel.trim()
+    if (soloNum(t).length < 10) return setErr('Escribe un número de WhatsApp válido (10 dígitos).')
+    if (isDemoMode) return simulate('whatsapp', t)
+    setErr(''); setEnviando('whatsapp')
+    const ventana = window.open('', '_blank') // se abre antes de la subida para que el navegador no la bloquee
+    try {
+      const url = await obtenerEnlace()
+      const link = enlaceWhatsApp(t, mensajeWhatsApp(f, url))
+      if (ventana && !ventana.closed) ventana.location.href = link; else window.location.href = link
+      await registrarEnvio('whatsapp', t)
+      toast('Factura lista para enviar por WhatsApp')
+    } catch (error) { ventana?.close(); setErr('No se pudo preparar el envío. ' + mensajeError(error)) }
+    finally { setEnviando('') }
   }
   async function porCorreo() {
-    const c = f.clientes?.correo
-    if (!c) return setErr('El cliente no tiene correo registrado.')
-    if (isDemoMode) return simulate('correo',c)
-    await registrarEnvio('correo', c)
-    window.location.href = `mailto:${c}?subject=${encodeURIComponent('Factura ' + numFactura(f))}&body=${encodeURIComponent(texto().replace(/\*/g, ''))}`
+    const c = correo.trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c)) return setErr('Escribe un correo válido para el cliente.')
+    if (isDemoMode) return simulate('correo', c)
+    setErr(''); setEnviando('correo')
+    try {
+      const url = await obtenerEnlace()
+      window.location.href = 'mailto:' + c + correoFactura(f, url)
+      await registrarEnvio('correo', c)
+      if (f.cliente_id && !f.clientes?.correo) supabase.from('clientes').update({ correo: c }).eq('id', f.cliente_id).then(() => {})
+      toast('Correo preparado con la factura')
+    } catch (error) { setErr('No se pudo preparar el envío. ' + mensajeError(error)) }
+    finally { setEnviando('') }
   }
   async function compartir() {
     if(isDemoMode) return simulate('compartir')
@@ -76,8 +112,9 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
     else { await navigator.clipboard?.writeText(t); toast('Factura copiada') }
   }
   function imprimir() { setPreview('pdf') }
+  const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
   async function guardarPdf(share = false) {
-    try { await saveInvoicePdf(pdf || createInvoicePdf(f, items, tienda, isDemoMode), share) }
+    try { await logoListo; await saveInvoicePdf(createInvoicePdf(f, items, tienda, isDemoMode), share) }
     catch (error) { setErr('No se pudo generar el PDF. ' + mensajeError(error)) }
   }
 
@@ -108,14 +145,13 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
   return (
     <Modal title={(nueva ? '✓ Venta registrada · ' : '') + numFactura(f)} className="invoice-detail-sheet experience-sheet" subtitle="El detalle de tu venta" keyboardAware onClose={onClose}>
       <ErrorBox text={err} />
-      {newWarranty && <NuevaGarantia facturaId={f.id} onClose={()=>setNewWarranty(false)} onSaved={()=>{setNewWarranty(false);toast('Garantía registrada')}} />}
       {confirmRefund && <ConfirmAction title="Confirmar devolución" label="Confirmar devolución" onClose={()=>setConfirmRefund(false)} onConfirm={devolver}>Se registrará la devolución de los productos elegidos y su reverso de dinero y comisión. {reintegra ? 'El stock disponible aumentará.' : 'El producto dañado no aumentará el stock disponible.'}</ConfirmAction>}
       {preview && <section className={"invoice-preview "+(preview === 'pdf' ? 'invoice-document-preview' : 'invoice-message-preview')}><b>{preview === 'pdf' ? 'Vista previa de factura' : preview === 'whatsapp' ? 'Mensaje de WhatsApp' : preview === 'correo' ? 'Mensaje de correo' : 'Compartir factura'}</b>{preview !== 'pdf' && <p>Revisa el mensaje antes de abrir la aplicación.</p>}
-        {preview === 'pdf' ? <InvoicePreview invoice={f} items={items} tienda={tienda} demo={isDemoMode} /> : <><p><b>Destinatario:</b> {preview === 'correo' ? f.clientes?.correo : preview === 'whatsapp' ? tel : 'Vista local'}</p>{preview === 'correo' && <p><b>Asunto:</b> Factura {numFactura(f)} de ANGIE TECH</p>}<pre>{preview === 'whatsapp' ? 'Hola ' + (f.clientes?.nombre || 'cliente') + ', te compartimos tu factura de ANGIE TECH.\n\n' : ''}{texto()?.replace(/\*/g,'')}</pre></>}
+        {preview === 'pdf' ? <InvoicePreview invoice={f} items={items} tienda={tienda} demo={isDemoMode} /> : <><p><b>Destinatario:</b> {preview === 'correo' ? correo : preview === 'whatsapp' ? tel : 'Vista local'}</p>{preview === 'correo' && <p><b>Asunto:</b> Factura {numFactura(f)} de ANGIE TECH</p>}<pre>{preview === 'whatsapp' ? 'Hola ' + (f.clientes?.nombre || 'cliente') + ', te compartimos tu factura de ANGIE TECH.\n\n' : ''}{texto()?.replace(/\*/g,'')}</pre></>}
         <button className="btn sec full" onClick={()=>setPreview(null)}>Cerrar vista previa</button>
-        {preview === 'pdf' && <div className="invoice-pdf-actions"><button className="btn" onClick={() => guardarPdf()}>Guardar PDF</button><button className="btn sec" onClick={() => window.print()}>Imprimir</button>{pdf && canSharePdf(invoicePdfFile(pdf)) && <button className="btn sec" onClick={() => guardarPdf(true)}>Compartir PDF</button>}</div>}
+        {preview === 'pdf' && <div className="invoice-pdf-actions"><button className="btn" onClick={() => guardarPdf()}>Guardar PDF</button><button className="btn sec" onClick={() => esMovil ? guardarPdf(true) : window.print()}>Imprimir</button>{pdf && canSharePdf(invoicePdfFile(pdf)) && <button className="btn sec" onClick={() => guardarPdf(true)}>Compartir PDF</button>}</div>}
         {preview === 'whatsapp' && <button className="btn full mt-2" onClick={() => window.open(enlaceWhatsApp(tel, 'Hola ' + (f.clientes?.nombre || 'cliente') + ', te compartimos tu factura ' + numFactura(f) + ' de ANGIE TECH.\n' + texto()), '_blank', 'noopener,noreferrer')}>Abrir WhatsApp</button>}
-        {preview === 'correo' && <a className="btn full mt-2" href={'mailto:' + encodeURIComponent(f.clientes?.correo || '') + '?subject=' + encodeURIComponent('Factura ' + numFactura(f) + ' de ANGIE TECH') + '&body=' + encodeURIComponent(texto().replace(/\*/g,''))}>Abrir correo</a>}
+        {preview === 'correo' && <a className="btn full mt-2" href={'mailto:' + encodeURIComponent(correo || '') + '?subject=' + encodeURIComponent('Factura ' + numFactura(f) + ' de ANGIE TECH') + '&body=' + encodeURIComponent(texto().replace(/\*/g,''))}>Abrir correo</a>}
       </section>}
       <div className="invoice-detail-meta flex items-center gap-2 mb-2">
         <span className="text-xs text-muted">{fechaHora(f.fecha)} · {f.perfiles?.nombre}</span>
@@ -140,15 +176,16 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
       {!anulada && !modo && (
         <>
           <h4 className="experience-section-title">Comunicación</h4>
-          <Input label="Teléfono para WhatsApp" value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" />
+          <Input label="WhatsApp del cliente" value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" placeholder="300 123 4567" />
+          <Input label="Correo del cliente" value={correo} onChange={(e) => setCorreo(e.target.value)} type="email" inputMode="email" placeholder="cliente@correo.com" />
+          <p className="text-xs text-muted mb-2">Se envía un enlace seguro para descargar la factura en PDF.</p>
           <div className="action-grid communication-actions mb-3 invoice-detail-actions">
-            <button className="btn sec" onClick={porWhatsApp}>WhatsApp</button>
-            <button className="btn sec" onClick={porCorreo}>Correo</button>
+            <button className="btn sec" disabled={!!enviando} onClick={porWhatsApp}>{enviando === 'whatsapp' ? 'Preparando…' : 'WhatsApp'}</button>
+            <button className="btn sec" disabled={!!enviando} onClick={porCorreo}>{enviando === 'correo' ? 'Preparando…' : 'Correo'}</button>
             <button className="btn sec" onClick={compartir}>Compartir</button>
             
           </div>
           {f.estado==='emitida'&&((isDemoMode&&can('editar_inventario'))||can('hacer_devoluciones'))&&<><h4 className="experience-section-title">Postventa</h4><div className="action-grid aftersale-actions">
-            {isDemoMode && f.estado==='emitida' && can('editar_inventario') && <button className="btn sec" onClick={()=>setNewWarranty(true)}>Crear garantía</button>}
             {f.estado==='emitida' && can('hacer_devoluciones') && <button className="btn sec" onClick={() => { setErr(''); setModo('devolver') }}>Devolución</button>}
           </div></>}
           {can('anular_facturas') && <div className="destructive-zone"><button className="btn bad full" onClick={() => { setErr(''); setModo('anular') }}>Anular</button></div>}

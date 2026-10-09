@@ -4,6 +4,7 @@ import logo from '../assets/brand/angie-tech-logo.png'
 import homePhoto from '../assets/photography/home.jpg'
 import photoSources from '../assets/products/sources.json'
 import { Icon } from './Icons'
+import { CategoryIcon } from './InvIcons'
 import { loadImage } from '../lib/demo/images'
 
 const photos = import.meta.glob('../assets/products/*.{jpg,png,webp}', { eager: true, query: '?url', import: 'default' })
@@ -30,8 +31,8 @@ export function ProductThumbnail({ product }) {
     if (product?.image_ref) loadImage(product.image_ref).then(blob => { if (active && blob) { url = URL.createObjectURL(blob); setUploaded(url) } }).catch(() => {})
     return () => { active = false; if (url) URL.revokeObjectURL(url) }
   }, [product?.image_ref])
-  const photo = uploaded || productPhoto(product)
-  return <span className="product-thumbnail">{photo ? <img src={photo} alt={product.nombre} loading="lazy" /> : <span className="photo-pending"><b>ANGIE TECH</b>Foto por añadir</span>}</span>
+  const photo = uploaded || product?.foto_url || productPhoto(product)
+  return <span className="product-thumbnail">{photo ? <img src={photo} alt={product.nombre} loading="lazy" /> : <span className="photo-pending cat-placeholder"><CategoryIcon categoria={product?.categoria || product?.categorias?.nombre} /></span>}</span>
 }
 export default function TechHero() {
   const ref = useRef(null)
