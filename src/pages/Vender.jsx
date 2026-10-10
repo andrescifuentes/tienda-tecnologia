@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import AppShell from '../components/AppShell'
+import AppShell, { ThemeToggle } from '../components/AppShell'
 import { monetaryError } from '../lib/money'
-import { AnimatedCard, ProductThumbnail } from '../components/TechVisuals'
+import { AnimatedCard, ProductThumbnail, Brand } from '../components/TechVisuals'
+import { I, CategoryIcon } from '../components/InvIcons'
 import { Icon } from '../components/Icons'
 import Modal from '../components/Modal'
 import { FormSection } from '../components/AdminPrimitives'
 import Scanner from '../components/Scanner'
-import ClientePicker from '../components/ClientePicker'
+import ClientePicker, { ClienteForm } from '../components/ClientePicker'
 import FacturaDetalle from '../components/FacturaDetalle'
 import { SearchBar, Empty, Badge, Stepper, ErrorBox, Chips, Input, Select } from '../components/ui'
 import ConfirmAction from '../components/ConfirmAction'
@@ -29,9 +30,44 @@ export default function Vender() {
 
   const [categoryOptions,setCategoryOptions]=useState([])
   useEffect(()=>{supabase.from('categorias').select('*').eq('activa',true).order('nombre').then(({data})=>setCategoryOptions(data||[]))},[])
-  const [categoria, setCategoria] = useState('Todos'); const [refresh, setRefresh] = useState(0)
+  const [categoria, setCategoriaRaw] = useState('Todos'); const [marca, setMarca] = useState('Todas'); const [hojaMarca, setHojaMarca] = useState(false); const [hojaCat, setHojaCat] = useState(false)
+  const setCategoria = (c) => { setCategoriaRaw(c); setMarca('Todas') }; const [refresh, setRefresh] = useState(0)
   const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get('q') || '')
   const [res, setRes] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [verCatalogo, setVerCatalogo] = useState(false)
+  const [extras, setExtras] = useState(false)
+  const [faltaCliente, setFaltaCliente] = useState(false)
+  const [hoyMio, setHoyMio] = useState({ n: 0, total: 0 })
+  useEffect(() => {
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    supabase.from('facturas').select('total,estado,fecha').eq('vendedor_id', perfil.id).gte('fecha', hoy + 'T00:00:00-05:00').then(({ data }) => {
+      const ok = (data || []).filter(f => f.estado !== 'anulada')
+      setHoyMio({ n: ok.length, total: ok.reduce((a, f) => a + Number(f.total || 0), 0) })
+    })
+  }, [refresh]) // eslint-disable-line
+  const [ventasTop, setVentasTop] = useState({ propios: true, conteo: {} })
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const contar = async (soloMio) => {
+        let qf = supabase.from('facturas').select('id').eq('estado', 'emitida').order('fecha', { ascending: false }).limit(500)
+        if (soloMio) qf = qf.eq('vendedor_id', perfil.id)
+        const { data: fs } = await qf
+        const ids = (fs || []).map(f => f.id)
+        if (!ids.length) return {}
+        const { data: its } = await supabase.from('factura_items').select('producto_id,cantidad,factura_id').in('factura_id', ids)
+        const c = {}; for (const it of its || []) c[it.producto_id] = (c[it.producto_id] || 0) + Number(it.cantidad || 0)
+        return c
+      }
+      let c = await contar(true), propios = true
+      if (!Object.keys(c).length) { c = await contar(false); propios = false }
+      if (vivo) setVentasTop({ propios, conteo: c })
+    })()
+    return () => { vivo = false }
+  }, [refresh]) // eslint-disable-line
+  const [detalle, setDetalle] = useState(null)
+  const [cantDet, setCantDet] = useState(1)
   const [carrito, setCarrito] = useState(draft.carrito || []) // Temporary per-user tab draft.
   const [cliente, setCliente] = useState(draft.cliente || null)
   const [metodo, setMetodo] = useState(draft.metodo || 'efectivo')
@@ -49,10 +85,10 @@ export default function Vender() {
   useEffect(() => {
     const t = setTimeout(async () => {
       const s = limpiarBusqueda(q)
-      let qq = supabase.from('productos_venta').select('*').order('nombre').limit(30)
+      let qq = supabase.from('productos_venta').select('*').order('nombre').limit(200)
       if (s) qq = qq.or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,codigo_barras.ilike.%${s}%,marca.ilike.%${s}%`)
       const { data } = await qq
-      setRes(data || [])
+      setRes(data || []); setCargando(false)
     }, 250)
     return () => clearTimeout(t)
   }, [q, refresh])
@@ -124,6 +160,7 @@ export default function Vender() {
 
   const [facturar, pendingSale] = useAction(facturarImpl, () => setBusy(false))
   async function facturarImpl() {
+    if (!cliente) return setErr('Elige un cliente registrado o registra uno nuevo para continuar.')
     for (const value of [descuento,subtotal,total,...carrito.flatMap(i=>[i.producto.precio_venta,i.producto.precio_compra ?? 0])]) if (monetaryError(value)) return setErr(monetaryError(value))
     if (carrito.some(i=>!Number.isInteger(i.cantidad)||i.cantidad<=0||i.cantidad>i.producto.stock||i.producto.activo===false)) return setErr('Revisa el carrito: un producto está desactivado o no tiene stock suficiente. Reduce su cantidad o quítalo.')
     setErr(''); setBusy(true)
@@ -142,41 +179,160 @@ export default function Vender() {
     setRequestId(imageKey()); setRefresh(n=>n+1); setFacturaId(id); toast('Venta registrada')
   }
 
+  const disponibles = res
+  const conteoCat = disponibles.reduce((m, p) => { const k = p.categoria || 'Otros'; m[k] = (m[k] || 0) + 1; return m }, {})
+  const catsVisibles = [['Todos', disponibles.length], ...categoryOptions.map(c => [c.nombre, conteoCat[c.nombre] || 0]).filter(([, n]) => n > 0)]
+  const marcaDe = (p) => (p.marca || 'Genérica').trim()
+  const enCategoria = disponibles.filter(p => categoria === 'Todos' || p.categoria === categoria)
+  const conteoMarca = enCategoria.reduce((m, p) => { const k = marcaDe(p); m[k] = (m[k] || 0) + 1; return m }, {})
+  const marcas = Object.entries(conteoMarca).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const visibles = enCategoria.filter(p => marca === 'Todas' || marcaDe(p) === marca)
+  const top = (() => {
+    const lista = Object.entries(ventasTop.conteo).map(([id, n]) => ({ p: disponibles.find(x => String(x.id) === String(id)), n })).filter(x => x.p).sort((a, b) => b.n - a.n).slice(0, 5)
+    return { propios: ventasTop.propios, lista }
+  })()
+  const nombreCorto = (perfil?.nombre || '').split(' ')[0]
+  const METODOS_PAGO = [['efectivo', 'Efectivo', 'cash'], ['tarjeta', 'Tarjeta', 'card'], ['transferencia', 'Transferencia', 'bank']]
+
+  function agregarVarios(p, k) {
+    if (p.maneja_serial) return agregar(p)
+    const libre = p.stock - enCarrito(p.id), add = Math.min(k, libre)
+    if (add <= 0) return toast('No hay más stock de este producto')
+    setCarrito((c) => { const i = c.find((x) => x.producto.id === p.id && !x.unidad); return i ? c.map((x) => (x === i ? { ...x, cantidad: x.cantidad + add } : x)) : [...c, { key: 'p' + p.id, producto: p, cantidad: add }] })
+    toast(`${add} × ${p.nombre} agregado`)
+  }
+  const abrir = (p) => { setCantDet(1); setDetalle(p) }
+  const tile = (p, index) => {
+    const n = enCarrito(p.id), libre = p.stock - n, agotado = p.stock === 0
+    return <AnimatedCard index={index} key={p.id} className={'pos-tile' + (n ? ' in' : '') + (agotado ? ' out' : '')}>
+      <button type="button" className="pos-tile-img" aria-label={`Ver ${p.nombre}`} onClick={() => abrir(p)}>
+        <ProductThumbnail product={p} />
+        {agotado ? <span className="pos-flag out">Agotado</span> : libre <= p.stock_min ? <span className="pos-flag low">Últimas {libre}</span> : null}
+        {n > 0 && <span key={n} className="pos-qty-badge">{n}</span>}
+      </button>
+      <div className="pos-tile-body" onClick={() => abrir(p)}>
+        <b className="pos-name">{p.nombre ? p.nombre.charAt(0).toUpperCase() + p.nombre.slice(1) : ''}</b>
+        <span className="pos-meta">{p.marca || 'Genérica'}{!agotado && <> · {libre} disp.</>}</span>
+        <span className="pos-price">{money(p.precio_venta)}</span>
+        {agotado ? <span className="pos-add off">Sin stock</span> : n > 0 ? <div className="pos-step" role="group" aria-label={`Cantidad de ${p.nombre}`} onClick={e => e.stopPropagation()}>
+          <button type="button" aria-label={`Disminuir ${p.nombre}`} onClick={() => disminuir(p)}>−</button>
+          <output aria-live="polite">{n}</output>
+          <button type="button" aria-label={`Aumentar ${p.nombre}`} disabled={libre <= 0} onClick={() => agregar(p)}>+</button>
+        </div> : <button type="button" className="pos-add" onClick={e => { e.stopPropagation(); agregar(p) }}><I n="plus" />Agregar</button>}
+      </div>
+    </AnimatedCard>
+  }
+
+  const horaBog = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', hour: 'numeric', hourCycle: 'h23' }).format(new Date()))
+  const saludo = horaBog < 12 ? 'Buenos días' : horaBog < 18 ? 'Buenas tardes' : 'Buenas noches'
+  const iniciales = (perfil?.nombre || '').split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()
+  const vipCard = (
+    <section className="pos-vip">
+    <span className="pos-vip-rings" aria-hidden="true" />
+    <div className="pos-vip-top">
+      <span className="pos-hello-av">{iniciales || <I n="user" />}</span>
+      <span className="pos-hello-txt"><small>{saludo},</small><b>{nombreCorto || 'vendedor'}</b></span>
+      <button type="button" className={'pos-cart-btn' + (unidadesTotal ? ' has' : '')} onClick={() => carrito.length && setVerCarrito(true)} aria-label={`Carrito, ${unidadesTotal} productos`}>
+        <I n="cart" />{unidadesTotal > 0 && <span key={unidadesTotal} className="pos-cart-n">{unidadesTotal}</span>}
+      </button>
+    </div>
+    <span className="pos-vip-eyebrow">Punto de venta</span>
+    <h1 className="pos-title">Nueva venta</h1>
+    <div className="pos-vip-stats">
+      <div><small>Ventas hoy</small><b>{hoyMio.n}</b></div>
+      <div><small>Vendido hoy</small><b className="g">{money(hoyMio.total)}</b></div>
+      <div className="live"><span className="pos-today-dot" />En turno</div>
+    </div>
+  </section>
+  )
+  const header = <div className="inv-head pos-head3">
+    <div className="inv-head-top"><Brand compact /><ThemeToggle /></div>
+  </div>
+
   return (
-    <AppShell title="Nueva venta" sub={cliente ? cliente.nombre : 'Consumidor final'} right={carrito.length > 0 && <button className="btn sec sm" onClick={() => setVerCarrito(true)}><Icon name="cart" className="w-4 h-4" /> Carrito <span key={unidadesTotal} className="cart-count">{unidadesTotal}</span></button>} footer={carrito.length > 0 && !verCarrito && (
-        <div className="cart-bar"><div className="cart-preview"><div className="cart-photos">{carrito.slice(0,3).map(i => <ProductThumbnail key={i.key} product={i.producto} />)}</div><span>{unidadesTotal} {unidadesTotal === 1 ? 'producto' : 'productos'} en tu carrito</span></div><button className="cart-bar-button" onClick={() => setVerCarrito(true)} aria-label={`Ver carrito, ${unidadesTotal} productos, total ${money(total)}`}>
-          <span><small><span key={unidadesTotal} className="motion-value">{unidadesTotal}</span> {unidadesTotal === 1 ? 'producto' : 'productos'} · {desc > 0 ? 'Total' : 'Subtotal'}</small><strong key={total} className="motion-value">{money(total)}</strong></span>
-          <span className="cart-cta">Procesar venta <Icon name="arrow" className="w-4 h-4" /></span>
-        </button></div>
+    <AppShell title="Nueva venta" header={header} footer={carrito.length > 0 && !verCarrito && (
+        <button type="button" className="pos-bar" onClick={() => setVerCarrito(true)} aria-label={`Cobrar ${unidadesTotal} productos, total ${money(total)}`}>
+          <span className="pos-bar-photos">{carrito.slice(0, 3).map(i => <ProductThumbnail key={i.key} product={i.producto} />)}</span>
+          <span className="pos-bar-info"><small>{unidadesTotal} {unidadesTotal === 1 ? 'producto' : 'productos'}</small><strong key={total} className="motion-value">{money(total)}</strong></span>
+          <span className="pos-bar-cta">Cobrar<I n="back" className="flip" /></span>
+        </button>
       )}>
-      <SearchBar value={q} onChange={setQ} placeholder="Buscar producto o código" onScan={() => setScan(true)} />
-      <Chips value={categoria} onChange={setCategoria} options={['Todos', ...categoryOptions.map(c=>c.nombre)].map(value=>({value,label:value}))} />
-      {res.filter(p=>categoria==='Todos'||p.categoria===categoria).length === 0 ? <Empty text="Sin productos" /> : (
-        <div className="product-list">
-          {res.filter(p=>categoria==='Todos'||p.categoria===categoria).map((p, index) => (
-            <AnimatedCard index={index} key={p.id} className="row product-card sale-product inline-sale-product" onClick={e=>{if(!e.target.closest('button')&&p.stock>enCarrito(p.id))agregar(p)}} style={{ opacity: p.stock > 0 ? 1 : 0.5 }}>
-              <button type="button" className="sale-product-main" aria-label={`Agregar ${p.nombre}`} disabled={enCarrito(p.id)>=p.stock} onClick={()=>agregar(p)}>
-              <ProductThumbnail product={p} />
-              <div className="flex-1 min-w-0">
-                <p className="m-0 text-sm font-semibold">{p.nombre}</p>
-                <p className="m-0 text-xs text-muted">{p.codigo}{p.marca ? ' · ' + p.marca : ''}{p.maneja_serial ? ' · serial' : ''}</p>
-                <Badge tone={p.stock === 0 ? 'bad' : p.stock-enCarrito(p.id) <= p.stock_min ? 'warn' : 'good'}>{p.stock === 0 ? 'Agotado' : (p.stock-enCarrito(p.id)) + ' disp.'}</Badge>
-              </div>
-              <div className="text-right">
-                <p className="m-0 text-sm font-bold">{money(p.precio_venta)}</p>
-              </div>
-              </button>
-              <div className={'sale-inline-control'+(enCarrito(p.id)>0?' selected':'')} role="group" aria-label={`Cantidad de ${p.nombre}`}>
-                {enCarrito(p.id)>0&&<><button type="button" aria-label={`Disminuir ${p.nombre}`} title={p.maneja_serial?'Quita el último serial seleccionado':undefined} onClick={()=>disminuir(p)}>−</button><output aria-label={`Unidades de ${p.nombre}`} aria-live="polite">{enCarrito(p.id)}</output></>}
-                <button type="button" aria-label={`Aumentar ${p.nombre}`} disabled={enCarrito(p.id)>=p.stock} onClick={()=>agregar(p)}><Icon name="plus"/></button>
-              </div>
-            </AnimatedCard>
-          ))}
+      {vipCard}
+
+      <div className="inv-search">
+        <label className="inv-search-box"><I n="search" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="¿Qué vas a vender hoy?" aria-label="Buscar producto" />{q && <button type="button" className="inv-scan" aria-label="Limpiar búsqueda" onClick={() => setQ('')}>✕</button>}</label>
+      </div>
+
+      <div className="pos-filters2">
+        <button type="button" className={'pos-dd' + (categoria !== 'Todos' ? ' on' : '')} onClick={() => setHojaCat(true)} aria-haspopup="dialog">
+          <span className="pos-dd-ic">{categoria === 'Todos' ? <I n="box" /> : <CategoryIcon categoria={categoria} />}</span>
+          <span className="pos-dd-txt"><small>Categoría</small><b>{categoria === 'Todos' ? 'Todas' : categoria}</b></span>
+          <I n="chevDown" className="pos-dd-chev" />
+        </button>
+        <button type="button" className={'pos-dd' + (marca !== 'Todas' ? ' on' : '')} disabled={marcas.length < 2} onClick={() => setHojaMarca(true)} aria-haspopup="dialog">
+          <span className="pos-dd-ic"><I n="tag" /></span>
+          <span className="pos-dd-txt"><small>Marca</small><b>{marca === 'Todas' ? (marcas.length === 1 ? marcas[0][0] : 'Todas') : marca}</b></span>
+          {marca !== 'Todas' ? <span className="pos-dd-x" role="button" aria-label="Quitar marca" onClick={(e) => { e.stopPropagation(); setMarca('Todas') }}>✕</span> : <I n="chevDown" className="pos-dd-chev" />}
+        </button>
+      </div>
+      {hojaCat && <Modal title="Categoría" className="flt-sheet" onClose={() => setHojaCat(false)}>
+        <div className="pos-cat-grid">
+          {catsVisibles.map(([nombre, n]) => <button key={nombre} type="button" className={categoria === nombre ? 'on' : ''} aria-pressed={categoria === nombre} onClick={() => { setCategoria(nombre); setHojaCat(false) }}>
+            <span className="pos-cg-ic">{nombre === 'Todos' ? <I n="box" /> : <CategoryIcon categoria={nombre} />}</span>
+            <b>{nombre === 'Todos' ? 'Todas' : nombre}</b><small>{n} {n === 1 ? 'producto' : 'productos'}</small>
+            {categoria === nombre && <span className="flt-check"><I n="check" /></span>}
+          </button>)}
         </div>
-      )}
+      </Modal>}
+      {hojaMarca && <Modal title="Marca" subtitle={categoria === 'Todos' ? 'Todas las categorías' : categoria} className="flt-sheet" onClose={() => setHojaMarca(false)}>
+        <div className="pos-cat-grid pos-brand-grid">
+          {[['Todas', enCategoria.length], ...marcas].map(([m, n]) => <button key={m} type="button" className={marca === m ? 'on' : ''} aria-pressed={marca === m} onClick={() => { setMarca(m); setHojaMarca(false) }}>
+            <span className="pos-cg-ic pos-bm">{m === 'Todas' ? <I n="tag" /> : m.slice(0, 2).toUpperCase()}</span>
+            <b>{m === 'Todas' ? 'Todas' : m}</b><small>{n} {n === 1 ? 'producto' : 'productos'}</small>
+            {marca === m && <span className="flt-check"><I n="check" /></span>}
+          </button>)}
+        </div>
+      </Modal>}
+
+      {cargando ? <div className="pos-skel">{[0, 1, 2, 3].map(i => <div key={i} className="pos-skel-tile"><span /><i /><i /><b /></div>)}</div>
+      : visibles.length === 0 ? <Empty text="Sin productos" description={q ? 'Prueba con otro nombre o código.' : 'No hay productos en esta categoría.'} />
+      : categoria === 'Todos' && marca === 'Todas' && !q && !verCatalogo ? <div className="pos-top">
+          <header className="pos-top-head">
+            <span className="pos-top-ic"><I n="tag" /></span>
+            <div><h3>{top.propios ? 'Tus más vendidos' : 'Más vendidos de la tienda'}</h3><p>{top.lista.length ? (top.propios ? 'Lo que más vendes, a un toque' : 'Aún no tienes ventas propias') : 'Cuando vendas, aquí verás tus favoritos'}</p></div>
+          </header>
+          {top.lista.length > 0 ? <div className="pos-grid">{top.lista.map(({ p, n }, i) => <div key={p.id} className="pos-rank-wrap"><span className={'pos-rank r' + (i + 1)}>#{i + 1}</span><span className="pos-sold">{n} {n === 1 ? 'vendido' : 'vendidos'}</span>{tile(p, i)}</div>)}</div>
+            : <div className="pos-grid">{disponibles.filter(p => p.stock > 0).slice(0, 4).map((p, i) => tile(p, i))}</div>}
+          <button type="button" className="fv-history-btn pos-all" onClick={() => setVerCatalogo(true)}>
+            <span className="fv-history-ic"><I n="box" /></span>
+            <span><b>Ver todo el catálogo</b><small>{disponibles.length} productos · busca por categoría o marca</small></span>
+            <I n="back" className="flip" />
+          </button>
+        </div>
+      : <>{verCatalogo && categoria === 'Todos' && marca === 'Todas' && !q && <button type="button" className="pos-back-top" onClick={() => setVerCatalogo(false)}><I n="back" />Volver a mis más vendidos</button>}<div className="pos-grid">{visibles.map((p, i) => tile(p, i))}</div></>}
+
+      {detalle && (() => {
+        const p = res.find(x => x.id === detalle.id) || detalle, n = enCarrito(p.id), libre = p.stock - n
+        return <Modal title="Detalle del producto" className="experience-sheet pos-detail" onClose={() => setDetalle(null)} footer={libre > 0 && !p.maneja_serial ? <div className="pos-detail-foot">
+            <div className="pos-step"><button type="button" aria-label="Menos" disabled={cantDet <= 1} onClick={() => setCantDet(c => Math.max(1, c - 1))}>−</button><output>{cantDet}</output><button type="button" aria-label="Más" disabled={cantDet >= libre} onClick={() => setCantDet(c => Math.min(libre, c + 1))}>+</button></div>
+            <button type="button" className="inv-btn-gold" onClick={() => { agregarVarios(p, cantDet); setDetalle(null) }}>Agregar · {money(p.precio_venta * cantDet)}</button>
+          </div> : p.maneja_serial && libre > 0 ? <button type="button" className="inv-btn-gold full" onClick={() => { setDetalle(null); agregar(p) }}>Elegir unidad</button> : <button type="button" className="inv-btn-outline full" disabled>Sin unidades disponibles</button>}>
+          <div className="pos-detail-img"><ProductThumbnail product={p} /></div>
+          <span className="pos-detail-eyebrow">{[p.categoria, p.marca || 'Genérica'].filter(Boolean).join(' · ')}</span>
+          <h2 className="pos-detail-name">{p.nombre ? p.nombre.charAt(0).toUpperCase() + p.nombre.slice(1) : ''}</h2>
+          {p.descripcion && <p className="pos-detail-desc">{p.descripcion}</p>}
+          <div className="pos-detail-box">
+            <div><span>Precio</span><b className="gold">{money(p.precio_venta)}</b></div>
+            <div><span>Disponibles</span><b className={libre <= 0 ? 'bad' : libre <= p.stock_min ? 'warn' : 'good'}>{libre} {libre === 1 ? 'unidad' : 'unidades'}</b></div>
+            {n > 0 && <div><span>Ya en la venta</span><b>{n}</b></div>}
+            <div><span>Código</span><b className="mono">{p.codigo}</b></div>
+          </div>
+          {libre > 0 && libre <= p.stock_min && <p className="pos-detail-note warn"><I n="warn" />Quedan pocas unidades de este producto.</p>}
+        </Modal>
+      })()}
       {remove && <ConfirmAction title={remove==='all'?'Vaciar carrito':'Quitar producto'} label="Quitar" onClose={()=>setRemove(null)} onConfirm={()=>setCarrito(c=>remove==='all'?[]:c.filter(i=>i.key!==remove.key))}>Se quitaran {remove==='all'?'todos los productos':remove.producto.nombre} del carrito. No cambia el inventario.</ConfirmAction>}
-      {scan && <Scanner onClose={() => setScan(false)} onScan={alEscanear} />}
-      {verCliente && <ClientePicker onClose={() => setVerCliente(false)} onPick={(c) => { setCliente(c); setVerCliente(false) }} />}
+      {verCliente === 'nuevo' && <ClienteForm onClose={() => setVerCliente(false)} onSaved={(c) => { setCliente(c); setVerCliente(false) }} />}
+      {verCliente && verCliente !== 'nuevo' && <ClientePicker sinConsumidor onClose={() => setVerCliente(false)} onPick={(c) => { setCliente(c); setVerCliente(false) }} />}
       {facturaId && <FacturaDetalle id={facturaId} nueva onClose={() => setFacturaId(null)} />}
 
       {serialDe && (
@@ -186,37 +342,55 @@ export default function Vender() {
         </Modal>
       )}
 
-      {verCarrito && (
-        <Modal expanded={expand} title="Carrito" subtitle="Revisa tu venta antes de confirmar" className="experience-sheet checkout-sheet" keyboardAware onClose={() => setVerCarrito(false)} footer={
-          <button className="btn full" disabled={busy || pendingSale || carrito.length === 0} onClick={facturar}>{busy ? 'Facturando…' : `Confirmar venta · ${money(total)}`}</button>}>
-          <div className="flex gap-2 mb-2"><button className="btn sec sm" onClick={()=>setExpand(!expand)}>{expand?'Contraer carrito':'Expandir carrito'}</button><button className="btn sec sm" disabled={!carrito.length} onClick={()=>setRemove('all')}>Vaciar carrito</button></div>
+      {verCarrito && (() => {
+        const mp = METODOS_PAGO.find(m => m[0] === metodo) || METODOS_PAGO[0]
+        return <Modal expanded={expand} title="Tu venta" subtitle="Revisa y cobra" className="experience-sheet checkout-sheet pos-checkout pos-ck" keyboardAware onClose={() => setVerCarrito(false)} footer={
+          <button className={'pos-pay2' + (cliente ? '' : ' locked')} disabled={busy || pendingSale || carrito.length === 0} onClick={() => { if (!cliente) { setFaltaCliente(true); setTimeout(() => setFaltaCliente(false), 600); return toast('Elige o registra el cliente para continuar') } facturar() }}>
+            <span className="pos-pay2-ic"><I n={cliente ? mp[2] : 'user'} /></span>
+            <span className="pos-pay2-txt"><small>{busy ? 'Procesando…' : cliente ? 'Cobrar en ' + mp[1].toLowerCase() : 'Falta el cliente'}</small><b>{busy ? 'Facturando' : money(total)}</b></span>
+            <span className="pos-pay2-go"><I n="back" className="flip" /></span>
+          </button>}>
           <ErrorBox text={err} />
-          <FormSection number="01" title="Tu selección">
+
+          <div className="pos-step-head"><span className="pos-step-n">1</span><h4>Productos</h4><button type="button" className="pos-clear" disabled={!carrito.length} onClick={()=>setRemove('all')}><I n="trash" />Vaciar</button></div>
+          <div className="pos-lines">
           {carrito.map((i) => (
-            <div key={i.key} className="row checkout-item">
+            <div key={i.key} className="pos-line">
               <ProductThumbnail product={i.producto} />
-              <div className="flex-1 min-w-0"><p className="m-0 text-sm font-semibold">{i.producto.nombre}</p><p className="m-0 text-xs text-muted">{i.unidad ? 'Serial ' + i.unidad.serial : money(i.producto.precio_venta) + ' c/u'}</p></div>
-              <div className="checkout-item-controls">{!i.unidad && <Stepper value={i.cantidad} max={i.producto.stock} onChange={(n) => cambiarCant(i, n)} />}<b>{money(i.producto.precio_venta*i.cantidad)}</b><button className="checkout-remove" aria-label={`Quitar ${i.producto.nombre}`} onClick={() => quitar(i)}><Icon name="trash"/></button></div>
+              <div className="pos-line-txt"><b>{i.producto.nombre}</b><small>{i.unidad ? 'Serial ' + i.unidad.serial : money(i.producto.precio_venta) + ' c/u'}</small>
+                <div className="pos-line-ctrl">{!i.unidad ? <div className="pos-step sm"><button type="button" aria-label="Disminuir" onClick={() => i.cantidad <= 1 ? quitar(i) : cambiarCant(i, i.cantidad - 1)}>−</button><output>{i.cantidad}</output><button type="button" aria-label="Aumentar" disabled={i.cantidad >= i.producto.stock} onClick={() => cambiarCant(i, i.cantidad + 1)}>+</button></div> : <span />}<b className="pos-line-total">{money(i.producto.precio_venta*i.cantidad)}</b></div>
+              </div>
+              <button className="pos-line-x" aria-label={`Quitar ${i.producto.nombre}`} onClick={() => quitar(i)}><I n="trash" /></button>
             </div>
           ))}
-          </FormSection><div className="mt-3">
-            <FormSection number="02" title="Cliente y vendedor">
-            <label className="lbl">Cliente</label>
-            <button className="btn sec full mb-3" onClick={() => setVerCliente(true)}>{cliente ? cliente.nombre + (cliente.documento?' ('+cliente.documento+')':'') : 'Consumidor final · tocar para elegir'}</button>
-            {isDemoMode && esAdmin && <Select label="Vendedor" value={seller} onChange={e=>setSeller(e.target.value)}>{sellers.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</Select>}
-            </FormSection><FormSection number="03" title="Pago y observaciones">
-            <label className="lbl">Método de pago</label>
-            <Chips value={metodo} onChange={setMetodo} options={[{ value: 'efectivo', label: 'Efectivo' }, { value: 'tarjeta', label: 'Tarjeta' }, { value: 'transferencia', label: 'Transferencia' }]} />
+          </div>
+
+          <div className="pos-step-head"><span className="pos-step-n">2</span><h4>Datos del cliente</h4>{!cliente && <span className="pos-req">Obligatorio</span>}</div>
+          {cliente ? <div className="pos-client in-sheet sel">
+            <span className="pos-client-av">{cliente.nombre.split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</span>
+            <span className="pos-client-txt"><small>{[cliente.tipo_documento, cliente.documento].filter(Boolean).join(' ') || 'Cliente'}{cliente.telefono ? ' · ' + cliente.telefono : ''}</small><b>{cliente.nombre}</b></span>
+            <button type="button" className="pos-client-act" onClick={() => setCliente(null)}>Cambiar</button>
+          </div> : <div className={'pos-who2' + (faltaCliente ? ' shake' : '')}>
+            <button type="button" onClick={() => setVerCliente('buscar')}><span className="pos-who2-ic"><I n="search" /></span><span><b>Cliente registrado</b><small>Buscar por nombre o documento</small></span></button>
+            {can('crear_clientes') && <button type="button" onClick={() => setVerCliente('nuevo')}><span className="pos-who2-ic"><I n="plus" /></span><span><b>Cliente nuevo</b><small>Registrar sus datos</small></span></button>}
+          </div>}
+          {isDemoMode && esAdmin && <Select label="Vendedor" value={seller} onChange={e=>setSeller(e.target.value)}>{sellers.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</Select>}
+
+          <div className="pos-step-head"><span className="pos-step-n">3</span><h4>Forma de pago</h4></div>
+          <div className="pos-pays2">{METODOS_PAGO.map(([k, l, ic]) => <button key={k} type="button" className={'m-' + k + (metodo === k ? ' on' : '')} aria-pressed={metodo === k} onClick={() => setMetodo(k)}><span className="pos-pays2-ic"><I n={ic} /></span><span>{l}</span></button>)}</div>
+
+          {!extras && !desc && !notas ? <button type="button" className="pos-more" onClick={() => setExtras(true)}><I n="plus" />Agregar descuento o nota</button>
+          : <div className="pos-extra">
             <Input disabled={!can('editar_precios')} title={!can('editar_precios')?'Tu perfil no puede aplicar descuentos':undefined} label="Descuento ($)" inputMode="numeric" value={descuento} onChange={(e) => setDescuento(e.target.value.replace(/\D/g, ''))} />
-            <Input label="Notas (opcional)" value={notas} onChange={(e) => setNotas(e.target.value)} />
-            </FormSection><div className="checkout-totals">
-            <div className="flex justify-between text-sm"><span className="text-muted">Subtotal</span><b>{money(subtotal)}</b></div>
-            {desc > 0 && <div className="flex justify-between text-sm"><span className="text-muted">Descuento</span><b>-{money(desc)}</b></div>}
-            <div className="flex justify-between text-lg mt-1"><span>Total</span><b>{money(total)}</b></div>
-            </div>
+            <Input label="Nota (opcional)" value={notas} onChange={(e) => setNotas(e.target.value)} />
+          </div>}
+          <div className="pos-sum">
+            <div><span>Subtotal · {unidadesTotal} {unidadesTotal === 1 ? 'producto' : 'productos'}</span><b>{money(subtotal)}</b></div>
+            {desc > 0 && <div className="disc"><span>Descuento</span><b>−{money(desc)}</b></div>}
+            <div className="grand"><span>Total</span><b>{money(total)}</b></div>
           </div>
         </Modal>
-      )}
+      })()}
     </AppShell>
   )
 }

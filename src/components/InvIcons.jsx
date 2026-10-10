@@ -41,6 +41,10 @@ const P = {
   idcard: <><rect x="3" y="5.5" width="18" height="13" rx="2.5" /><circle cx="8.5" cy="11" r="2" /><path d="M5.8 15.6c.5-1.3 1.5-2 2.7-2s2.2.7 2.7 2M14 10h4M14 13.5h3" /></>,
   receipt: <><path d="M6 3.5h12v17l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3z" /><path d="M9 8h6M9 11.5h6M9 15h3.5" /></>,
   users: <><circle cx="9" cy="8.5" r="3.2" /><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6" /><path d="M15.5 5.6a3 3 0 010 5.8M17 14.6c1.8.5 3 1.9 3.5 4.4" /></>,
+  check: <path d="M5 12.5l4.2 4.2L19 7" />,
+  cash: <><rect x="2.8" y="6.5" width="18.4" height="11" rx="2" /><circle cx="12" cy="12" r="2.6" /><path d="M6 9.5v5M18 9.5v5" /></>,
+  card: <><rect x="2.8" y="5.5" width="18.4" height="13" rx="2.4" /><path d="M2.8 10h18.4M6.5 14.8h3.5" /></>,
+  bank: <><path d="M3.5 9.5L12 4.5l8.5 5" /><path d="M5 10v7M9.7 10v7M14.3 10v7M19 10v7M3.5 19.5h17" /></>,
   generic: <><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M4 7.5l8 4.5 8-4.5M12 12v9" /></>,
 }
 export function I({ n, className = '', ...rest }) {

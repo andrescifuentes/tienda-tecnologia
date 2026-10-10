@@ -33,7 +33,7 @@ function HomeTools() {
     },250)
     return()=>{active=false;clearTimeout(timer)}
   },[q])
-  return <section className="home-tools"><SearchBar value={q} onChange={setQ} onScan={()=>setScan(true)} placeholder="Buscar producto, SKU o factura" />
+  return <section className="home-tools"><SearchBar value={q} onChange={setQ} placeholder="Buscar producto o factura" />
     {q && <div className="card search-results mb-3">{results.length ? results.map(x=><button key={x.key} className="row menu-row" onClick={()=>navigate(x.to)}><span className="flex-1"><b>{x.title}</b><small>{x.sub}</small></span><Icon name="back" className="w-4 h-4 rotate-180" /></button>):<p className="text-sm text-muted">Sin coincidencias</p>}</div>}
     {!q && <div className="home-search-guide"><span className="premium-eyebrow">ENCUENTRA LO QUE NECESITAS</span><p>Productos, códigos y facturas.</p><small>Prueba AirPods, USBC2M o FV-1245.</small></div>}
     <div className="quick-actions">{[{to:'/vender',title:'Nueva venta',icon:'cart',allowed:can('vender')},{to:'/inventario',title:'Inventario',icon:'box',allowed:can('ver_inventario')},{to:'/facturas',title:'Facturas',icon:'doc',allowed:true}].filter(x=>x.allowed).map(x=><button key={x.to} onClick={()=>navigate(x.to)}><span><Icon name={x.icon}/></span>{x.title}</button>)}</div>

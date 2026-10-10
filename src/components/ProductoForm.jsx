@@ -22,6 +22,8 @@ function Field({ label, required, hint, children, className = '' }) {
   return <div className={'pf-field ' + className}><label className="pf-label">{label}{required && <span className="pf-req"> *</span>}</label>{children}{hint && <p className="pf-hint">{hint}</p>}</div>
 }
 
+const MARCAS_BASE = ['Apple', 'Samsung', 'Xiaomi', 'Huawei', 'Motorola', 'Oppo', 'Honor', 'Realme', 'Lenovo', 'HP', 'Dell', 'Asus', 'Acer', 'Sony', 'LG', 'JBL', 'Genérica']
+
 export default function ProductoForm({ inicial, onClose, onSaved }) {
   const { can } = useAuth()
   const editando = !!inicial?.id
@@ -33,6 +35,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
   const bloqueaCantidad = !!inicial?.maneja_serial
   const [cats, setCats] = useState([]), [provs, setProvs] = useState([])
   const [colores, setColores] = useState(COLORES)
+  const [marcas, setMarcas] = useState(MARCAS_BASE)
   const [picker, setPicker] = useState(null) // 'cat' | 'color'
   const [foto, setFoto] = useState(null) // { blob, url } | { remove:true }
   const [err, setErr] = useState('')
@@ -45,6 +48,10 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
     supabase.from('productos').select('color').not('color', 'is', null).then(({ data }) => {
       const usados = [...new Set((data || []).map(r => String(r.color).trim()).filter(Boolean))]
       setColores(prev => [...prev, ...usados.filter(c => !prev.some(x => x.toLowerCase() === c.toLowerCase()))])
+    })
+    supabase.from('productos').select('marca').not('marca', 'is', null).then(({ data }) => {
+      const usadas = [...new Set((data || []).map(r => String(r.marca).trim()).filter(Boolean))]
+      setMarcas(prev => [...prev, ...usadas.filter(m => !prev.some(x => x.toLowerCase() === m.toLowerCase()))].sort((a, b) => a === 'Genérica' ? 1 : b === 'Genérica' ? -1 : a.localeCompare(b)))
     })
     supabase.from('proveedores').select('id,nombre').eq('activo', true).order('nombre').then(({ data }) => setProvs(data || []))
   }, [])
@@ -82,7 +89,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
     const max = f.stock_max === '' ? null : Number(f.stock_max)
     if (max !== null && max < Number(f.stock_min)) return setErr('El stock máximo no puede ser menor que el mínimo.')
     const d = {
-      nombre: f.nombre.trim(), categoria_id: Number(f.categoria_id), marca: editando && inicial.marca ? inicial.marca : marcaFinal,
+      nombre: f.nombre.trim(), categoria_id: Number(f.categoria_id), marca: marcaFinal,
       color: f.color || null, descripcion: f.descripcion?.trim() || null,
       stock_min: Number(f.stock_min) || 0, stock_max: max,
     }
@@ -170,6 +177,9 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
     <Field label="Categoría" required>
       <button type="button" className="pf-select pf-trigger" onClick={() => setPicker('cat')}><span className="pf-ico">{categoria ? <CategoryIcon categoria={categoria.nombre} /> : <I n="box" />}</span><span className={'pf-trigger-text' + (categoria ? '' : ' ph')}>{categoria?.nombre || 'Seleccionar'}</span><I n="chevDown" className="pf-chev" /></button>
     </Field>
+    <Field label="Marca">
+      <button type="button" className="pf-select pf-trigger" onClick={() => setPicker('marca')}><span className="pf-ico"><span className="pf-brand-mono">{marcaFinal.charAt(0).toUpperCase()}</span></span><span className="pf-trigger-text">{marcaFinal}{!(f.marca || '').trim() && f.nombre ? <small className="pf-auto"> · detectada</small> : null}</span><I n="chevDown" className="pf-chev" /></button>
+    </Field>
     <Field label="Color">
       <button type="button" className="pf-select pf-trigger" onClick={() => setPicker('color')}><span className="pf-ico">{f.color ? <Swatch color={f.color} /> : <I n="palette" />}</span><span className={'pf-trigger-text' + (f.color ? '' : ' ph')}>{f.color || 'Seleccionar'}</span><I n="chevDown" className="pf-chev" /></button>
     </Field>
@@ -199,6 +209,10 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
       onAdd={async nombre => { const { data, error } = await supabase.from('categorias').insert({ nombre }).select('id,nombre').single(); if (error) throw new Error(mensajeError(error)); setCats(c => [...c, data].sort((x, y) => x.nombre.localeCompare(y.nombre))); return data.id }}
       onRename={async (id, nombre) => { const { error } = await supabase.from('categorias').update({ nombre }).eq('id', id); if (error) throw new Error(mensajeError(error)); setCats(c => c.map(x => x.id === id ? { ...x, nombre } : x)) }}
       onHide={async id => { const { error } = await supabase.from('categorias').update({ activa: false }).eq('id', id); if (error) throw new Error(mensajeError(error)); setCats(c => c.filter(x => x.id !== id)); if (String(f.categoria_id) === String(id)) set('categoria_id')('') }} />}
+    {picker === 'marca' && <OptionPicker title="Marca" addLabel="Nueva marca" addPlaceholder="Ej. Huawei" value={(f.marca || '').trim()}
+      options={[{ value: '', label: 'Detectar por el nombre' + (f.nombre ? ' (' + inferirMarca(f.nombre) + ')' : ''), icon: <I n="tag" />, editable: false }, ...marcas.map(m => ({ value: m, label: m, icon: <span className="pf-brand-mono">{m.charAt(0).toUpperCase()}</span>, editable: false }))]}
+      onClose={() => setPicker(null)} onPick={v => { set('marca')(v); setPicker(null) }}
+      onAdd={async nombre => { const t = nombre.trim().replace(/\s+/g, ' '); const v = t.charAt(0).toUpperCase() + t.slice(1); setMarcas(m => [...m, v].sort((a, b) => a.localeCompare(b))); return v }} />}
     {picker === 'color' && <OptionPicker title="Color" addLabel="Nuevo color" addPlaceholder="Ej. Titanio natural" value={f.color || ''}
       options={[{ value: '', label: 'Sin color', icon: <I n="palette" />, editable: false }, ...colores.map(c => ({ value: c, label: c, icon: <Swatch color={c} /> }))]}
       onClose={() => setPicker(null)} onPick={v => { set('color')(v); setPicker(null) }}

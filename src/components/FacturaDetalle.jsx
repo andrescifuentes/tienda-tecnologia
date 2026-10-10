@@ -5,12 +5,13 @@ import { createInvoicePdf, invoicePdfFile, canSharePdf, saveInvoicePdf, logoList
 import ConfirmAction from './ConfirmAction'
 import { useAction } from '../lib/useAction'
 import { Loader, Badge, ErrorBox, Input } from './ui'
-import { supabase, isDemoMode } from '../lib/supabase'
+import { supabase, isDemoMode, conAutorizacionAdmin } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { money, fechaHora, numFactura, mensajeError } from '../lib/format'
 import { textoFactura } from '../lib/factura'
 import { enlaceWhatsApp } from '../lib/whatsapp'
 import { toast } from '../lib/toast'
+import { I } from './InvIcons'
 import { subirFacturaPdf, mensajeWhatsApp, correoFactura } from '../lib/facturaEnvio'
 
 const soloNum = (t) => String(t || '').replace(/\D/g, '')
@@ -29,6 +30,12 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
   const [correo, setCorreo] = useState('')
   const [enlacePdf, setEnlacePdf] = useState('')
   const [enviando, setEnviando] = useState('')
+  const [editarContacto, setEditarContacto] = useState(false)
+  const [enviada, setEnviada] = useState(false)
+  const [adminCorreo, setAdminCorreo] = useState(''), [adminClave, setAdminClave] = useState('')
+  const necesitaAdmin = !can('anular_facturas')
+  const bloqueada = nueva && !enviada
+  const cerrar = () => { if (bloqueada) return toast('Envía la factura por WhatsApp o correo para finalizar la venta'); onClose() }
   const [busy, setBusy] = useState(false)
   const [confirmRefund,setConfirmRefund] = useState(false), [newWarranty,setNewWarranty] = useState(false)
 
@@ -69,7 +76,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
   async function simulate(canal, destino='Vista local') {
     const { error } = await supabase.from('factura_envios').insert({factura_id:f.id,canal,destino,enviado_por:perfil.id,fecha:new Date().toISOString(),simulado:true,estado:'previsualizado'})
     if(error) return setErr(mensajeError(error))
-    setPreview(canal); toast('Vista previa preparada')
+    setPreview(canal); if (canal === 'whatsapp' || canal === 'correo') setEnviada(true); toast('Vista previa preparada')
   }
   async function obtenerEnlace() {
     if (enlacePdf) return enlacePdf
@@ -86,7 +93,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
       const url = await obtenerEnlace()
       const link = enlaceWhatsApp(t, mensajeWhatsApp(f, url))
       if (ventana && !ventana.closed) ventana.location.href = link; else window.location.href = link
-      await registrarEnvio('whatsapp', t)
+      await registrarEnvio('whatsapp', t); setEnviada(true)
       toast('Factura lista para enviar por WhatsApp')
     } catch (error) { ventana?.close(); setErr('No se pudo preparar el envío. ' + mensajeError(error)) }
     finally { setEnviando('') }
@@ -99,7 +106,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
     try {
       const url = await obtenerEnlace()
       window.location.href = 'mailto:' + c + correoFactura(f, url)
-      await registrarEnvio('correo', c)
+      await registrarEnvio('correo', c); setEnviada(true)
       if (f.cliente_id && !f.clientes?.correo) supabase.from('clientes').update({ correo: c }).eq('id', f.cliente_id).then(() => {})
       toast('Correo preparado con la factura')
     } catch (error) { setErr('No se pudo preparar el envío. ' + mensajeError(error)) }
@@ -122,9 +129,18 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
   async function anularImpl() {
     if (!motivo.trim()) return setErr('Escribe el motivo.')
     setBusy(true); setErr('')
-    const { error } = await supabase.rpc('anular_factura', { p_factura_id: f.id, p_motivo: motivo.trim() })
-    setBusy(false)
-    if (error) return setErr(mensajeError(error))
+    if (necesitaAdmin && (!adminCorreo.trim() || !adminClave)) { setBusy(false); return setErr('Escribe el correo y la contraseña del administrador.') }
+    let error
+    if (necesitaAdmin) {
+      try {
+        await conAutorizacionAdmin(adminCorreo, adminClave, async (cli, admin) => {
+          const r = await cli.rpc('anular_factura', { p_factura_id: f.id, p_motivo: `${motivo.trim()} · Solicitada por ${perfil?.nombre || 'vendedor'}, autorizada por ${admin.nombre}` })
+          if (r.error) throw new Error(mensajeError(r.error))
+        })
+      } catch (e) { error = e }
+    } else ({ error } = await supabase.rpc('anular_factura', { p_factura_id: f.id, p_motivo: motivo.trim() }))
+    setBusy(false); setAdminClave('')
+    if (error) return setErr(error.message || mensajeError(error))
     toast('Factura anulada'); setModo(null); setMotivo(''); cargar(); onCambio?.()
   }
   const [devolver, pendingRefund] = useAction(devolverImpl, () => setBusy(false))
@@ -143,7 +159,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
   const anulada = f.estado === 'anulada'
 
   return (
-    <Modal title={(nueva ? '✓ Venta registrada · ' : '') + numFactura(f)} className="invoice-detail-sheet experience-sheet" subtitle="El detalle de tu venta" keyboardAware onClose={onClose}>
+    <Modal title={nueva ? 'Venta exitosa' : 'Detalle de factura'} className="invoice-detail-sheet experience-sheet fd-sheet" keyboardAware onClose={cerrar} footer={nueva ? <button type="button" className={'fd-finish' + (enviada ? ' ok' : '')} onClick={cerrar}>{enviada ? <><I n="check" />Finalizar venta</> : <><I n="chat" />Envía la factura para finalizar</>}</button> : undefined}>
       <ErrorBox text={err} />
       {confirmRefund && <ConfirmAction title="Confirmar devolución" label="Confirmar devolución" onClose={()=>setConfirmRefund(false)} onConfirm={devolver}>Se registrará la devolución de los productos elegidos y su reverso de dinero y comisión. {reintegra ? 'El stock disponible aumentará.' : 'El producto dañado no aumentará el stock disponible.'}</ConfirmAction>}
       {preview && <section className={"invoice-preview "+(preview === 'pdf' ? 'invoice-document-preview' : 'invoice-message-preview')}><b>{preview === 'pdf' ? 'Vista previa de factura' : preview === 'whatsapp' ? 'Mensaje de WhatsApp' : preview === 'correo' ? 'Mensaje de correo' : 'Compartir factura'}</b>{preview !== 'pdf' && <p>Revisa el mensaje antes de abrir la aplicación.</p>}
@@ -153,49 +169,67 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
         {preview === 'whatsapp' && <button className="btn full mt-2" onClick={() => window.open(enlaceWhatsApp(tel, 'Hola ' + (f.clientes?.nombre || 'cliente') + ', te compartimos tu factura ' + numFactura(f) + ' de ANGIE TECH.\n' + texto()), '_blank', 'noopener,noreferrer')}>Abrir WhatsApp</button>}
         {preview === 'correo' && <a className="btn full mt-2" href={'mailto:' + encodeURIComponent(correo || '') + '?subject=' + encodeURIComponent('Factura ' + numFactura(f) + ' de ANGIE TECH') + '&body=' + encodeURIComponent(texto().replace(/\*/g,''))}>Abrir correo</a>}
       </section>}
-      <div className="invoice-detail-meta flex items-center gap-2 mb-2">
-        <span className="text-xs text-muted">{fechaHora(f.fecha)} · {f.perfiles?.nombre}</span>
-        <Badge tone={anulada ? 'bad' : f.estado === 'pendiente' ? 'warn' : 'good'}>{anulada ? 'Anulada' : f.estado === 'pendiente' ? 'Pendiente' : 'Emitida'}</Badge>
-      </div>
-      <div className="invoice-party"><span className="premium-eyebrow">CLIENTE</span><b>{f.clientes?.nombre || 'Consumidor final'}</b>{f.clientes?.documento&&<small>{f.clientes.documento}</small>}</div>
+      <section className={'fd-hero' + (nueva ? ' new' : '') + (anulada ? ' void' : '')}>
+        {nueva ? <span className="fd-check" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24" /><path d="M15 27l7 7 15-16" /></svg></span> : <span className="fd-hero-ic"><I n="receipt" /></span>}
+        <span className="fd-hero-eyebrow">{nueva ? '¡Venta registrada!' : anulada ? 'Factura anulada' : 'Factura de venta'}</span>
+        <b className="fd-hero-total">{money(f.total)}</b>
+        <div className="fd-hero-chips">
+          <span className="fd-num">{numFactura(f)}</span>
+          <span className={'fd-state ' + (anulada ? 'bad' : 'good')}>{anulada ? 'Anulada' : 'Emitida'}</span>
+          <span className={'fd-pay m-' + f.metodo_pago}><I n={{ efectivo: 'cash', tarjeta: 'card', transferencia: 'bank' }[f.metodo_pago] || 'cash'} />{String(f.metodo_pago || '').charAt(0).toUpperCase() + String(f.metodo_pago || '').slice(1)}</span>
+        </div>
+        <small className="fd-hero-meta">{fechaHora(f.fecha)} · {f.perfiles?.nombre}</small>
+      </section>
 
-      <div className="card invoice-detail-lines !p-3 mb-3">
+      <div className="fd-client">
+        <span className="fd-client-av">{f.clientes?.nombre ? f.clientes.nombre.split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase() : <I n="user" />}</span>
+        <span className="fd-client-txt"><small>Cliente</small><b>{f.clientes?.nombre || 'Consumidor final'}</b><em>{[f.clientes?.documento && (f.clientes?.tipo_documento || 'CC') + ' ' + f.clientes.documento, f.clientes?.telefono].filter(Boolean).join(' · ')}</em></span>
+      </div>
+
+      <h4 className="fd-sec">Productos <span>{items.reduce((a, i) => a + i.cantidad, 0)}</span></h4>
+      <div className="fd-items">
         {items.map((i) => (
-          <div key={i.id} className="row">
-            <div className="flex-1"><p className="m-0 text-sm font-semibold">{i.cantidad} × {i.nombre}</p>{devueltos(i.id) > 0 && <p className="m-0 text-xs text-warn">Devueltos: {devueltos(i.id)}</p>}</div>
-            <b className="text-sm">{money(i.precio_unitario * i.cantidad - i.descuento)}</b>
+          <div key={i.id} className="fd-item">
+            <span className="fd-item-q">{i.cantidad}×</span>
+            <span className="fd-item-txt"><b>{i.nombre}</b><small>{i.codigo ? i.codigo + ' · ' : ''}{money(i.precio_unitario)} c/u</small>{devueltos(i.id) > 0 && <small className="warn">Devueltos: {devueltos(i.id)}</small>}</span>
+            <b className="fd-item-total">{money(i.precio_unitario * i.cantidad - i.descuento)}</b>
           </div>
         ))}
-        {f.descuento > 0 && <div className="flex justify-between text-sm pt-2"><span className="text-muted">Descuento</span><b>-{money(f.descuento)}</b></div>}
-        <div className="flex justify-between text-base pt-2 invoice-detail-total"><span>Total ({f.metodo_pago})</span><b>{money(f.total)}</b></div>
-        {f.comision != null && <div className="flex justify-between text-xs text-muted pt-1"><span>Comisión ({f.comision_pct}%)</span><span>{money(f.comision)}</span></div>}
+        {f.descuento > 0 && <div className="fd-line"><span>Descuento</span><b>−{money(f.descuento)}</b></div>}
+        <div className="fd-line grand"><span>Total</span><b>{money(f.total)}</b></div>
+        {f.comision != null && <div className="fd-line small"><span>Comisión ({f.comision_pct}%)</span><span>{money(f.comision)}</span></div>}
       </div>
-      {anulada && <p className="text-sm text-bad">Motivo de anulación: {f.motivo_anulacion}</p>}
+      {anulada && <p className="fd-void-note"><I n="warn" />Motivo de anulación: {f.motivo_anulacion}</p>}
 
-      {!modo && <button className="btn full invoice-open-document" onClick={imprimir}>PDF / Imprimir</button>}
-      {!anulada && !modo && (
-        <>
-          <h4 className="experience-section-title">Comunicación</h4>
+      {!modo && <>
+        <h4 className="fd-sec">{anulada ? 'Documento' : 'Enviar factura'}{bloqueada && <em className="fd-req">Obligatorio</em>}{nueva && enviada && <em className="fd-ok">Enviada ✓</em>}</h4>
+        {bloqueada && <p className="fd-must"><I n="chat" /><span>Envía la factura al cliente por <b>WhatsApp</b> o <b>correo</b> para finalizar la venta.</span></p>}
+        <div className="fd-actions">
+          {!anulada && <button type="button" className="fd-act wa" disabled={!!enviando} onClick={porWhatsApp}><span className="fd-act-ic"><I n="chat" /></span><b>{enviando === 'whatsapp' ? 'Preparando…' : 'WhatsApp'}</b><small>{tel ? tel : 'Sin número'}</small></button>}
+          {!anulada && <button type="button" className="fd-act mail" disabled={!!enviando} onClick={() => correo ? porCorreo() : setEditarContacto(true)}><span className="fd-act-ic"><I n="mail" /></span><b>{enviando === 'correo' ? 'Preparando…' : 'Correo'}</b><small>{correo || 'Agregar correo'}</small></button>}
+          <button type="button" className="fd-act pdf" onClick={imprimir}><span className="fd-act-ic"><I n="receipt" /></span><b>Ver PDF</b><small>Imprimir o guardar</small></button>
+        </div>
+        {!anulada && (editarContacto ? <div className="fd-contact">
           <Input label="WhatsApp del cliente" value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" placeholder="300 123 4567" />
           <Input label="Correo del cliente" value={correo} onChange={(e) => setCorreo(e.target.value)} type="email" inputMode="email" placeholder="cliente@correo.com" />
-          <p className="text-xs text-muted mb-2">Se envía un enlace seguro para descargar la factura en PDF.</p>
-          <div className="action-grid communication-actions mb-3 invoice-detail-actions">
-            <button className="btn sec" disabled={!!enviando} onClick={porWhatsApp}>{enviando === 'whatsapp' ? 'Preparando…' : 'WhatsApp'}</button>
-            <button className="btn sec" disabled={!!enviando} onClick={porCorreo}>{enviando === 'correo' ? 'Preparando…' : 'Correo'}</button>
-            <button className="btn sec" onClick={compartir}>Compartir</button>
-            
-          </div>
-          {f.estado==='emitida'&&((isDemoMode&&can('editar_inventario'))||can('hacer_devoluciones'))&&<><h4 className="experience-section-title">Postventa</h4><div className="action-grid aftersale-actions">
-            {f.estado==='emitida' && can('hacer_devoluciones') && <button className="btn sec" onClick={() => { setErr(''); setModo('devolver') }}>Devolución</button>}
-          </div></>}
-          {can('anular_facturas') && <div className="destructive-zone"><button className="btn bad full" onClick={() => { setErr(''); setModo('anular') }}>Anular</button></div>}
-        </>
-      )}
+          <p className="fd-hint">Se envía un enlace seguro para descargar la factura en PDF.</p>
+        </div> : <button type="button" className="fd-link" onClick={() => setEditarContacto(true)}><I n="pencil" />Cambiar número o correo de envío</button>)}
+
+        {!anulada && <div className="fd-after">
+          {f.estado === 'emitida' && can('hacer_devoluciones') && <button type="button" onClick={() => { setErr(''); setModo('devolver') }}><I n="history" />Registrar devolución</button>}
+          <button type="button" className="bad" onClick={() => { setErr(''); setModo('anular') }}><I n="warn" />Anular factura{necesitaAdmin && <small className="fd-lock"><I n="shield" />Requiere administrador</small>}</button>
+        </div>}
+      </>}
 
       {modo === 'anular' && (
         <>
           <p className="text-sm text-muted">Al anular, el stock vuelve al inventario y la venta deja de contar.</p>
           <Input label="Motivo de la anulación" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+          {necesitaAdmin && <div className="fd-auth">
+            <p className="fd-auth-head"><I n="shield" /><span><b>Autorización del administrador</b><small>Solo un administrador puede anular facturas. Pídele que ingrese sus datos.</small></span></p>
+            <Input label="Correo del administrador" type="email" inputMode="email" autoComplete="off" value={adminCorreo} onChange={(e) => setAdminCorreo(e.target.value)} />
+            <Input label="Contraseña del administrador" type="password" autoComplete="new-password" value={adminClave} onChange={(e) => setAdminClave(e.target.value)} />
+          </div>}
           <div className="grid grid-cols-2 gap-2"><button className="btn sec" onClick={() => setModo(null)}>Cancelar</button><button className="btn bad" disabled={busy || pendingCancel} onClick={anular}>Confirmar anulación</button></div>
         </>
       )}

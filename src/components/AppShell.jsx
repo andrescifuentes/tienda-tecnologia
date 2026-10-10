@@ -2,7 +2,7 @@ import heroPhoto from '../assets/photography/header-phones.jpg'
 import heroPhoneLight from '../assets/photography/header-phones-light.png'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { isDemoMode } from '../lib/supabase'
 import { Brand } from './TechVisuals'
 import { useAuth } from '../context/AuthContext'
@@ -39,6 +39,7 @@ export default function AppShell({ title, sub, onBack, right, footer, homeAside,
   const deviceRef = useRef(null)
   useSearchViewport(deviceRef)
   const { pathname } = useLocation()
+  const navType = useNavigationType()
   const navigate = useNavigate()
   const { perfil } = useAuth()
   const [notificationsOpen,setNotificationsOpen] = useState(false), [profileOpen,setProfileOpen] = useState(false)
@@ -48,7 +49,7 @@ export default function AppShell({ title, sub, onBack, right, footer, homeAside,
   const volver = onBack || (pathname !== '/' ? () => navigate(-1) : null)
   return (
     <div className={'device' + (pathname === '/' ? ' home-experience' : '')} ref={deviceRef}>
-      {header ? <header className="top top-custom">{header}</header> : <header className={'top' + (pathname === '/' ? ' top-home' : '')}>
+      {header ? <header className={'top top-custom ' + (navType === 'POP' ? 'page-back' : 'page-fwd')} key={'h' + pathname}>{header}</header> : <header key={'h' + pathname} className={'top page-anim' + (pathname === '/' ? ' top-home' : '')}>
         {pathname === '/' && <div className="home-hero-photo" aria-hidden="true" style={{backgroundImage:`url(${heroPhoto})`}} />}{pathname === '/' && <img className="home-hero-light" src={heroPhoneLight} alt="" aria-hidden="true" />}
         {pathname === '/' ? <><div className="home-masthead"><Brand compact/><div className="header-controls">{right}{pathname === '/' && <><button className="icon-button" aria-label={isDemoMode?'Ver notificaciones locales':'Ver actividad reciente'} onClick={() => isDemoMode ? setNotificationsOpen(true) : document.querySelector('.activity-list')?.scrollIntoView({behavior:'smooth',block:'start'})}><Icon name="bell" className="w-5 h-5" />{isDemoMode&&notices.some(n=>!n.read)&&<span className="notification-count">{notices.filter(n=>!n.read).length}</span>}</button><button className="profile-avatar" aria-label="Mi perfil" onClick={() => setProfileOpen(true)}>{perfil?.nombre?.slice(0,1)}</button></>}<ThemeToggle /></div></div><div className="home-welcome"><div><p>{greeting}</p><h1>{perfil?.nombre?.split(' ')[0] || 'Tu negocio'}</h1>{sub && <p className="home-date">{sub}</p>}</div>{homeAside}</div></> : (<div className="top-inner">
           {volver && <button onClick={volver} className="icon-button" aria-label="Volver"><Icon name="back" className="w-5 h-5" /></button>}
@@ -61,7 +62,7 @@ export default function AppShell({ title, sub, onBack, right, footer, homeAside,
         </div>)}
       </header>}
       {isDemoMode && <div className="demo-banner" role="status"><span>{pathname === '/' ? 'DEMO LOCAL' : 'DEMO LOCAL · Datos ficticios'}</span><span>{pathname === '/' ? 'Guardado aquí' : 'Guardado en este dispositivo'}</span></div>}
-      <main className="view"><div className="page-content" key={pathname}>{children}</div></main>
+      <main className="view"><div className={'page-content ' + (navType === 'POP' ? 'page-back' : 'page-fwd')} key={pathname}>{children}</div></main>
       {footer && <div className="app-footer">{footer}</div>}
       {notificationsOpen&&<Notifications items={notices} onClose={()=>setNotificationsOpen(false)} />}
       {profileOpen&&<ProfileDialog onClose={()=>setProfileOpen(false)} />}

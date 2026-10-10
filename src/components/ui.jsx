@@ -17,7 +17,8 @@ export function Select({ label, children, ...p }) {
   return <div className="mb-3"><label className="lbl" htmlFor={p.id || id}>{label}</label><select className="inp" id={id} {...p} aria-invalid={!!error} onInvalid={e=>{e.preventDefault();setError('Elige una opción.')}} onChange={e=>{setError('');p.onChange?.(e)}}>{children}</select>{error&&<p role="alert" className="text-xs text-bad">{error}</p>}</div>
 }
 export const Empty = ({ text = 'Sin resultados', description = 'Prueba otra búsqueda o cambia los filtros para encontrar lo que necesitas.', action, actionLabel = 'Crear registro' }) => <div className="empty-state"><Icon name="box" className="w-7 h-7" /><p>{text}</p><p className="text-xs">{description}</p>{action && <button className="btn sec" onClick={action}>{actionLabel}</button>}</div>
-export const Loader = () => <div className="loading-state" role="status"><span className="loading-mark" />Cargando…</div>
+export const Loader = ({ filas = 4 }) => <div className="skel-list" role="status" aria-label="Cargando">{Array.from({ length: filas }, (_, i) => <div key={i} className="skel-card" style={{ animationDelay: i * 0.06 + 's' }}><span className="skel skel-img" /><span className="skel-lines"><i className="skel w70" /><i className="skel w45" /><i className="skel w30" /></span><span className="skel skel-price" /></div>)}</div>
+export const PageSkeleton = () => <div className="skel-page" role="status" aria-label="Cargando"><div className="skel-head"><span className="skel skel-logo" /><span className="skel skel-dot" /></div><span className="skel skel-title" /><span className="skel skel-sub" /><span className="skel skel-search" /><Loader filas={5} /></div>
 export const ErrorBox = ({ text }) => text ? <div role="alert" className="bg-badbg text-bad rounded-xl p-3 text-sm mb-3">{text}</div> : null
 export const Badge = ({ tone = '', children }) => <span className={'badge ' + tone}>{children}</span>
 
@@ -39,7 +40,6 @@ export function SearchBar({ value, onChange, placeholder = 'Buscar…', onScan }
         <Icon name="search" className="w-4 h-4 absolute left-3 top-3.5 text-muted" />
         <input type="search" enterKeyHint="search" autoCorrect="off" spellCheck={false} className="inp !pl-9" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} autoCapitalize="none" />
       </div>
-      {onScan && <button className="btn sec scan-button !px-3" onClick={onScan} aria-label="Escanear"><Icon name="scan" className="w-5 h-5" /></button>}
     </div>
   )
 }

@@ -22,8 +22,8 @@ const ymActual = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ }).
 const ymDe = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: TZ }).slice(0, 7)
 const telBonito = (t) => { const d = String(t || '').replace(/\D/g, ''); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : t }
 
-const GRUPOS = [['todos', 'Todos', 'users', ''], ['vip', 'VIP', 'tag', '5+ compras'], ['frecuentes', 'Frecuentes', 'history', '2+ compras'], ['sin', 'Sin compras', 'user', '']]
-const ORDENES = [['nombre', 'Nombre A–Z'], ['total', 'Mayor compra'], ['reciente', 'Compra reciente']]
+const GRUPOS = [['todos', 'Todos los clientes', 'users', ''], ['vip', 'VIP', 'tag', '5+ compras'], ['frecuentes', 'Frecuentes', 'history', '2+ compras'], ['sin', 'Sin compras', 'user', '']]
+const ORDENES = [['nombre', 'Nombre A–Z', 'user'], ['total', 'Mayor compra', 'tag'], ['reciente', 'Compra más reciente', 'history']]
 function pasa(k, n) { return k === 'todos' || (k === 'vip' && n >= 5) || (k === 'frecuentes' && n >= 2) || (k === 'sin' && n === 0) }
 
 function nivel(st) {
@@ -97,17 +97,23 @@ export default function Clientes() {
         {orden !== 'nombre' && <button type="button" onClick={() => setOrden('nombre')}><I n="sliders" />{ORDENES.find((o) => o[0] === orden)[1]}<span aria-hidden="true">✕</span></button>}
         <button type="button" className="clear" onClick={() => { setFiltro('todos'); setOrden('nombre') }}>Limpiar</button>
       </div>}
-      {hoja && <Modal title="Filtros" onClose={() => setHoja(false)} footer={<div className="inv-sheet-foot"><button type="button" className="inv-btn-outline" onClick={() => { setFiltro('todos'); setOrden('nombre') }}>Limpiar</button><button type="button" className="inv-btn-gold" onClick={() => setHoja(false)}>Ver {visibles?.length || 0} {visibles?.length === 1 ? 'cliente' : 'clientes'}</button></div>}>
+      {hoja && <Modal title="Filtros" className="flt-sheet" onClose={() => setHoja(false)} footer={<div className="inv-sheet-foot"><button type="button" className="inv-btn-outline" onClick={() => { setFiltro('todos'); setOrden('nombre') }}>Limpiar</button><button type="button" className="inv-btn-gold" onClick={() => setHoja(false)}>Ver {visibles?.length || 0} {visibles?.length === 1 ? 'cliente' : 'clientes'}</button></div>}>
         <p className="inv-sheet-label">Mostrar</p>
-        <div className="inv-cat-grid">
-          {GRUPOS.map(([k, l, ic, d]) => { const n = cuenta(k); return <button key={k} type="button" className={(filtro === k ? 'on' : '') + (n === 0 ? ' empty' : '')} aria-pressed={filtro === k} onClick={() => setFiltro(k)}>
-            <span className="inv-cat-icon"><I n={ic} /></span>
-            <span className="inv-cat-text"><b>{l}</b><small>{n} {n === 1 ? 'cliente' : 'clientes'}{d ? ' · ' + d : ''}</small></span>
+        <div className="flt-list">
+          {GRUPOS.map(([k, l, ic, d]) => { const n = cuenta(k); return <button key={k} type="button" className={filtro === k ? 'on' : ''} aria-pressed={filtro === k} onClick={() => setFiltro(k)}>
+            <span className="flt-row-ic"><I n={ic} /></span>
+            <span className="flt-row-name">{l}{d && <small className="flt-row-sub">{d}</small>}</span>
+            <span className="flt-row-n">{n}</span>
+            <span className="flt-row-check">{filtro === k && <I n="check" />}</span>
           </button> })}
         </div>
-        <p className="inv-sheet-label">Ordenar por</p>
-        <div className="inv-seg3">
-          {ORDENES.map(([k, l]) => <button key={k} type="button" className={orden === k ? 'on' : ''} aria-pressed={orden === k} onClick={() => setOrden(k)}>{l}</button>)}
+        <p className="inv-sheet-label flt-gap">Ordenar por</p>
+        <div className="flt-list">
+          {ORDENES.map(([k, l, ic]) => <button key={k} type="button" className={orden === k ? 'on' : ''} aria-pressed={orden === k} onClick={() => setOrden(k)}>
+            <span className="flt-row-ic"><I n={ic} /></span>
+            <span className="flt-row-name">{l}</span>
+            <span className="flt-row-check">{orden === k && <I n="check" />}</span>
+          </button>)}
         </div>
       </Modal>}
 

@@ -102,7 +102,7 @@ export default function CompraForm({ proveedorId, productoInicial, onClose, onSa
       ))}
       <button className="btn sec full" onClick={() => setBuscar(true)}>+ Agregar producto</button>
       </FormSection><div className="purchase-total"><span>Total compra<small>{items.length} productos</small></span><b>{money(total)}</b></div>
-      {buscar && <BuscarProducto onClose={() => setBuscar(false)} onPick={add} onScan={() => setScan(true)} />}
+      {buscar && <BuscarProducto onClose={() => setBuscar(false)} onPick={add} />}
       {scan && <Scanner onClose={() => setScan(false)} onScan={async (c) => {
         setScan(false)
         const { data } = await supabase.from('productos').select('*').or(`codigo_barras.eq.${limpiarBusqueda(c)},codigo.eq.${limpiarBusqueda(c)}`).limit(1)
@@ -125,7 +125,7 @@ function BuscarProducto({ onPick, onClose, onScan }) {
   }, [q])
   return (
     <Modal title="Elegir producto" className="experience-sheet product-picker-sheet" keyboardAware onClose={onClose}>
-      <SearchBar value={q} onChange={setQ} onScan={onScan} placeholder="Nombre o código" />
+      <SearchBar value={q} onChange={setQ} placeholder="Nombre o código" />
       {lista.map((p) => <button type="button" key={p.id} className="row product-pick" onClick={() => onPick(p)}><ProductThumbnail product={p}/><div className="flex-1"><p className="m-0 text-sm font-semibold">{p.nombre}</p><p className="m-0 text-xs text-muted">{p.codigo} · stock {p.stock}</p></div><span aria-hidden="true">›</span></button>)}
     </Modal>
   )

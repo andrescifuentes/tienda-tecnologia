@@ -1,10 +1,10 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Loader } from './ui'
+import { Loader, PageSkeleton } from './ui'
 
 export default function ProtectedRoute({ children, soloAdmin = false, permiso }) {
   const { session, loading, perfil, sinPerfil, activo, esAdmin, can, salir } = useAuth()
-  if (loading) return <div className="p-10"><Loader /></div>
+  if (loading) return <PageSkeleton />
   if (!session) return <Navigate to="/login" replace />
   if (sinPerfil || (perfil && !activo)) {
     return (
@@ -17,7 +17,7 @@ export default function ProtectedRoute({ children, soloAdmin = false, permiso })
       </main>
     )
   }
-  if (!perfil) return <div className="p-10"><Loader /></div>
+  if (!perfil) return <PageSkeleton />
   if (soloAdmin && !esAdmin) return <Navigate to="/" replace />
   if (permiso && !can(permiso)) return <Navigate to="/" replace />
   return children

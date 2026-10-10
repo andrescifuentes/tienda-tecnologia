@@ -5,7 +5,6 @@ import { useDemoRevision } from '../lib/demo/useDemoRevision'
 import { AnimatedCard, ProductThumbnail, Brand } from '../components/TechVisuals'
 import { I, CategoryIcon } from '../components/InvIcons'
 import Modal from '../components/Modal'
-import Scanner from '../components/Scanner'
 import RecordStatus from '../components/RecordStatus'
 import { useAction } from '../lib/useAction'
 import ProductoForm from '../components/ProductoForm'
@@ -43,9 +42,10 @@ export default function Inventario() {
   const [q, setQ] = useState(params.get('q') || '')
   const [filtro, setFiltro] = useState(['bajo', 'agotado', 'inactivos'].includes(params.get('filtro')) ? params.get('filtro') : 'todos')
   const [cats, setCats] = useState([])
-  const [categoria, setCategoria] = useState('Todos')
+  const [categoria, setCategoriaRaw] = useState('Todos')
+  const [marca, setMarca] = useState('Todas')
+  const setCategoria = (c) => { setCategoriaRaw(c); setMarca('Todas') }
   const [lista, setLista] = useState(null)
-  const [scan, setScan] = useState(false)
   const [filtros, setFiltros] = useState(false)
   const [sel, setSel] = useState(null)
   const [form, setForm] = useState(null)
@@ -80,11 +80,13 @@ export default function Inventario() {
     return () => clearTimeout(t)
   }, [q, tick, tabla, filtro, revision])
 
-  const visible = (lista || []).filter(p => (categoria === 'Todos' || p.categoria === categoria) && (filtro === 'bajo' ? p.stock <= p.stock_min : filtro === 'agotado' ? p.stock === 0 : true))
+  const marcaDe = (p) => (p.marca || 'Genérica').trim()
+  const marcasCat = Object.entries((lista || []).filter(p => categoria === 'Todos' || p.categoria === categoria).reduce((m, p) => { const k = marcaDe(p); m[k] = (m[k] || 0) + 1; return m }, {})).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const visible = (lista || []).filter(p => (categoria === 'Todos' || p.categoria === categoria) && (marca === 'Todas' || marcaDe(p) === marca) && (filtro === 'bajo' ? p.stock <= p.stock_min : filtro === 'agotado' ? p.stock === 0 : true))
   const bajos = (lista || []).filter(p => p.stock <= p.stock_min).length
   const porEstado = (lista || []).filter(p => filtro === 'bajo' ? p.stock <= p.stock_min : filtro === 'agotado' ? p.stock === 0 : true)
   const conteo = porEstado.reduce((m, p) => { const k = p.categoria || 'Sin categoría'; m[k] = (m[k] || 0) + 1; return m }, {})
-  const activos = (categoria !== 'Todos' ? 1 : 0) + (filtro !== 'todos' ? 1 : 0)
+  const activos = (categoria !== 'Todos' ? 1 : 0) + (filtro !== 'todos' ? 1 : 0) + (marca !== 'Todas' ? 1 : 0)
   const chipsCategorias = [{ nombre: 'Todos', n: porEstado.length }, ...Object.entries(conteo).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([nombre, n]) => ({ nombre, n }))]
   const refrescar = () => setTick(t => t + 1)
   useEffect(() => { if (lista && categoria !== 'Todos' && !conteo[categoria]) setCategoria('Todos') }, [lista, filtro]) // eslint-disable-line
@@ -106,48 +108,70 @@ export default function Inventario() {
   return (
     <AppShell title="Inventario" header={header}>
       <div className="inv-search">
-        <label className="inv-search-box"><I n="search" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar producto, marca o modelo..." autoCapitalize="none" aria-label="Buscar producto" /><button type="button" className="inv-scan" aria-label="Escanear código" onClick={() => setScan(true)}><I n="scan" /></button></label>
+        <label className="inv-search-box"><I n="search" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por nombre o código" autoCapitalize="none" aria-label="Buscar producto" />{q && <button type="button" className="inv-scan" aria-label="Limpiar búsqueda" onClick={() => setQ('')}>✕</button>}</label>
         <button type="button" className={'inv-filter' + (activos ? ' on' : '')} aria-label={activos ? `Filtros (${activos} activos)` : 'Filtros'} onClick={() => setFiltros(true)}><I n="sliders" />{activos > 0 && <span className="inv-filter-count">{activos}</span>}</button>
       </div>
       {activos > 0 && <div className="inv-tags">
+        {marca !== 'Todas' && <button type="button" onClick={() => setMarca('Todas')}><I n="tag" />{marca}<span aria-hidden="true">✕</span></button>}
         {categoria !== 'Todos' && <button type="button" onClick={() => setCategoria('Todos')}><CategoryIcon categoria={categoria} />{categoria}<span aria-hidden="true">✕</span></button>}
         {filtro !== 'todos' && <button type="button" onClick={() => setFiltro('todos')}><I n="warn" />{{ bajo: 'Stock bajo', agotado: 'Agotados', inactivos: 'Inactivos' }[filtro]}<span aria-hidden="true">✕</span></button>}
-        <button type="button" className="clear" onClick={() => { setCategoria('Todos'); setFiltro('todos') }}>Limpiar</button>
+        <button type="button" className="clear" onClick={() => { setCategoria('Todos'); setFiltro('todos'); setMarca('Todas') }}>Limpiar</button>
       </div>}
 
       {!lista ? <Loader /> : visible.length === 0 ? <Empty text="No hay productos para mostrar" description="Cambia la categoría o los filtros, o agrega un producto nuevo." action={editar ? () => setForm({}) : undefined} actionLabel="+ Agregar producto" /> : (
+        <><p className="inv-count">{visible.length} {visible.length === 1 ? 'producto' : 'productos'}{categoria !== 'Todos' ? ' · ' + categoria : ''}</p>
         <div className="inv-list">
           {visible.map((p, index) => {
             const [tone] = estadoStock(p)
-            return <AnimatedCard as="div" index={index} key={p.id} className="inv-card" role="button" tabIndex={0} onClick={() => setSel(p)} onKeyDown={e => { if (e.key === 'Enter') setSel(p) }}>
+            const tope = Math.max(Number(p.stock_max) || 0, (Number(p.stock_min) || 0) * 3, Number(p.stock) || 0, 1)
+            const pct = Math.max(p.stock > 0 ? 6 : 0, Math.min(100, Math.round((Number(p.stock) || 0) / tope * 100)))
+            const nombre = p.nombre ? p.nombre.charAt(0).toUpperCase() + p.nombre.slice(1) : ''
+            return <AnimatedCard as="div" index={index} key={p.id} className={'inv-card pro ' + tone} role="button" tabIndex={0} onClick={() => setSel(p)} onKeyDown={e => { if (e.key === 'Enter') setSel(p) }}>
               <ProductThumbnail product={p} />
               <div className="inv-card-body">
-                <div className="inv-card-top"><b>{p.nombre}</b><Menu items={acciones(p)} /></div>
-                <span className="inv-card-sub">{p.marca || 'Genérica'}{p.modelo ? ' · ' + p.modelo : ''}</span>
+                <div className="inv-card-top"><span className="inv-eyebrow">{[p.categoria, p.marca || 'Genérica'].filter(Boolean).join(' · ')}</span><Menu items={acciones(p)} /></div>
+                <b className="inv-card-name">{nombre}</b>
                 <span className="inv-card-sku">{p.codigo}</span>
-                <div className="inv-card-bottom"><span className={'inv-pill ' + tone}>{tone !== 'good' && <i />}{unidades(p.stock)}</span><b className="inv-price">{money(p.precio_venta)}</b></div>
+                <div className="inv-card-bottom">
+                  <span className="inv-stock"><span className="inv-stock-txt"><i />{p.stock === 0 ? 'Agotado' : unidades(p.stock)}</span><span className="inv-meter"><span style={{ width: pct + '%' }} /></span></span>
+                  <b className="inv-price">{money(p.precio_venta)}</b>
+                </div>
               </div>
             </AnimatedCard>
           })}
-        </div>
+        </div></>
       )}
 
-      {filtros && <Modal title="Filtros" onClose={() => setFiltros(false)} footer={<div className="inv-sheet-foot"><button type="button" className="inv-btn-outline" onClick={() => { setCategoria('Todos'); setFiltro('todos') }}>Limpiar</button><button type="button" className="inv-btn-gold" onClick={() => setFiltros(false)}>Ver {visible.length} {visible.length === 1 ? 'producto' : 'productos'}</button></div>}>
+      {filtros && <Modal title="Filtros" className="flt-sheet" onClose={() => setFiltros(false)} footer={<div className="inv-sheet-foot"><button type="button" className="inv-btn-outline" onClick={() => { setCategoria('Todos'); setFiltro('todos'); setMarca('Todas') }}>Limpiar</button><button type="button" className="inv-btn-gold" onClick={() => setFiltros(false)}>Ver {visible.length} {visible.length === 1 ? 'producto' : 'productos'}</button></div>}>
         <p className="inv-sheet-label">Estado del stock</p>
-        <div className="inv-seg3">
-          {[['todos', 'Todos'], ['bajo', 'Stock bajo'], ['agotado', 'Agotados'], ...(isDemoMode && editar ? [['inactivos', 'Inactivos']] : [])].map(([k, l]) => <button key={k} type="button" className={filtro === k ? 'on' : ''} aria-pressed={filtro === k} onClick={() => setFiltro(k)}>{l}</button>)}
+        <div className="flt-stats">
+          {[['todos', 'Todos', 'box', ''], ['bajo', 'Stock bajo', 'warn', 'warn'], ['agotado', 'Agotados', 'box', 'bad'], ...(isDemoMode && editar ? [['inactivos', 'Inactivos', 'history', '']] : [])].map(([k, l, ic, tone]) => {
+            const base = (lista || []).filter(p => categoria === 'Todos' || p.categoria === categoria)
+            const n = k === 'bajo' ? base.filter(p => p.stock <= p.stock_min).length : k === 'agotado' ? base.filter(p => p.stock === 0).length : base.length
+            return <button key={k} type="button" className={'flt-stat ' + tone + (filtro === k ? ' on' : '')} aria-pressed={filtro === k} onClick={() => setFiltro(k)}>
+              <span className="flt-stat-top"><span className="flt-stat-ic"><I n={ic} /></span>{filtro === k && <span className="flt-check"><I n="check" /></span>}</span>
+              <b>{n}</b><small>{l}</small>
+            </button>
+          })}
         </div>
         <p className="inv-sheet-label">Categoría</p>
-        <div className="inv-cat-grid">
-          {[{ nombre: 'Todos', n: porEstado.length }, ...cats.map(c => ({ nombre: c.nombre, n: conteo[c.nombre] || 0 })).sort((x, y) => y.n - x.n || x.nombre.localeCompare(y.nombre))].map(c =>
-            <button key={c.nombre} type="button" className={(categoria === c.nombre ? 'on' : '') + (c.n === 0 ? ' empty' : '')} aria-pressed={categoria === c.nombre} onClick={() => setCategoria(c.nombre)}>
-              <span className="inv-cat-icon">{c.nombre === 'Todos' ? <I n="box" /> : <CategoryIcon categoria={c.nombre} />}</span>
-              <span className="inv-cat-text"><b>{c.nombre === 'Todos' ? 'Todas' : c.nombre}</b><small>{c.n} {c.n === 1 ? 'producto' : 'productos'}</small></span>
+        <div className="flt-list">
+          {[{ nombre: 'Todos', n: porEstado.length }, ...cats.map(c => ({ nombre: c.nombre, n: conteo[c.nombre] || 0 })).filter(c => c.n > 0 || categoria === c.nombre).sort((x, y) => y.n - x.n || x.nombre.localeCompare(y.nombre))].map(c =>
+            <button key={c.nombre} type="button" className={categoria === c.nombre ? 'on' : ''} aria-pressed={categoria === c.nombre} onClick={() => setCategoria(c.nombre)}>
+              <span className="flt-row-ic">{c.nombre === 'Todos' ? <I n="box" /> : <CategoryIcon categoria={c.nombre} />}</span>
+              <span className="flt-row-name">{c.nombre === 'Todos' ? 'Todas las categorías' : c.nombre}</span>
+              <span className="flt-row-n">{c.n}</span>
+              <span className="flt-row-check">{categoria === c.nombre && <I n="check" />}</span>
             </button>)}
         </div>
-        {can('registrar_compras') && <button type="button" className="inv-sheet-link" onClick={() => { setFiltros(false); setCompra(true) }}><I n="truckIn" />Registrar ingreso de mercancía</button>}
+        {cats.some(c => !conteo[c.nombre]) && <p className="flt-note">Las categorías sin productos no se muestran.</p>}
+        {marcasCat.length > 1 && <>
+          <p className="inv-sheet-label flt-gap">Marca{categoria !== 'Todos' ? ' · ' + categoria : ''}</p>
+          <div className="pos-brands in-sheet">
+            {[['Todas', marcasCat.reduce((a, [, n]) => a + n, 0)], ...marcasCat].map(([m, n]) => <button key={m} type="button" aria-pressed={marca === m} className={marca === m ? 'on' : ''} onClick={() => setMarca(m)}>{m !== 'Todas' && <span className="pos-brand-mono">{m.charAt(0).toUpperCase()}</span>}{m}<em>{n}</em></button>)}
+          </div>
+        </>}
       </Modal>}
-      {scan && <Scanner onClose={() => setScan(false)} onScan={c => { setQ(c); setScan(false) }} />}
       {sel && !form && <ProductoDetalle p={sel} editar={editar} costos={costos} puedeVender={can('vender')} onClose={() => { setSel(null); if (productoId) navigate('/inventario', { replace: true }) }} onEditar={() => setForm(sel)} onVender={() => vender(sel)} onAjuste={() => setAjuste(sel)} onMovs={() => setMovs(sel)} onIngreso={can('registrar_compras') ? () => setCompra(sel) : null} onCargar={editar || can('registrar_compras') ? () => setCargar(sel) : null} onCambio={refrescar} />}
       {form && <ProductoForm inicial={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => { setForm(null); refrescar(); toast('Producto guardado') }} />}
       {compra && <CompraForm productoInicial={compra.id ? compra : null} onClose={() => setCompra(false)} onSaved={() => { setCompra(false); refrescar() }} />}
