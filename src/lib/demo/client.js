@@ -127,6 +127,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     if(table==='clientes') { if(!data.nombre?.trim())fail('El nombre es obligatorio.'); if(data.documento&&state.tables.clientes.some(c=>c.id!==id&&c.documento===data.documento))fail('duplicate key documento') }
     if (['clientes','proveedores','perfiles'].includes(table) && data.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.correo)) fail('Escribe un correo válido.')
     if (table === 'perfiles') {
+      if (data.documento && state.tables.perfiles.some(p => p.id !== id && p.documento?.trim() === data.documento.trim())) fail('duplicate key documento')
       if (!data.nombre?.trim() || !['admin','vendedor'].includes(data.rol)) fail('Nombre y rol válidos son obligatorios.')
       if ((!data.activo || data.rol !== 'admin') && state.tables.perfiles.find(p => p.id === id)?.rol === 'admin' && !state.tables.perfiles.some(p => p.id !== id && p.rol === 'admin' && p.activo)) fail('Debe quedar al menos un administrador activo.')
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ConfirmAction from '../components/ConfirmAction'
 import { useAction } from '../lib/useAction'
 import AppShell from '../components/AppShell'
@@ -8,6 +8,7 @@ import { Empty, Loader, Badge, Input, ErrorBox, SearchBar, Select } from '../com
 import { supabase, isDemoMode } from '../lib/supabase'
 import { fechaHora, mensajeError, money, hoyBogota, rangoMes } from '../lib/format'
 import { toast } from '../lib/toast'
+import { createEmployee, loadEmployees, normalizeEmployeeInput } from '../lib/employeeCreation'
 
 const PERMISOS = [
   ['vender', 'Vender y facturar'], ['ver_inventario', 'Ver inventario'], ['editar_inventario', 'Modificar inventario'],
@@ -19,17 +20,35 @@ const BASE = ['vender', 'ver_inventario', 'crear_clientes']
 export default function Empleados() {
   const [q, setQ] = useState('')
   const [lista, setLista] = useState(null)
+  const [listError, setListError] = useState('')
   const [nuevo, setNuevo] = useState(false)
   const [sel, setSel] = useState(null)
   const [tick, setTick] = useState(0)
   const [sales, setSales] = useState({day:[],month:[]})
   useEffect(()=>{if(!isDemoMode)return;const today=hoyBogota(),m=rangoMes();Promise.all([supabase.rpc('ventas_por_empleado',{p_desde:today,p_hasta:today}),supabase.rpc('ventas_por_empleado',{p_desde:m.ini,p_hasta:m.fin})]).then(([day,month])=>setSales({day:day.data||[],month:month.data||[]}))},[tick])
-  useEffect(() => { supabase.from('perfiles').select('*').order('nombre').then(({ data }) => setLista(data || [])) }, [tick])
+  useEffect(() => {
+    let current = true
+    setListError('')
+    loadEmployees(supabase).then(data => { if (current) setLista(data) }).catch(error => {
+      if (!current) return
+      setLista(previous => previous || [])
+      setListError(error.message)
+      console.error('[crear-empleado]', { stage: 'lista', code: error.code })
+    })
+    return () => { current = false }
+  }, [tick])
   const visible = (lista||[]).filter(p=>[p.nombre,p.correo,p.rol].some(v=>String(v||'').toLocaleLowerCase().includes(q.toLocaleLowerCase())))
-  const refrescar = () => { setLista(null); setTick((t) => t + 1) }
+  const refrescar = () => { setTick((t) => t + 1) }
+  const creado = profile => {
+    setNuevo(false); setQ('')
+    setLista(previous => [...(previous || []).filter(p => p.id !== profile.id), profile].sort((a,b) => a.nombre.localeCompare(b.nombre)))
+    refrescar()
+  }
 
   return (
     <div className="admin-premium admin-employees"><AppShell title="Empleados" sub="Equipo, acceso y comisiones" right={<button className="btn sm" onClick={() => setNuevo(true)}>+ Vendedor</button>}>
+      <ErrorBox text={listError} />
+      {listError && <button className="btn sec sm" onClick={refrescar}>Actualizar lista</button>}
       <SearchBar value={q} onChange={setQ} placeholder="Buscar empleado o correo" />
       {!lista ? <Loader /> : visible.length === 0 ? <Empty /> : (
         <div className="admin-list entity-list">
@@ -41,7 +60,7 @@ export default function Empleados() {
           ))}
         </div>
       )}
-      {nuevo && <Nuevo onClose={() => setNuevo(false)} onSaved={() => { setNuevo(false); refrescar() }} />}
+      {nuevo && <Nuevo onClose={() => setNuevo(false)} onSaved={creado} />}
       {sel && <Detalle p={sel} onClose={() => setSel(null)} onCambio={() => { refrescar(); setSel(null) }} />}
     </AppShell></div>
   )
@@ -58,24 +77,33 @@ function Nuevo({ onClose, onSaved }) {
   const [permisos, setPermisos] = useState(BASE)
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
-  const [crear, pendingCreate] = useAction(crearImpl, () => setBusy(false))
+  const sending = useRef(false), mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  const [crear, pendingCreate] = useAction(crearImpl)
+  const cerrar = () => {
+    if (sending.current) { toast('La creaci\u00f3n sigue en curso. Espera su resultado antes de cerrar.'); return }
+    onClose()
+  }
   async function crearImpl() {
-    if (!f.nombre.trim() || !f.correo.trim()) return setErr('Nombre y correo son obligatorios.')
-    if (f.password.length < 8) return setErr('La contraseña debe tener al menos 8 caracteres.')
+    if (sending.current) return
+    let input
+    try {
+      input = normalizeEmployeeInput({ ...f, rol: isDemoMode ? (f.rol || 'vendedor') : 'vendedor', permisos }, { demo: isDemoMode })
+    } catch (error) { setErr(error.message); return }
+    sending.current = true
     setBusy(true); setErr('')
-    const { data, error } = await supabase.functions.invoke('crear-empleado', {
-      body: { nombre: f.nombre.trim(), correo: f.correo.trim().toLowerCase(), password: f.password, telefono: f.telefono.trim() || null, ...(isDemoMode?{documento:f.documento?.trim()||null}:{}), rol: isDemoMode?(f.rol||'vendedor'):'vendedor', comision_pct: f.comision_pct === '' ? null : Number(f.comision_pct), permisos },
-    })
-    setBusy(false)
-    if (error || data?.error) {
-      let m = data?.error
-      if (!m && error?.context?.json) { try { m = (await error.context.json()).error } catch { /* ignore */ } }
-      return setErr(mensajeError({ message: m || error?.message || 'No se pudo crear el empleado' }))
+    try {
+      const profile = await createEmployee(supabase, input, { demo: isDemoMode })
+      if (mounted.current) { toast('Empleado creado'); onSaved(profile) }
+    } catch (error) {
+      if (mounted.current) setErr(error.message)
+    } finally {
+      sending.current = false
+      if (mounted.current) setBusy(false)
     }
-    toast('Empleado creado'); onSaved()
   }
   return (
-    <Modal title="Nuevo vendedor" subtitle="Acceso y perfil de tu equipo" className="admin-sheet employee-create-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" onClick={crear} disabled={busy || pendingCreate}>{busy ? 'Creando…' : 'Crear usuario'}</button>}>
+    <Modal title="Nuevo vendedor" subtitle="Acceso y perfil de tu equipo" className="admin-sheet employee-create-sheet" keyboardAware onClose={cerrar} footer={<button className="btn full" onClick={crear} disabled={busy || pendingCreate}>{busy ? 'Creando…' : 'Crear usuario'}</button>}>
       <ErrorBox text={err} />
       <FormSection number="01" title="Identidad"><div className="admin-form-grid"><div className="admin-span"><Input required label="Nombre completo" value={f.nombre} onChange={set('nombre')}/></div>{isDemoMode&&<Input label="Documento empleado" value={f.documento||''} onChange={set('documento')}/>}<Input label="Teléfono" value={f.telefono} onChange={set('telefono')} inputMode="tel"/></div></FormSection>
       <FormSection number="02" title="Acceso"><Input label="Correo (con él inicia sesión)" type="email" value={f.correo} onChange={set('correo')}/>{isDemoMode&&<RoleField label="Rol" value={f.rol||'vendedor'} onChange={set('rol')}/>}<PasswordField value={f.password} onChange={set('password')} generate={isDemoMode}/></FormSection>
