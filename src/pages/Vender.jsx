@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import ModuleBanner from '../components/ModuleBanner'
 import AppShell, { ThemeToggle } from '../components/AppShell'
 import { monetaryError } from '../lib/money'
 import { AnimatedCard, ProductThumbnail, Brand } from '../components/TechVisuals'
@@ -227,23 +228,8 @@ export default function Vender() {
   const saludo = horaBog < 12 ? 'Buenos días' : horaBog < 18 ? 'Buenas tardes' : 'Buenas noches'
   const iniciales = (perfil?.nombre || '').split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()
   const vipCard = (
-    <section className="pos-vip">
-    <span className="pos-vip-rings" aria-hidden="true" />
-    <div className="pos-vip-top">
-      <span className="pos-hello-av">{iniciales || <I n="user" />}</span>
-      <span className="pos-hello-txt"><small>{saludo},</small><b>{nombreCorto || 'vendedor'}</b></span>
-      <button type="button" className={'pos-cart-btn' + (unidadesTotal ? ' has' : '')} onClick={() => carrito.length && setVerCarrito(true)} aria-label={`Carrito, ${unidadesTotal} productos`}>
-        <I n="cart" />{unidadesTotal > 0 && <span key={unidadesTotal} className="pos-cart-n">{unidadesTotal}</span>}
-      </button>
-    </div>
-    <span className="pos-vip-eyebrow">Punto de venta</span>
-    <h1 className="pos-title">Nueva venta</h1>
-    <div className="pos-vip-stats">
-      <div><small>Ventas hoy</small><b>{hoyMio.n}</b></div>
-      <div><small>Vendido hoy</small><b className="g">{money(hoyMio.total)}</b></div>
-      <div className="live"><span className="pos-today-dot" />En turno</div>
-    </div>
-  </section>
+    <ModuleBanner modulo="vender" title="Nueva venta" sub={hoyMio.n ? `Hoy llevas ${hoyMio.n} ${hoyMio.n === 1 ? 'venta' : 'ventas'} · ${money(hoyMio.total)}` : 'Registra ventas de forma rápida'}
+      actions={<button type="button" className={unidadesTotal ? '' : 'ghost'} onClick={() => carrito.length ? setVerCarrito(true) : toast('Agrega productos para empezar')} aria-label={`Carrito, ${unidadesTotal} productos`}><I n="cart" />Carrito{unidadesTotal > 0 && <span key={unidadesTotal} className="mb-count">{unidadesTotal}</span>}</button>} />
   )
   const header = <div className="inv-head pos-head3">
     <div className="inv-head-top"><Brand compact /><ThemeToggle /></div>

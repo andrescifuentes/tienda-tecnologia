@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import ModuleBanner from '../components/ModuleBanner'
 import AppShell, { ThemeToggle } from '../components/AppShell'
 import { useSearchParams } from 'react-router-dom'
 import FullPage from '../components/FullPage'
@@ -83,7 +84,7 @@ export default function Clientes() {
 
   const header = <div className="inv-head">
     <div className="inv-head-top"><Brand compact /><ThemeToggle /></div>
-    <div className="inv-head-title"><div><h1>Clientes</h1><p>Tu cartera, siempre a la mano</p></div>{can('crear_clientes') && <button type="button" className="inv-add" onClick={() => setForm({})}><I n="plus" />Nuevo</button>}</div>
+    <ModuleBanner modulo="clientes" title="Clientes" sub="Gestiona la información de tus clientes" actions={can('crear_clientes') && <button type="button" onClick={() => setForm({})}><I n="plus" />Nuevo cliente</button>} />
   </div>
 
   return (

@@ -1,15 +1,16 @@
 import InicioVendedor from './InicioVendedor'
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDemoRevision } from '../lib/demo/useDemoRevision'
 import AppShell from '../components/AppShell'
 import Modal from '../components/Modal'
+import BusinessDetail from '../components/BusinessDetail'
 import { Icon } from '../components/Icons'
 import bannerPhoto from '../assets/photography/banner-phone.jpg'
 import { Loader, ErrorBox, Empty } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { supabase, isDemoMode } from '../lib/supabase'
-import { money, hoyBogota, fechaHora, numFactura, mensajeError } from '../lib/format'
+import { money, hoyBogota, rangoMes, fechaHora, numFactura, mensajeError } from '../lib/format'
 
 export default function Inicio() {
   const { esAdmin } = useAuth()
@@ -121,16 +122,43 @@ function ActivityRow({ a, onOpen }) {
   </button>
 }
 
+function DetalleNegocio({ onClose }) {
+  const { can } = useAuth()
+  const revision = useDemoRevision()
+  const [datos, setDatos] = useState(null), [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    setError('')
+    const mes = rangoMes()
+    Promise.all([
+      supabase.rpc('resumen_dashboard'),
+      supabase.rpc('ventas_por_empleado', { p_desde: mes.ini, p_hasta: mes.fin }),
+      supabase.from('productos_venta').select('id,codigo,nombre,stock,stock_min'),
+      supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,' + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)')).order('fecha', { ascending: false }).limit(6),
+    ]).then(([summary, team, products, invoices]) => {
+      for (const result of [summary, team, products, invoices]) if (result.error) throw result.error
+      if (!summary.data?.[0]) throw new Error('No se pudo cargar el resumen del negocio.')
+      if (active) setDatos({ summary: summary.data[0], team: team.data || [], products: products.data || [], invoices: invoices.data || [] })
+    }).catch(e => { if (active) setError(mensajeError(e)) })
+    return () => { active = false }
+  }, [revision])
+  return <Modal title="Detalle del negocio" subtitle="Resumen ejecutivo de ANGIE TECH" className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
+    <ErrorBox text={error} />
+    {!datos && !error ? <Loader /> : datos && <BusinessDetail data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} />}
+  </Modal>
+}
+
 function DashboardAdmin() {
   const navigate = useNavigate()
   const revision = useDemoRevision()
   const [ym, setYm] = useState(() => hoyBogota().slice(0,7))
   const [period, setPeriod] = useState('mes')
   const [data, setData] = useState(null), [err, setErr] = useState(''), [verTodo, setVerTodo] = useState(false)
+  const [detalleNegocio, setDetalleNegocio] = useState(false)
 
   useEffect(() => {
     ;(async () => {
-      const [netas, movs, fac, cli, com, prov, aj, prods] = await Promise.all([
+      const [netas, movs, fac, cli, com, prov, aj, prods, compTot] = await Promise.all([
         supabase.from('facturas_netas').select('id,fecha,estado,total_neto'),
         supabase.from('movimientos').select('tipo,monto,fecha'),
         supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,cliente_id,anulada_en').order('fecha', { ascending:false }).limit(30),
@@ -139,6 +167,7 @@ function DashboardAdmin() {
         supabase.from('proveedores').select('id,nombre'),
         supabase.from('movimientos_inventario').select('id,producto_id,tipo,cantidad,fecha,motivo').in('tipo', ['ajuste_entrada','ajuste_salida','devolucion_proveedor']).order('fecha', { ascending:false }).limit(15),
         supabase.from('productos_venta').select('id,nombre,stock,stock_min'),
+        supabase.from('compras').select('fecha,total,estado').eq('estado','recibida'),
       ])
       if (netas.error) return setErr(mensajeError(netas.error))
       const nCli = Object.fromEntries((cli.data || []).map(x => [x.id, x.nombre]))
@@ -151,7 +180,7 @@ function DashboardAdmin() {
         ...(com.data || []).filter(c => c.estado !== 'anulada').map(c => ({ key:'c' + c.id, fecha:c.creado_en, tone:'green', icon:<Icon name="plus" />, title:'Ingreso de mercancía', sub:'Proveedor: ' + (nProv[c.proveedor_id] || '—'), amount:money(c.total), to:'/proveedores?compra=' + c.id })),
         ...(aj.data || []).map(m => ({ key:'m' + m.id, fecha:m.fecha, tone:'gold', icon:<Icon name="box" />, title:m.tipo === 'devolucion_proveedor' ? 'Devolución a proveedor' : 'Ajuste de inventario', sub:nProd[m.producto_id] || m.motivo || 'Producto', amount:`${m.cantidad > 0 ? '+ ' : '- '}${Math.abs(m.cantidad)} ${Math.abs(m.cantidad) === 1 ? 'unidad' : 'unidades'}`, amountTone:m.cantidad > 0 ? 'pos' : 'neg', to:'/inventario?producto=' + m.producto_id })),
       ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
-      setData({ netas:netas.data || [], movs:movs.data || [], feed, stockBajo:(prods.data || []).filter(p => p.stock <= p.stock_min).length })
+      setData({ netas:netas.data || [], movs:[...(movs.data || []), ...(compTot.data || []).map(c => ({ tipo:'gasto', monto:c.total, fecha:c.fecha }))], feed, stockBajo:(prods.data || []).filter(p => p.stock <= p.stock_min).length })
     })()
   }, [revision])
 
@@ -196,10 +225,12 @@ function DashboardAdmin() {
         <Chevron />
       </button>
 
+      <button type="button" className="btn sec full mt-4" onClick={() => setDetalleNegocio(true)}>Detalle del negocio <Chevron /></button>
       <div className="ah-section"><h2>Actividad reciente</h2>{data.feed.length > 4 && <button type="button" onClick={() => setVerTodo(true)}>Ver todas <Chevron /></button>}</div>
       <div className="ah-acts activity-list">
         {data.feed.length ? data.feed.slice(0, 4).map(a => <ActivityRow key={a.key} a={a} onOpen={() => navigate(a.to)} />) : <Empty text="Sin actividad reciente" description="Aquí verás tus ventas, compras y movimientos apenas ocurran." />}
       </div>
+      {detalleNegocio && <DetalleNegocio onClose={() => setDetalleNegocio(false)} />}
       {verTodo && <Modal title="Actividad reciente" onClose={() => setVerTodo(false)}><div className="ah-acts in-modal">{data.feed.map(a => <ActivityRow key={a.key} a={a} onOpen={() => navigate(a.to)} />)}</div></Modal>}
     </>}
   </AppShell>

@@ -1,4 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
+import ModuleBanner from '../components/ModuleBanner'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { useDemoRevision } from '../lib/demo/useDemoRevision'
@@ -102,7 +103,7 @@ export default function Inventario() {
 
   const header = <div className="inv-head">
     <div className="inv-head-top"><Brand compact /><button type="button" className="inv-bell" aria-label={bajos ? `${bajos} productos con stock bajo` : 'Sin alertas de stock'} onClick={() => setFiltro(bajos ? 'bajo' : 'todos')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15L6 16zM10 20.5a2 2 0 004 0" /></svg>{bajos > 0 && <span className="inv-dot" />}</button></div>
-    <div className="inv-head-title"><div><h1>{editar ? 'Inventario' : 'Productos'}</h1><p>{editar ? 'Gestiona tus productos' : 'Consulta stock y precios'}</p></div>{editar && <button type="button" className="inv-add" onClick={() => setForm({})}><I n="plus" />Agregar</button>}</div>
+    <ModuleBanner modulo="productos" title={editar ? 'Inventario' : 'Productos'} sub={editar ? 'Consulta y gestiona el inventario' : 'Consulta stock y precios'} actions={editar && <button type="button" onClick={() => setForm({})}><I n="plus" />Agregar producto</button>} />
   </div>
 
   return (
@@ -174,13 +175,8 @@ export default function Inventario() {
       </Modal>}
       {sel && !form && <ProductoDetalle p={sel} editar={editar} costos={costos} puedeVender={can('vender')} onClose={() => { setSel(null); if (productoId) navigate('/inventario', { replace: true }) }} onEditar={() => setForm(sel)} onVender={() => vender(sel)} onAjuste={() => setAjuste(sel)} onMovs={() => setMovs(sel)} onIngreso={(esAdmin && can('registrar_compras')) ? () => setCompra(sel) : null} onCargar={editar || (esAdmin && can('registrar_compras')) ? () => setCargar(sel) : null} onCambio={refrescar} />}
       {form && <ProductoForm inicial={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => { setForm(null); refrescar(); toast('Producto guardado') }} />}
-      {compra && <CompraForm productoInicial={compra.id ? compra : null} onClose={() => setCompra(false)} onSaved={() => { setCompra(false); refrescar() }} />}
-      {cargar && <Modal title="Cargar unidades" subtitle={cargar.nombre} onClose={() => setCargar(null)}>
-        <div className="inv-load-options">
-          {(esAdmin && can('registrar_compras')) && <button type="button" onClick={() => { const p = cargar; setCargar(null); setCompra(p) }}><span className="inv-load-icon"><I n="truckIn" /></span><span><b>Compra a proveedor</b><small>Ingreso de mercancía: registra costo, proveedor y lo que queda por pagar{cargar.maneja_serial ? ', con el IMEI de cada unidad' : ''}.</small></span></button>}
-          {!cargar.maneja_serial && <button type="button" onClick={() => { const p = cargar; setCargar(null); setAjuste(p) }}><span className="inv-load-icon"><I n="adjust" /></span><span><b>Ajuste rápido</b><small>Para unidades que ya tienes en la tienda (inventario inicial, conteo físico).</small></span></button>}
-        </div>
-      </Modal>}
+      {esAdmin && can('registrar_compras') && compra && <CompraForm productoInicial={compra.id ? compra : null} cantidadInicial={compra._cant} proveedorId={compra._prov} onClose={() => setCompra(false)} onSaved={() => { setCompra(false); refrescar() }} />}
+      {esAdmin && (editar || can('registrar_compras')) && cargar && <CargarUnidades p={cargar} puedeComprar={can('registrar_compras')} onClose={() => setCargar(null)} onCompra={(n, provId) => { const p = cargar; setCargar(null); setCompra({ ...p, _cant: n, _prov: provId }) }} onSaved={() => { setCargar(null); refrescar() }} />}
       {ajuste && <AjusteStock p={ajuste} onClose={() => setAjuste(null)} onSaved={() => { setAjuste(null); refrescar() }} />}
       {movs && <Movimientos p={movs} onClose={() => setMovs(null)} />}
     </AppShell>
@@ -273,5 +269,82 @@ function Movimientos({ p, onClose }) {
     {!movs ? <Loader /> : movs.length === 0 ? <Empty text="Sin movimientos" description="Aquí verás compras, ventas y ajustes de este producto." /> : movs.map(m => (
       <div key={m.id} className="row"><div className="flex-1"><p className="m-0 text-sm font-semibold" style={{ textTransform: 'capitalize' }}>{m.tipo.replace(/_/g, ' ')}</p><p className="m-0 text-xs text-muted">{fechaHora(m.fecha)}{m.motivo ? ' · ' + m.motivo : ''}</p></div><div className="text-right"><b className={m.cantidad > 0 ? 'text-good' : 'text-bad'}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</b><p className="m-0 text-xs text-muted">queda {m.stock_despues}</p></div></div>
     ))}
+  </Modal>
+}
+
+function CargarUnidades({ p, puedeComprar, onClose, onCompra, onSaved }) {
+  const { esAdmin, can } = useAuth()
+  const [n, setN] = useState(1)
+  const [provs, setProvs] = useState(null)
+  const [origen, setOrigen] = useState(null) // id de proveedor | 'otro'
+  const [motivoOtro, setMotivoOtro] = useState('compra_propia')
+  const [nuevo, setNuevo] = useState(null) // { nombre, telefono }
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const soloCompra = !!p.maneja_serial
+  useEffect(() => { supabase.from('proveedores').select('id,nombre,telefono').eq('activo', true).order('nombre').then(({ data }) => setProvs(data || [])) }, [])
+
+  async function crearProveedor() {
+    if (!esAdmin || !can('registrar_compras')) return setErr('No tienes permiso para registrar proveedores.')
+    const nombre = (nuevo?.nombre || '').trim()
+    if (!nombre) return setErr('Escribe el nombre del proveedor.')
+    setBusy(true); setErr('')
+    const { data, error } = await supabase.from('proveedores').insert({ nombre, telefono: (nuevo.telefono || '').trim() || null }).select('id,nombre,telefono').single()
+    setBusy(false)
+    if (error) return setErr(mensajeError(error))
+    setProvs(l => [...(l || []), data].sort((x, y) => x.nombre.localeCompare(y.nombre))); setOrigen(data.id); setNuevo(null); toast('Proveedor registrado')
+  }
+  async function continuar() {
+    setErr('')
+    if (!esAdmin || !(can('editar_inventario') || can('registrar_compras'))) return setErr('No tienes permiso para cargar unidades.')
+    if (!Number.isInteger(n) || n < 1) return setErr('Escribe cuántas unidades vas a agregar.')
+    if (!origen) return setErr('Elige de dónde vienen las unidades.')
+    if (origen !== 'otro') return onCompra(n, origen)
+    setBusy(true)
+    const motivo = motivoOtro === 'compra_propia' ? 'Compra propia (sin proveedor)' : motivoOtro === 'devolucion' ? 'Devolución o cambio de cliente' : 'Unidades que ya estaban en la tienda'
+    const { error } = await supabase.rpc('ajustar_inventario', { p_producto_id: p.id, p_cantidad: n, p_tipo: 'ajuste_entrada', p_motivo: motivo })
+    setBusy(false)
+    if (error) return setErr(mensajeError(error))
+    toast(`${unidades(n)} agregadas a ${p.nombre}`); onSaved()
+  }
+  const provSel = (provs || []).find(x => x.id === origen)
+  return <Modal title="Agregar unidades" subtitle={p.nombre} className="experience-sheet cu-sheet" keyboardAware onClose={onClose} footer={
+    <button type="button" className="cf-save" disabled={busy || !origen || !!nuevo} onClick={continuar}>
+      {busy ? 'Guardando…' : !origen ? 'Elige de dónde vienen' : origen === 'otro' ? <><I n="check" />Agregar {unidades(n)}</> : <>Registrar compra a {provSel?.nombre}<I n="back" className="flip" /></>}
+    </button>}>
+    <ErrorBox text={err} />
+    <section className="cu-qty">
+      <span className="cu-label">¿Cuántas unidades llegaron?</span>
+      <div className="cu-step">
+        <button type="button" aria-label="Menos" disabled={n <= 1} onClick={() => setN(x => Math.max(1, x - 1))}>−</button>
+        <input inputMode="numeric" value={n} onChange={e => setN(Math.max(0, Number(e.target.value.replace(/\D/g, '')) || 0))} aria-label="Cantidad" />
+        <button type="button" aria-label="Más" onClick={() => setN(x => x + 1)}>+</button>
+      </div>
+      <div className="cu-preview"><span>Hoy tienes <b>{p.stock}</b></span><I n="back" className="flip" /><span>Quedarás con <b className="g">{Number(p.stock) + (n || 0)}</b></span></div>
+    </section>
+
+    <span className="cu-label">¿Quién te las vendió?</span>
+    {provs === null ? <Loader filas={2} /> : <div className="cu-provs">
+      {puedeComprar && provs.map(pv => <button key={pv.id} type="button" className={origen === pv.id ? 'on' : ''} onClick={() => { setOrigen(pv.id); setNuevo(null) }}>
+        <span className="cu-pv-av">{pv.nombre.split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</span>
+        <span className="cu-pv-txt"><b>{pv.nombre}</b><small>{pv.telefono || 'Proveedor registrado'}</small></span>
+        <span className="cu-radio" />
+      </button>)}
+      {puedeComprar && (nuevo ? <div className="cu-new">
+        <b className="cu-new-title"><I n="plus" />Nuevo proveedor</b>
+        <label className="cf-box"><span className="cf-ic"><I n="truck" /></span><input autoFocus placeholder="Nombre del proveedor" value={nuevo.nombre} onChange={e => setNuevo({ ...nuevo, nombre: e.target.value })} /></label>
+        <label className="cf-box"><span className="cf-ic"><I n="chat" /></span><span className="cf-prefix">+57</span><input inputMode="tel" placeholder="WhatsApp (opcional)" value={nuevo.telefono} onChange={e => setNuevo({ ...nuevo, telefono: e.target.value })} /></label>
+        <div className="cu-new-actions"><button type="button" className="inv-btn-outline" onClick={() => setNuevo(null)}>Cancelar</button><button type="button" className="inv-btn-gold" disabled={busy} onClick={crearProveedor}>Guardar proveedor</button></div>
+      </div> : <button type="button" className="cu-add" onClick={() => { setNuevo({ nombre: '', telefono: '' }); setOrigen(null) }}><span className="cu-pv-av add"><I n="plus" /></span><span className="cu-pv-txt"><b>Registrar proveedor nuevo</b><small>Si es la primera vez que le compras</small></span></button>)}
+      {!soloCompra && <button type="button" className={'cu-other' + (origen === 'otro' ? ' on' : '')} onClick={() => { setOrigen('otro'); setNuevo(null) }}>
+        <span className="cu-pv-av other"><I n="box" /></span>
+        <span className="cu-pv-txt"><b>Otro origen, sin proveedor</b><small>Las compraste tú, ya estaban en la tienda o te las devolvieron</small></span>
+        <span className="cu-radio" />
+      </button>}
+    </div>}
+    {origen === 'otro' && <div className="cu-why">
+      {[['compra_propia', 'Las compré yo'], ['tienda', 'Ya estaban en la tienda'], ['devolucion', 'Devolución de cliente']].map(([k, l]) => <button key={k} type="button" className={motivoOtro === k ? 'on' : ''} onClick={() => setMotivoOtro(k)}>{l}</button>)}
+    </div>}
+    {soloCompra && <p className="cu-note"><I n="warn" />Este producto maneja serial/IMEI: las unidades se registran con una compra para anotar cada serial.</p>}
   </Modal>
 }

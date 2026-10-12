@@ -11,9 +11,10 @@ import { imageKey } from '../lib/demo/images'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { money, limpiarBusqueda, mensajeError, hoyBogota } from '../lib/format'
 import { toast } from '../lib/toast'
+import { I } from './InvIcons'
 
 // Ingreso de mercancía = registrar compra a un proveedor
-export default function CompraForm({ proveedorId, productoInicial, onClose, onSaved }) {
+export default function CompraForm({ proveedorId, productoInicial, cantidadInicial, onClose, onSaved }) {
   const [provs, setProvs] = useState([])
   const [prov, setProv] = useState(proveedorId || '')
   const requestId = useRef(imageKey())
@@ -22,7 +23,7 @@ export default function CompraForm({ proveedorId, productoInicial, onClose, onSa
   const [forma, setForma] = useState('contado')
   const [vence, setVence] = useState('')
   const [metodo, setMetodo] = useState('efectivo')
-  const [items, setItems] = useState(() => productoInicial ? [{ producto: productoInicial, cantidad: 1, costo: productoInicial.precio_compra || 0, seriales: '' }] : []) // {producto, cantidad, costo, seriales:''}
+  const [items, setItems] = useState(() => productoInicial ? [{ producto: productoInicial, cantidad: cantidadInicial || 1, costo: productoInicial.precio_compra || 0, seriales: '' }] : []) // {producto, cantidad, costo, seriales:''}
   const [buscar, setBuscar] = useState(false)
   const [scan, setScan] = useState(false)
   const [err, setErr] = useState('')
@@ -69,45 +70,47 @@ export default function CompraForm({ proveedorId, productoInicial, onClose, onSa
     toast('Mercancía registrada'); onSaved?.()
   }
 
+  const provSel = provs.find((x) => String(x.id) === String(prov))
   return (
-    <Modal title="Ingreso de mercancía" subtitle="Tu inventario, siempre al día" className="experience-sheet purchase-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={busy || pendingSave}>{busy ? 'Guardando…' : `Registrar compra · ${money(total)}`}</button>}>
+    <Modal title="Compra a proveedor" subtitle="Registra la mercancía que llegó" className="experience-sheet cf-sheet cp-sheet" keyboardAware onClose={onClose} footer={
+      <button className="cf-save" onClick={guardar} disabled={busy || pendingSave}><I n="check" />{busy ? 'Guardando…' : `Guardar compra · ${money(total)}`}</button>}>
       <ErrorBox text={err} />
-      <FormSection number="01" title="Proveedor y documento">
-      <Select required label="Proveedor" value={prov} onChange={(e) => setProv(e.target.value)}>
-        <option value="">Elegir…</option>{provs.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-      </Select>
-      <Input label="N.º factura del proveedor" value={doc} onChange={(e) => setDoc(e.target.value)} />
-      </FormSection><FormSection number="02" title="Pago y fechas">
-      <div className="grid grid-cols-2 gap-2">
-        <Select label="Forma de pago" value={forma} onChange={(e) => setForma(e.target.value)}><option value="contado">Contado</option><option value="credito">Crédito</option></Select>
-        {forma === 'contado'
-          ? <Select label="Método" value={metodo} onChange={(e) => setMetodo(e.target.value)}><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="tarjeta">Tarjeta</option></Select>
-          : <DateField label="Vence el" min={hoyBogota()} value={vence} onChange={setVence} />}
-      </div>
-      {isDemoMode && <><DateField label="Fecha compra" value={date} onChange={setDate}/><Input label="Notas compra" value={notes} onChange={e=>setNotes(e.target.value)} /></>}
-      </FormSection><FormSection number="03" title="Productos">
-      {items.length === 0 && <Empty text="Prepara tu ingreso" description="Selecciona la mercancía y registra cantidades, costos y seriales cuando corresponda."/>}
-      {items.map((i, idx) => (
-        <div key={i.producto.id} className="card purchase-item !p-3 mb-2">
-          <div className="purchase-item-heading"><ProductThumbnail product={i.producto}/><b className="text-sm">{i.producto.nombre}</b><button aria-label={`Quitar ${i.producto.nombre}`} className="btn bad sm" onClick={() => setItems(items.filter((_, k) => k !== idx))}>✕</button></div>
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            <Input label="Cantidad" type="number" min="1" value={i.cantidad} onChange={(e) => upd(idx, 'cantidad', e.target.value)} />
-            <Input label="Costo unitario" type="number" min="0" value={i.costo} onChange={(e) => upd(idx, 'costo', e.target.value)} />
+
+      <h4 className="cf-sec"><span>1</span>¿Qué llegó?</h4>
+      {items.length === 0 && <p className="cu-note"><I n="box" />Agrega los productos que recibiste.</p>}
+      <div className="cp-items">
+        {items.map((i, idx) => (
+          <div key={i.producto.id} className="cp-item">
+            <div className="cp-item-head"><ProductThumbnail product={i.producto} /><span><b>{i.producto.nombre}</b><small>Hoy tiene {i.producto.stock ?? 0} → quedará con {(Number(i.producto.stock) || 0) + (Number(i.cantidad) || 0)}</small></span><button type="button" className="pos-line-x" aria-label={`Quitar ${i.producto.nombre}`} onClick={() => setItems(items.filter((_, k) => k !== idx))}><I n="trash" /></button></div>
+            <div className="cp-item-grid">
+              <label><small>Cantidad</small><div className="pos-step"><button type="button" onClick={() => upd(idx, 'cantidad', Math.max(1, (Number(i.cantidad) || 1) - 1))}>−</button><output>{i.cantidad}</output><button type="button" onClick={() => upd(idx, 'cantidad', (Number(i.cantidad) || 0) + 1)}>+</button></div></label>
+              <label><small>Costo por unidad</small><span className="cf-box sm"><span className="cf-prefix">$</span><input inputMode="numeric" value={i.costo} onChange={(e) => upd(idx, 'costo', e.target.value.replace(/\D/g, ''))} /></span></label>
+            </div>
+            {i.producto.maneja_serial && <label className="cp-serial"><small>Seriales / IMEI · uno por línea ({i.cantidad})</small><textarea rows={3} value={i.seriales} onChange={(e) => upd(idx, 'seriales', e.target.value)} placeholder="356789012345678" /></label>}
+            <div className="cp-sub"><span>Subtotal</span><b>{money(Number(i.cantidad) * Number(i.costo))}</b></div>
           </div>
-          {i.producto.maneja_serial && (
-            <div><label className="lbl">Seriales / IMEI (uno por línea)</label><textarea className="inp" rows={3} value={i.seriales} onChange={(e) => upd(idx, 'seriales', e.target.value)} /></div>
-          )}
-          <div className="flex justify-between text-sm"><span className="text-muted">Subtotal</span><b>{money(Number(i.cantidad)*Number(i.costo))}</b></div>
-        </div>
-      ))}
-      <button className="btn sec full" onClick={() => setBuscar(true)}>+ Agregar producto</button>
-      </FormSection><div className="purchase-total"><span>Total compra<small>{items.length} productos</small></span><b>{money(total)}</b></div>
+        ))}
+      </div>
+      <button type="button" className="pos-more" onClick={() => setBuscar(true)}><I n="plus" />{items.length ? 'Agregar otro producto' : 'Agregar producto'}</button>
+
+      <h4 className="cf-sec"><span>2</span>¿A quién se lo compraste?</h4>
+      {provs.length === 0 ? <p className="cu-note"><I n="warn" />Aún no tienes proveedores. Créalo en Más › Proveedores y vuelve aquí.</p> : <label className={'cf-field' + (prov ? ' filled' : '')}>
+        <span className="cf-box"><span className="cf-ic"><I n="truck" /></span><select className="cp-select" value={prov} onChange={(e) => setProv(e.target.value)}><option value="">Elegir proveedor…</option>{provs.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select><I n="chevDown" className="pos-dd-chev" /></span>
+      </label>}
+      <label className={'cf-field' + (doc ? ' filled' : '')}><span className="cf-label">N.º de factura del proveedor <small>(opcional)</small></span><span className="cf-box"><span className="cf-ic"><I n="receipt" /></span><input value={doc} onChange={(e) => setDoc(e.target.value)} placeholder="Ej. FE-1234" /></span></label>
+
+      <h4 className="cf-sec"><span>3</span>¿Cómo la pagaste?</h4>
+      <div className="cu-opts cp-pay">
+        <button type="button" className={forma === 'contado' ? 'on' : ''} onClick={() => setForma('contado')}><span className="cu-opt-ic"><I n="cash" /></span><span className="cu-opt-txt"><b>Pagué completo</b><small>No quedó deuda con {provSel?.nombre || 'el proveedor'}.</small></span><span className="cu-radio" /></button>
+        <button type="button" className={forma === 'credito' ? 'on' : ''} onClick={() => setForma('credito')}><span className="cu-opt-ic"><I n="history" /></span><span className="cu-opt-txt"><b>Quedé debiendo</b><small>Se suma a cuentas por pagar hasta que la pagues.</small></span><span className="cu-radio" /></button>
+      </div>
+      {forma === 'contado'
+        ? <div className="pos-pays2 cp-methods">{[['efectivo', 'Efectivo', 'cash'], ['transferencia', 'Transferencia', 'bank'], ['tarjeta', 'Tarjeta', 'card']].map(([k, l, ic]) => <button key={k} type="button" className={'m-' + k + (metodo === k ? ' on' : '')} onClick={() => setMetodo(k)}><span className="pos-pays2-ic"><I n={ic} /></span><span>{l}</span></button>)}</div>
+        : <div className="cp-due"><DateField label="¿Hasta cuándo tienes para pagar?" min={hoyBogota()} value={vence} onChange={setVence} /></div>}
+      {isDemoMode && <><DateField label="Fecha compra" value={date} onChange={setDate}/><Input label="Notas compra" value={notes} onChange={e=>setNotes(e.target.value)} /></>}
+
+      <div className="pos-sum"><div><span>{items.reduce((a, i) => a + (Number(i.cantidad) || 0), 0)} unidades · {items.length} {items.length === 1 ? 'producto' : 'productos'}</span><b /></div><div className="grand"><span>Total de la compra</span><b>{money(total)}</b></div></div>
       {buscar && <BuscarProducto onClose={() => setBuscar(false)} onPick={add} />}
-      {scan && <Scanner onClose={() => setScan(false)} onScan={async (c) => {
-        setScan(false)
-        const { data } = await supabase.from('productos').select('*').or(`codigo_barras.eq.${limpiarBusqueda(c)},codigo.eq.${limpiarBusqueda(c)}`).limit(1)
-        data?.[0] ? add(data[0]) : toast('Producto no encontrado: créalo primero en Inventario')
-      }} />}
     </Modal>
   )
 }

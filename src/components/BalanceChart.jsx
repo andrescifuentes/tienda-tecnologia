@@ -22,6 +22,6 @@ export default function BalanceChart({ ventas, ingresos, gastos, utilidad, demo,
       })}
     </svg>
     <div className="balance-key">{values.map(item=><div className={'chart-row balance-'+item.tone} key={item.label}><span><i/>{item.label}</span><b>{money(item.value)}</b></div>)}</div>
-    <p>Ventas netas de facturas y movimientos manuales del período.{showProfit ? (demo?' Las compras de inventario se reflejan como mercancía; la utilidad descuenta el costo vendido.':' El resultado no incluye el costo de mercancía.') : ''}</p>
+    <p>Ventas de facturas, compras de mercancía y movimientos manuales del período.{showProfit ? (demo?' Las compras de inventario se reflejan como mercancía; la utilidad descuenta el costo vendido.':' Los gastos incluyen las compras de mercancía a proveedores.') : ''}</p>
   </section>
 }
