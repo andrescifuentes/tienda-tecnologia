@@ -1,10 +1,12 @@
 import { useEffect, useId, useState } from 'react'
+import ModuleBanner from '../components/ModuleBanner'
 import { useAuth } from '../context/AuthContext'
 import ConfirmAction from '../components/ConfirmAction'
 import { monetaryError } from '../lib/money'
 import { useDemoRevision } from '../lib/demo/useDemoRevision'
 import { useAction } from '../lib/useAction'
-import AppShell from '../components/AppShell'
+import AppShell, { ThemeToggle } from '../components/AppShell'
+import { Brand } from '../components/TechVisuals'
 import Modal from '../components/Modal'
 import MoneyInput from '../components/MoneyInput'
 import DateField from '../components/DateField'
@@ -14,7 +16,10 @@ import { Empty, Loader, Input, Select, ErrorBox, Stat, Chips } from '../componen
 import { supabase, isDemoMode } from '../lib/supabase'
 import { money, fecha, rangoMes, hoyBogota, mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
+import { I } from '../components/InvIcons'
+import { useNavigate } from 'react-router-dom'
 import FinanceDetail from '../components/FinanceDetail'
+import CompraDetalle from '../components/CompraDetalle'
 import { financeDetails } from '../lib/financeDetails'
 
 const CATS_G = ['Proveedores', 'Servicios', 'Arriendo', 'Servicios públicos', 'Nómina', 'Transporte', 'Publicidad', 'Mantenimiento', 'Impuestos', 'Otros']
@@ -22,6 +27,7 @@ const CATS_I = ['Venta adicional', 'Servicio', 'Abono', 'Otro ingreso', 'Servici
 
 export default function Finanzas() {
   const revision = useDemoRevision()
+  const navigate = useNavigate()
   const { can } = useAuth()
   const costos = can('ver_costos')
   const [remove,setRemove] = useState(null)
@@ -34,6 +40,8 @@ export default function Finanzas() {
   const [tick, setTick] = useState(0)
   const [detail, setDetail] = useState(null)
   const [invoices, setInvoices] = useState([])
+  const [compras, setCompras] = useState([])
+  const [verCompra, setVerCompra] = useState(null)
   const [detailError, setDetailError] = useState('')
   const r = rangoMes(mes)
 
@@ -42,15 +50,16 @@ export default function Finanzas() {
     setMovs(null)
     setDetailError('')
     ;(async () => {
-      const [m, v, f, summary] = await Promise.all([
+      const [m, v, f, summary, cp] = await Promise.all([
         supabase.from('movimientos').select('*').gte('fecha', r.ini).lte('fecha', r.fin).order('fecha', { ascending: false }).order('id', { ascending: false }),
         supabase.rpc('ventas_por_empleado', { p_desde: r.ini, p_hasta: r.fin }),
         supabase.from(isDemoMode?'facturas_netas':'facturas').select('*').eq('estado','emitida'),
         isDemoMode?supabase.rpc('resumen_dashboard',{p_desde:r.ini,p_hasta:r.fin}):Promise.resolve(null),
+        supabase.from('compras').select('id,fecha,total,numero_documento,forma_pago,estado,proveedores(nombre)').eq('estado','recibida').gte('fecha', r.ini).lte('fecha', r.fin).order('fecha', { ascending: false }),
       ])
       if (!live) return
       if(isDemoMode)setProfit(summary.data?.[0]?.utilidad_mes||0)
-      setInvoices(f.data||[])
+      setInvoices(f.data||[]); setCompras(cp?.data||[])
       setDetailError([m,v,f].some(result=>result.error)?'No se pudo cargar el detalle financiero completo. Intenta de nuevo.':'')
       setMovs(m.data || []); setVentas((v.data || []).reduce((a, x) => a + Number(x.total_vendido), 0))
     })()
@@ -58,9 +67,19 @@ export default function Finanzas() {
   }, [mes, tick, revision]) // eslint-disable-line
 
   const ing = (movs || []).filter((m) => m.tipo === 'ingreso' && (!isDemoMode || !m.origen)).reduce((a, m) => a + Number(m.monto), 0)
-  const gas = (movs || []).filter((m) => m.tipo === 'gasto' && (!isDemoMode || !m.origen)).reduce((a, m) => a + Number(m.monto), 0)
-  const lista = (movs || []).filter((m) => tipo === 'todos' || m.tipo === tipo)
-  const details = detail ? financeDetails({invoices,movements:movs||[],period:r,demo:isDemoMode}) : null
+  const comp = compras.reduce((a, c) => a + Number(c.total || 0), 0)
+  const gas = (movs || []).filter((m) => m.tipo === 'gasto' && (!isDemoMode || !m.origen)).reduce((a, m) => a + Number(m.monto), 0) + comp
+  const compraMovs = compras.map((c) => ({ id: 'c' + c.id, tipo: 'gasto', categoria: 'Compra de mercancía', descripcion: [c.proveedores?.nombre, c.numero_documento, c.forma_pago === 'credito' ? 'a crédito' : null].filter(Boolean).join(' · '), monto: c.total, fecha: c.fecha, origen: 'compra' }))
+  const lista = [...(movs || []), ...compraMovs].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).filter((m) => tipo === 'todos' || m.tipo === tipo)
+  const details = detail ? (() => { const d = financeDetails({invoices,movements:movs||[],period:r,demo:isDemoMode}); d.gasto = [...d.gasto, ...compras.map((c) => ({ id:'compra-'+c.id, date:c.fecha, concept:'Compra de mercancía · '+(c.proveedores?.nombre || 'Proveedor'), origin:c.forma_pago === 'credito' ? 'Compra a crédito' : 'Compra de contado', reference:c.numero_documento || 'Compra #'+c.id, amount:Number(c.total), type:'gasto' }))].sort((a,b)=>b.date.localeCompare(a.date)); return d })() : null
+
+  const totalIn = ventas + ing
+  const resultado = isDemoMode ? profit : totalIn - gas
+  const catsGasto = Object.entries([...(movs || []).filter((m) => m.tipo === 'gasto' && !m.origen), ...compraMovs].reduce((acc, m) => { acc[m.categoria] = (acc[m.categoria] || 0) + Number(m.monto); return acc }, {})).sort((a, b) => b[1] - a[1])
+  const header = <div className="inv-head fv-head">
+    <div className="inv-head-top"><Brand compact /><ThemeToggle /></div>
+    <ModuleBanner modulo="mas" title="Finanzas" sub="Ingresos, gastos y resultado" actions={<button type="button" onClick={() => setForm({ tipo: 'gasto' })}><I n="plus" />Registrar</button>} />
+  </div>
 
   async function borrar(m) {
     const { error } = await supabase.from('movimientos').delete().eq('id', m.id)
@@ -69,32 +88,60 @@ export default function Finanzas() {
   }
 
   return (
-    <AppShell title="Finanzas" sub="Ingresos y gastos" right={<button className="btn sm" onClick={() => setForm({ tipo: 'gasto' })}>+ Registrar</button>}>
-      <section className="finance-period" aria-label="Período financiero">
-        <button className="btn sec sm" aria-label="Mes financiero anterior" onClick={() => setMes(mes - 1)}>‹</button>
-        <div><span className="premium-eyebrow">RESUMEN MENSUAL</span><b className="capitalize">{r.label}</b></div>
-        <button className="btn sec sm" aria-label="Mes financiero siguiente" disabled={mes >= 0} onClick={() => setMes(mes + 1)}>›</button>
+    <AppShell title="Finanzas" header={header}>
+      <section className={'fz-hero' + (resultado < 0 ? ' neg' : '')}>
+        <div className="fz-nav">
+          <button type="button" aria-label="Mes anterior" onClick={() => setMes(mes - 1)}><I n="back" /></button>
+          <span className="capitalize">{r.label.replace(' de ', ' ')}</span>
+          <button type="button" aria-label="Mes siguiente" disabled={mes >= 0} onClick={() => setMes(mes + 1)}><I n="back" className="flip" /></button>
+        </div>
+        <span className="fz-eyebrow">{costos ? (isDemoMode ? 'Utilidad neta' : 'Resultado del mes') : 'Balance del mes'}</span>
+        <b className="fz-total">{resultado < 0 ? '−' : ''}{money(Math.abs(resultado))}</b>
+        <span className={'fz-badge ' + (resultado >= 0 ? 'up' : 'down')}>{resultado >= 0 ? '▲ Ganancia' : '▼ Pérdida'}{totalIn > 0 ? ` · margen ${Math.round(resultado / totalIn * 100)}%` : ''}</span>
+        <div className="fz-split" aria-hidden="true"><span className="in" style={{ flex: totalIn || 0.0001 }} /><span className="out" style={{ flex: gas || 0.0001 }} /></div>
+        <div className="fz-legend"><span><i className="in" />Entró {money(totalIn)}</span><span><i className="out" />Salió {money(gas)}</span></div>
       </section>
-      <div className="grid finance-stats mb-3">
-        <Stat label="Ingresos" icon="cash" value={money(ventas + ing)} sub="Ver detalle de ingresos ›" tone="good" onClick={()=>setDetail('ingreso')} />
-        <Stat label="Gastos" icon="out" value={money(gas)} sub="Ver detalle de gastos ›" tone="bad" onClick={()=>setDetail('gasto')} />
-        {costos && <Stat label={isDemoMode ? "Utilidad neta" : "Resultado (sin costo de mercancía)"} value={money(isDemoMode ? profit : ventas + ing - gas)} tone={(isDemoMode ? profit : ventas + ing - gas) >= 0 ? 'good' : 'bad'} />}
+
+      <div className="fz-kpis">
+        <button type="button" className="fz-kpi in" onClick={() => setDetail('ingreso')}>
+          <span className="fz-kpi-top"><span className="fz-kpi-ic"><I n="cash" /></span>Ingresos<I n="back" className="flip fz-go" /></span>
+          <b>{money(totalIn)}</b>
+          <small>Ventas {money(ventas)}{ing ? ' · otros ' + money(ing) : ''}</small>
+        </button>
+        <button type="button" className="fz-kpi out" onClick={() => setDetail('gasto')}>
+          <span className="fz-kpi-top"><span className="fz-kpi-ic"><I n="receipt" /></span>Gastos<I n="back" className="flip fz-go" /></span>
+          <b>{money(gas)}</b>
+          <small>{comp ? 'Compras ' + money(comp) : 'Sin compras'}{gas - comp ? ' · otros ' + money(gas - comp) : ''}</small>
+        </button>
       </div>
-      <BalanceChart showProfit={costos} ventas={ventas} ingresos={ing} gastos={gas} utilidad={isDemoMode?profit:ventas+ing-gas} demo={isDemoMode}/>
-      <div className="premium-section-heading finance-list-heading"><h2>Movimientos y categorías</h2><span>{lista.length} registros</span></div><div className="finance-filters">
+
+      {gas > 0 && <section className="fz-cats">
+        <h3 className="fz-h">¿En qué se fue el dinero?</h3>
+        {catsGasto.map(([cat, v], i) => <div key={cat} className="fz-cat" style={{ '--d': i * 0.08 + 's' }}>
+          <span className="fz-cat-top"><b>{cat}</b><span>{money(v)} <em>{Math.round(v / gas * 100)}%</em></span></span>
+          <span className="fz-cat-bar"><span style={{ width: Math.max(3, v / gas * 100) + '%' }} /></span>
+        </div>)}
+      </section>}
+      <div className="premium-section-heading finance-list-heading"><h2>Últimos movimientos</h2><span>{lista.length} en el mes</span></div><div className="finance-filters">
       <Chips value={tipo} onChange={setTipo} options={[{ value: 'todos', label: 'Todos' }, { value: 'ingreso', label: 'Ingresos' }, { value: 'gasto', label: 'Gastos' }]} /></div>
       {!movs ? <Loader /> : lista.length === 0 ? <Empty text="Sin movimientos este mes" /> : (
         <div className="finance-movements">
-          {lista.map((m) => (
-            <div key={m.id} className={"row finance-movement "+m.tipo}><span className="movement-symbol" aria-hidden="true">{m.tipo === 'ingreso' ? '↗' : '↙'}</span>
+          {lista.slice(0, 5).map((m) => (
+            <div key={m.id} className={"row finance-movement "+m.tipo+(m.origen === 'compra' ? ' clickable' : '')} role={m.origen === 'compra' ? 'button' : undefined} tabIndex={m.origen === 'compra' ? 0 : undefined} onClick={m.origen === 'compra' ? () => setVerCompra(Number(String(m.id).slice(1))) : undefined}><span className="movement-symbol" aria-hidden="true">{m.tipo === 'ingreso' ? '↗' : '↙'}</span>
               <div className="flex-1 movement-main"><p className="m-0 text-sm font-semibold">{m.categoria}</p><p className="m-0 text-xs text-muted">{fecha(m.fecha)}{m.descripcion ? ' · ' + m.descripcion : ''}</p></div>
-              <div className="movement-value"><small>{m.origen ? 'Automático' : 'Manual'}</small><b className={m.tipo === 'ingreso' ? 'text-good' : 'text-bad'}>{m.tipo === 'ingreso' ? '+' : '−'}{money(m.monto)}</b></div>
+              <div className="movement-value"><small>{m.origen === 'compra' ? <span className="mv-more">Ver detalle ›</span> : m.origen ? 'Automático' : 'Manual'}</small><b className={m.tipo === 'ingreso' ? 'text-good' : 'text-bad'}>{m.tipo === 'ingreso' ? '+' : '−'}{money(m.monto)}</b></div>
               {!m.origen && <button className="movement-delete" aria-label={`Eliminar ${m.categoria}`} onClick={() => setRemove(m)}><Icon name="trash" /></button>}
             </div>
           ))}
         </div>
       )}
+      <button type="button" className="fv-history-btn" onClick={() => navigate('/finanzas/movimientos')}>
+        <span className="fv-history-ic"><I n="history" /></span>
+        <span><b>Ver todos los movimientos</b><small>Filtra por año, mes o día</small></span>
+        <I n="back" className="flip" />
+      </button>
       {remove && <ConfirmAction className="finance-confirm-sheet" title="Eliminar movimiento" label="Eliminar" onClose={()=>setRemove(null)} onConfirm={()=>borrar(remove)}><div className="finance-delete-preview"><b>{remove.categoria}</b><strong>{money(remove.monto)}</strong><small>{fecha(remove.fecha)} · {remove.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} manual</small></div><p>Se eliminará este movimiento manual. Las operaciones automáticas se revierten desde su registro original.</p></ConfirmAction>}
+      {verCompra && <CompraDetalle id={verCompra} onClose={() => setVerCompra(null)} />}
       {form && <Form inicial={form} onClose={() => setForm(null)} onSaved={() => { setForm(null); setTick((t) => t + 1) }} />}
       {detail && <FinanceDetail type={detail} rows={details[detail]} total={detail==='ingreso'?ventas+ing:gas} period={r} month={mes} onMonth={setMes} loading={!movs} error={detailError} onClose={()=>setDetail(null)}/>}
     </AppShell>

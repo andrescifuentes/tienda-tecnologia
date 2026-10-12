@@ -4,7 +4,6 @@ import { useDemoRevision } from '../lib/demo/useDemoRevision'
 import AppShell from '../components/AppShell'
 import SalesMetricDetail from '../components/SalesMetricDetail'
 import BusinessDetail from '../components/BusinessDetail'
-import TechHero from '../components/TechVisuals'
 import Modal from '../components/Modal'
 import Scanner from '../components/Scanner'
 import { Icon } from '../components/Icons'
@@ -36,7 +35,7 @@ function HomeTools() {
   return <section className="home-tools"><SearchBar value={q} onChange={setQ} placeholder="Buscar producto o factura" />
     {q && <div className="card search-results mb-3">{results.length ? results.map(x=><button key={x.key} className="row menu-row" onClick={()=>navigate(x.to)}><span className="flex-1"><b>{x.title}</b><small>{x.sub}</small></span><Icon name="back" className="w-4 h-4 rotate-180" /></button>):<p className="text-sm text-muted">Sin coincidencias</p>}</div>}
     {!q && <div className="home-search-guide"><span className="premium-eyebrow">ENCUENTRA LO QUE NECESITAS</span><p>Productos, códigos y facturas.</p><small>Prueba AirPods, USBC2M o FV-1245.</small></div>}
-    <div className="quick-actions">{[{to:'/vender',title:'Nueva venta',icon:'cart',allowed:can('vender')},{to:'/inventario',title:'Inventario',icon:'box',allowed:can('ver_inventario')},{to:'/facturas',title:'Facturas',icon:'doc',allowed:true}].filter(x=>x.allowed).map(x=><button key={x.to} onClick={()=>navigate(x.to)}><span><Icon name={x.icon}/></span>{x.title}</button>)}</div>
+    <div className="quick-actions">{[{to:'/vender',title:'Nueva venta',icon:'cart',allowed:can('vender')},{to:'/inventario',title:can('editar_inventario')?'Inventario':'Productos',icon:'box',allowed:can('ver_inventario')},{to:'/clientes',title:'Clientes',icon:'users',allowed:true},{to:'/facturas',title:'Facturas',icon:'doc',allowed:true}].filter(x=>x.allowed).map(x=><button key={x.to} onClick={()=>navigate(x.to)}><span><Icon name={x.icon}/></span>{x.title}</button>)}</div>
     {scan && <Scanner onClose={()=>setScan(false)} onScan={async code=>{setScan(false);const s=limpiarBusqueda(code);const {data}=await supabase.from('productos_venta').select('*').or(`codigo.eq.${s},codigo_barras.eq.${s}`);if(data?.length===1)navigate('/inventario?producto='+data[0].id);else setQ(code)}} />}
   </section>
 }
@@ -160,7 +159,7 @@ function DashboardAdmin() {
 
   useEffect(() => {
     ;(async () => {
-      const [netas, movs, fac, cli, com, prov, aj, prods] = await Promise.all([
+      const [netas, movs, fac, cli, com, prov, aj, prods, compTot] = await Promise.all([
         supabase.from('facturas_netas').select('id,fecha,estado,total_neto'),
         supabase.from('movimientos').select('tipo,monto,fecha'),
         supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,cliente_id,anulada_en').order('fecha', { ascending:false }).limit(30),
@@ -169,6 +168,7 @@ function DashboardAdmin() {
         supabase.from('proveedores').select('id,nombre'),
         supabase.from('movimientos_inventario').select('id,producto_id,tipo,cantidad,fecha,motivo').in('tipo', ['ajuste_entrada','ajuste_salida','devolucion_proveedor']).order('fecha', { ascending:false }).limit(15),
         supabase.from('productos_venta').select('id,nombre,stock,stock_min'),
+        supabase.from('compras').select('fecha,total,estado').eq('estado','recibida'),
       ])
       if (netas.error) return setErr(mensajeError(netas.error))
       const nCli = Object.fromEntries((cli.data || []).map(x => [x.id, x.nombre]))
@@ -181,7 +181,7 @@ function DashboardAdmin() {
         ...(com.data || []).filter(c => c.estado !== 'anulada').map(c => ({ key:'c' + c.id, fecha:c.creado_en, tone:'green', icon:<Icon name="plus" />, title:'Ingreso de mercancía', sub:'Proveedor: ' + (nProv[c.proveedor_id] || '—'), amount:money(c.total), to:'/proveedores?compra=' + c.id })),
         ...(aj.data || []).map(m => ({ key:'m' + m.id, fecha:m.fecha, tone:'gold', icon:<Icon name="box" />, title:m.tipo === 'devolucion_proveedor' ? 'Devolución a proveedor' : 'Ajuste de inventario', sub:nProd[m.producto_id] || m.motivo || 'Producto', amount:`${m.cantidad > 0 ? '+ ' : '- '}${Math.abs(m.cantidad)} ${Math.abs(m.cantidad) === 1 ? 'unidad' : 'unidades'}`, amountTone:m.cantidad > 0 ? 'pos' : 'neg', to:'/inventario?producto=' + m.producto_id })),
       ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
-      setData({ netas:netas.data || [], movs:movs.data || [], feed, stockBajo:(prods.data || []).filter(p => p.stock <= p.stock_min).length })
+      setData({ netas:netas.data || [], movs:[...(movs.data || []), ...(compTot.data || []).map(c => ({ tipo:'gasto', monto:c.total, fecha:c.fecha }))], feed, stockBajo:(prods.data || []).filter(p => p.stock <= p.stock_min).length })
     })()
   }, [revision])
 
@@ -240,6 +240,6 @@ function MisVentas({perfil}) {
   const[hoy,setHoy]=useState(null),[mes,setMes]=useState(null),[lista,setLista]=useState([]),[err,setErr]=useState(''),[detail,setDetail]=useState(false)
   useEffect(()=>{const m=rangoMes(),h=hoyBogota();(async()=>{const[a,b,c]=await Promise.all([supabase.rpc('ventas_por_empleado',{p_desde:h,p_hasta:h}),supabase.rpc('ventas_por_empleado',{p_desde:m.ini,p_hasta:m.fin}),supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha').eq('vendedor_id',perfil.id).order('fecha',{ascending:false}).limit(15)]);if(a.error)return setErr(mensajeError(a.error));setHoy(a.data?.[0]||{facturas:0,total_vendido:0,comision:0});setMes(b.data?.[0]||{facturas:0,total_vendido:0,comision:0});setLista(c.data||[])})()},[perfil.id,revision])
   const rows=items=>items.length?items.map(f=><div className="row" key={f.id}><div className="flex-1"><b className="text-sm">{numFactura(f)}</b><p className="text-xs text-muted m-0">{fechaHora(f.fecha)}</p></div><div className="text-right"><b className="text-sm">{money(f.total)}</b>{f.estado==='anulada'&&<Badge tone="bad">Anulada</Badge>}</div></div>):<Empty text="Aún no has vendido"/>
-  return <AppShell title={'Hola, '+perfil.nombre.split(' ')[0]} sub={dateLabel()}><HomeTools/><TechHero/><ErrorBox text={err}/>{!hoy&&!err?<Loader/>:hoy&&<><div className="home-section"><h2>Mis ventas</h2></div><div className="grid grid-cols-2 gap-2.5 mb-3"><Stat label="Vendido hoy" value={money(hoy.total_vendido)} sub={hoy.facturas+' facturas'}/><Stat label="Vendido en el mes" value={money(mes.total_vendido)} sub={mes.facturas+' facturas'}/>{perfil.comision_pct!=null&&<><Stat label="Comisión hoy" value={money(hoy.comision)} tone="good"/><Stat label="Comisión del mes" value={money(mes.comision)} tone="good" sub={perfil.comision_pct+'%'}/></>}</div><div className="home-section"><h2>Mis últimas facturas</h2><button onClick={()=>setDetail(true)}>Ver todo ›</button></div><div className="card activity-list">{rows(lista.slice(0,3))}</div>{detail&&<Modal title="Mis últimas facturas" onClose={()=>setDetail(false)}>{rows(lista)}</Modal>}</>}</AppShell>
+  return <AppShell title={'Hola, '+perfil.nombre.split(' ')[0]} sub={dateLabel()}><HomeTools/><ErrorBox text={err}/>{!hoy&&!err?<Loader/>:hoy&&<><div className="home-section"><h2>Mis ventas</h2></div><div className="grid grid-cols-2 gap-2.5 mb-3"><Stat label="Mis ventas hoy" value={money(hoy.total_vendido)} sub={hoy.facturas+(hoy.facturas==1?' factura':' facturas')}/><Stat label="Mis ventas del mes" value={money(mes.total_vendido)} sub={mes.facturas+(mes.facturas==1?' factura':' facturas')}/></div><div className="home-section"><h2>Mis últimas facturas</h2><button onClick={()=>setDetail(true)}>Ver todo ›</button></div><div className="card activity-list">{rows(lista.slice(0,3))}</div>{detail&&<Modal title="Mis últimas facturas" onClose={()=>setDetail(false)}>{rows(lista)}</Modal>}</>}</AppShell>
 }
 

@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import ProfileDialog from '../components/ProfileDialog'
-import AppShell from '../components/AppShell'
-import { AnimatedCard } from '../components/TechVisuals'
+import AppShell, { ThemeToggle } from '../components/AppShell'
+import ModuleBanner from '../components/ModuleBanner'
+import { Brand, AnimatedCard } from '../components/TechVisuals'
 import { Icon } from '../components/Icons'
 import { useAuth } from '../context/AuthContext'
 
@@ -19,7 +20,7 @@ export default function Mas() {
     { to: '/configuracion', icon: 'shield', t: 'Configuración', s: 'Preferencias y datos locales' },
   ].filter(Boolean)
   return (
-    <div className="admin-premium admin-hub"><AppShell title="Más" sub={tienda?.nombre || 'ANGIE TECH'}>
+    <div className="admin-premium admin-hub"><AppShell title="Más" header={<div className="inv-head"><div className="inv-head-top"><Brand compact /><ThemeToggle /></div><ModuleBanner modulo="mas" title="Más" sub="Configuración y ayuda" /></div>}>
       <button className="admin-profile profile-card" aria-label="Mi perfil" onClick={()=>setProfileOpen(true)}>
         <span className="profile-avatar">{perfil.nombre.slice(0, 1).toUpperCase()}</span>
         <span className="admin-profile-copy"><strong>{perfil.nombre}</strong><small className="admin-role">{esAdmin ? 'Administrador' : 'Vendedor'}</small><small>{perfil.correo}</small></span><span className="admin-chevron" aria-hidden="true">›</span>

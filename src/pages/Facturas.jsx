@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import ModuleBanner from '../components/ModuleBanner'
 import AppShell, { ThemeToggle } from '../components/AppShell'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -78,14 +79,7 @@ export default function Facturas() {
 
   const header = <div className="inv-head fv-head">
     <div className="inv-head-top"><Brand compact /><ThemeToggle /></div>
-    <div className="fv-head-row">
-      <div>
-        <span className="fv-eyebrow">Centro de facturación</span>
-        <h1>Facturas</h1>
-        <p>{datos ? <><b>{resumen.cantidad}</b> {resumen.cantidad === 1 ? 'venta' : 'ventas'} · {etiqueta.toLowerCase()}</> : 'Cargando ventas…'}</p>
-      </div>
-      {can('vender') && <button type="button" className="fv-new" onClick={() => navigate('/vender')} aria-label="Nueva factura"><span className="fv-new-ic"><I n="plus" /></span><span className="fv-new-txt">Nueva<small>venta</small></span></button>}
-    </div>
+    <ModuleBanner modulo="facturas" title="Facturas" sub="Consulta y gestiona tus facturas" actions={can('vender') && <button type="button" onClick={() => navigate('/vender')}><I n="plus" />Nueva venta</button>} />
   </div>
 
   return (
