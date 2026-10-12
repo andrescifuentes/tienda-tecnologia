@@ -1,3 +1,5 @@
+import { useAuth } from '../context/AuthContext'
+import { consultarFacturasVisibles } from '../lib/sellerHome'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
@@ -23,6 +25,7 @@ function Selector({ label, value, onChange, options }) {
 
 export default function FacturasHistorial() {
   const navigate = useNavigate()
+  const { esAdmin, perfil } = useAuth()
   const hoy = hoyYm()
   const [anio, setAnio] = useState(hoy.slice(0, 4))
   const [mes, setMes] = useState(hoy.slice(5)) // '01'..'12' | 'todos'
@@ -45,12 +48,12 @@ export default function FacturasHistorial() {
       if (mes === 'todos') { ini = `${anio}-01-01`; fin = `${Number(anio) + 1}-01-01` }
       else if (dia === 'todos') { ini = `${anio}-${mes}-01`; const [y, m] = [Number(anio), Number(mes)]; fin = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10) }
       else { ini = `${anio}-${mes}-${dia}`; const d = new Date(`${ini}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); fin = d.toISOString().slice(0, 10) }
-      const { data } = await supabase.from('facturas').select(SELECT_FACTURA + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)')).gte('fecha', ini + 'T00:00:00-05:00').order('fecha', { ascending: false }).limit(3000)
+      const { data } = await consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, SELECT_FACTURA + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)')).gte('fecha', ini + 'T00:00:00-05:00').order('fecha', { ascending: false }).limit(3000)
       const tope = new Date(fin + 'T00:00:00-05:00')
       if (vivo) setDatos((data || []).filter((f) => new Date(f.fecha) < tope))
     })()
     return () => { vivo = false }
-  }, [anio, mes, dia, tick])
+  }, [anio, mes, dia, tick, esAdmin, perfil.id])
 
   const lista = useMemo(() => {
     if (!datos) return null

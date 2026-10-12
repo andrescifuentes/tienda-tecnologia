@@ -35,9 +35,9 @@ function Menu({ items, label = 'Más opciones', className = '' }) {
 export default function Inventario() {
   const revision = useDemoRevision()
   const navigate = useNavigate()
-  const { can } = useAuth()
-  const editar = can('editar_inventario')
-  const costos = can('ver_costos')
+  const { can, esAdmin } = useAuth()
+  const editar = esAdmin && can('editar_inventario')
+  const costos = esAdmin && can('ver_costos')
   const [params] = useSearchParams()
   const [q, setQ] = useState(params.get('q') || '')
   const [filtro, setFiltro] = useState(['bajo', 'agotado', 'inactivos'].includes(params.get('filtro')) ? params.get('filtro') : 'todos')
@@ -94,7 +94,7 @@ export default function Inventario() {
   const acciones = p => [
     { label: 'Ver detalle', icon: 'box', onClick: () => setSel(p) },
     editar && { label: 'Editar', icon: 'pencil', onClick: () => setForm(p) },
-    (editar || can('registrar_compras')) && { label: 'Cargar unidades', icon: 'truckIn', onClick: () => setCargar(p) },
+    (editar || (esAdmin && can('registrar_compras'))) && { label: 'Cargar unidades', icon: 'truckIn', onClick: () => setCargar(p) },
     editar && !p.maneja_serial && { label: 'Ajustar stock', icon: 'adjust', onClick: () => setAjuste(p) },
     editar && { label: 'Movimientos', icon: 'history', onClick: () => setMovs(p) },
     can('vender') && p.stock > 0 && { label: 'Vender', icon: 'cart', onClick: () => vender(p) },
@@ -172,12 +172,12 @@ export default function Inventario() {
           </div>
         </>}
       </Modal>}
-      {sel && !form && <ProductoDetalle p={sel} editar={editar} costos={costos} puedeVender={can('vender')} onClose={() => { setSel(null); if (productoId) navigate('/inventario', { replace: true }) }} onEditar={() => setForm(sel)} onVender={() => vender(sel)} onAjuste={() => setAjuste(sel)} onMovs={() => setMovs(sel)} onIngreso={can('registrar_compras') ? () => setCompra(sel) : null} onCargar={editar || can('registrar_compras') ? () => setCargar(sel) : null} onCambio={refrescar} />}
+      {sel && !form && <ProductoDetalle p={sel} editar={editar} costos={costos} puedeVender={can('vender')} onClose={() => { setSel(null); if (productoId) navigate('/inventario', { replace: true }) }} onEditar={() => setForm(sel)} onVender={() => vender(sel)} onAjuste={() => setAjuste(sel)} onMovs={() => setMovs(sel)} onIngreso={(esAdmin && can('registrar_compras')) ? () => setCompra(sel) : null} onCargar={editar || (esAdmin && can('registrar_compras')) ? () => setCargar(sel) : null} onCambio={refrescar} />}
       {form && <ProductoForm inicial={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => { setForm(null); refrescar(); toast('Producto guardado') }} />}
       {compra && <CompraForm productoInicial={compra.id ? compra : null} onClose={() => setCompra(false)} onSaved={() => { setCompra(false); refrescar() }} />}
       {cargar && <Modal title="Cargar unidades" subtitle={cargar.nombre} onClose={() => setCargar(null)}>
         <div className="inv-load-options">
-          {can('registrar_compras') && <button type="button" onClick={() => { const p = cargar; setCargar(null); setCompra(p) }}><span className="inv-load-icon"><I n="truckIn" /></span><span><b>Compra a proveedor</b><small>Ingreso de mercancía: registra costo, proveedor y lo que queda por pagar{cargar.maneja_serial ? ', con el IMEI de cada unidad' : ''}.</small></span></button>}
+          {(esAdmin && can('registrar_compras')) && <button type="button" onClick={() => { const p = cargar; setCargar(null); setCompra(p) }}><span className="inv-load-icon"><I n="truckIn" /></span><span><b>Compra a proveedor</b><small>Ingreso de mercancía: registra costo, proveedor y lo que queda por pagar{cargar.maneja_serial ? ', con el IMEI de cada unidad' : ''}.</small></span></button>}
           {!cargar.maneja_serial && <button type="button" onClick={() => { const p = cargar; setCargar(null); setAjuste(p) }}><span className="inv-load-icon"><I n="adjust" /></span><span><b>Ajuste rápido</b><small>Para unidades que ya tienes en la tienda (inventario inicial, conteo físico).</small></span></button>}
         </div>
       </Modal>}

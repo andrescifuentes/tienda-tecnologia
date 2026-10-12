@@ -1,51 +1,21 @@
+import InicioVendedor from './InicioVendedor'
 ﻿import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDemoRevision } from '../lib/demo/useDemoRevision'
 import AppShell from '../components/AppShell'
-import SalesMetricDetail from '../components/SalesMetricDetail'
-import BusinessDetail from '../components/BusinessDetail'
-import TechHero from '../components/TechVisuals'
 import Modal from '../components/Modal'
-import Scanner from '../components/Scanner'
 import { Icon } from '../components/Icons'
 import bannerPhoto from '../assets/photography/banner-phone.jpg'
-import { Stat, Loader, ErrorBox, Empty, Badge, SearchBar } from '../components/ui'
+import { Loader, ErrorBox, Empty } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { supabase, isDemoMode } from '../lib/supabase'
-import { money, hoyBogota, rangoMes, fechaHora, numFactura, mensajeError, limpiarBusqueda } from '../lib/format'
+import { money, hoyBogota, fechaHora, numFactura, mensajeError } from '../lib/format'
 
-function HomeTools() {
-  const navigate = useNavigate()
-  const { can } = useAuth()
-  const [q,setQ] = useState('')
-  const [scan,setScan] = useState(false)
-  const [results,setResults] = useState([])
-  useEffect(() => {
-    let active = true
-    const timer = setTimeout(async () => {
-      const s = limpiarBusqueda(q), invoice = s.replace(/^[A-Za-z]+-0*/, '')
-      if (!s) return setResults([])
-      const [p,f] = await Promise.all([
-        supabase.from('productos_venta').select('*').or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,codigo_barras.ilike.%${s}%`).limit(3),
-        /^\d+$/.test(invoice) ? supabase.from('facturas').select('*').or(`numero.eq.${Number(invoice)},total.eq.${Number(invoice)}`).limit(3) : Promise.resolve({data:[]}),
-      ])
-      if(active) setResults([...(p.data||[]).map(x=>({key:'p'+x.id,title:x.nombre,sub:'Producto · '+x.codigo,to:'/inventario?producto='+x.id})),...(f.data||[]).map(x=>({key:'f'+x.id,title:numFactura(x),sub:'Factura · '+money(x.total),to:'/facturas?factura='+x.id}))])
-    },250)
-    return()=>{active=false;clearTimeout(timer)}
-  },[q])
-  return <section className="home-tools"><SearchBar value={q} onChange={setQ} placeholder="Buscar producto o factura" />
-    {q && <div className="card search-results mb-3">{results.length ? results.map(x=><button key={x.key} className="row menu-row" onClick={()=>navigate(x.to)}><span className="flex-1"><b>{x.title}</b><small>{x.sub}</small></span><Icon name="back" className="w-4 h-4 rotate-180" /></button>):<p className="text-sm text-muted">Sin coincidencias</p>}</div>}
-    {!q && <div className="home-search-guide"><span className="premium-eyebrow">ENCUENTRA LO QUE NECESITAS</span><p>Productos, códigos y facturas.</p><small>Prueba AirPods, USBC2M o FV-1245.</small></div>}
-    <div className="quick-actions">{[{to:'/vender',title:'Nueva venta',icon:'cart',allowed:can('vender')},{to:'/inventario',title:'Inventario',icon:'box',allowed:can('ver_inventario')},{to:'/facturas',title:'Facturas',icon:'doc',allowed:true}].filter(x=>x.allowed).map(x=><button key={x.to} onClick={()=>navigate(x.to)}><span><Icon name={x.icon}/></span>{x.title}</button>)}</div>
-    {scan && <Scanner onClose={()=>setScan(false)} onScan={async code=>{setScan(false);const s=limpiarBusqueda(code);const {data}=await supabase.from('productos_venta').select('*').or(`codigo.eq.${s},codigo_barras.eq.${s}`);if(data?.length===1)navigate('/inventario?producto='+data[0].id);else setQ(code)}} />}
-  </section>
-}
 export default function Inicio() {
-  const { esAdmin, can, perfil } = useAuth()
-  return (esAdmin || can('ver_finanzas')) ? <DashboardAdmin /> : <MisVentas perfil={perfil} />
+  const { esAdmin } = useAuth()
+  return esAdmin ? <DashboardAdmin /> : <InicioVendedor />
 }
 const bogotaDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' })
-const dateLabel=()=>new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})
 
 const dayKey = d => bogotaDay.format(d)
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
@@ -233,13 +203,5 @@ function DashboardAdmin() {
       {verTodo && <Modal title="Actividad reciente" onClose={() => setVerTodo(false)}><div className="ah-acts in-modal">{data.feed.map(a => <ActivityRow key={a.key} a={a} onOpen={() => navigate(a.to)} />)}</div></Modal>}
     </>}
   </AppShell>
-}
-
-function MisVentas({perfil}) {
-  const revision = useDemoRevision()
-  const[hoy,setHoy]=useState(null),[mes,setMes]=useState(null),[lista,setLista]=useState([]),[err,setErr]=useState(''),[detail,setDetail]=useState(false)
-  useEffect(()=>{const m=rangoMes(),h=hoyBogota();(async()=>{const[a,b,c]=await Promise.all([supabase.rpc('ventas_por_empleado',{p_desde:h,p_hasta:h}),supabase.rpc('ventas_por_empleado',{p_desde:m.ini,p_hasta:m.fin}),supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha').eq('vendedor_id',perfil.id).order('fecha',{ascending:false}).limit(15)]);if(a.error)return setErr(mensajeError(a.error));setHoy(a.data?.[0]||{facturas:0,total_vendido:0,comision:0});setMes(b.data?.[0]||{facturas:0,total_vendido:0,comision:0});setLista(c.data||[])})()},[perfil.id,revision])
-  const rows=items=>items.length?items.map(f=><div className="row" key={f.id}><div className="flex-1"><b className="text-sm">{numFactura(f)}</b><p className="text-xs text-muted m-0">{fechaHora(f.fecha)}</p></div><div className="text-right"><b className="text-sm">{money(f.total)}</b>{f.estado==='anulada'&&<Badge tone="bad">Anulada</Badge>}</div></div>):<Empty text="Aún no has vendido"/>
-  return <AppShell title={'Hola, '+perfil.nombre.split(' ')[0]} sub={dateLabel()}><HomeTools/><TechHero/><ErrorBox text={err}/>{!hoy&&!err?<Loader/>:hoy&&<><div className="home-section"><h2>Mis ventas</h2></div><div className="grid grid-cols-2 gap-2.5 mb-3"><Stat label="Vendido hoy" value={money(hoy.total_vendido)} sub={hoy.facturas+' facturas'}/><Stat label="Vendido en el mes" value={money(mes.total_vendido)} sub={mes.facturas+' facturas'}/>{perfil.comision_pct!=null&&<><Stat label="Comisión hoy" value={money(hoy.comision)} tone="good"/><Stat label="Comisión del mes" value={money(mes.comision)} tone="good" sub={perfil.comision_pct+'%'}/></>}</div><div className="home-section"><h2>Mis últimas facturas</h2><button onClick={()=>setDetail(true)}>Ver todo ›</button></div><div className="card activity-list">{rows(lista.slice(0,3))}</div>{detail&&<Modal title="Mis últimas facturas" onClose={()=>setDetail(false)}>{rows(lista)}</Modal>}</>}</AppShell>
 }
 

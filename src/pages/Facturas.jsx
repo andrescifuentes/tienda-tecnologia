@@ -1,3 +1,4 @@
+import { consultarFacturasVisibles } from '../lib/sellerHome'
 import { useEffect, useMemo, useState } from 'react'
 import AppShell, { ThemeToggle } from '../components/AppShell'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -14,7 +15,7 @@ const ULTIMAS = 5
 
 export default function Facturas() {
   const navigate = useNavigate()
-  const { can } = useAuth()
+  const { can, esAdmin, perfil } = useAuth()
   const [params] = useSearchParams()
   const [periodo, setPeriodo] = useState('mes') // 'mes' | 'anio' | 'todo'
   const ym = hoyYm()
@@ -29,13 +30,13 @@ export default function Facturas() {
     setDatos(null)
     ;(async () => {
       const [ini, fin] = rango(periodo, ym)
-      let qq = supabase.from('facturas').select(sel).order('fecha', { ascending: false }).limit(periodo === 'todo' ? 2000 : 1000)
+      let qq = consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, sel).order('fecha', { ascending: false }).limit(periodo === 'todo' ? 2000 : 1000)
       if (ini) qq = qq.gte('fecha', ini)
       const { data } = await qq
       if (vivo) setDatos((data || []).filter((f) => !fin || new Date(f.fecha) < new Date(fin)))
     })()
     return () => { vivo = false }
-  }, [periodo, tick]) // eslint-disable-line
+  }, [periodo, tick, esAdmin, perfil.id]) // eslint-disable-line
 
   useEffect(() => {
     let vivo = true
@@ -44,11 +45,11 @@ export default function Facturas() {
     const [ini, fin] = rango(periodo, periodo === 'anio' ? (Number(ym.slice(0, 4)) - 1) + ym.slice(4) : prevYm(ym))
     const c = new Date(); if (periodo === 'anio') c.setFullYear(c.getFullYear() - 1); else c.setMonth(c.getMonth() - 1)
     const corte = c < new Date(fin) ? c : new Date(fin)
-    supabase.from('facturas').select('total,estado,fecha').gte('fecha', ini).then(({ data }) => {
+    consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, 'total,estado,fecha').gte('fecha', ini).then(({ data }) => {
       if (vivo) setPrevio((data || []).filter((f) => f.estado !== 'anulada' && new Date(f.fecha) < corte).reduce((a, f) => a + Number(f.total || 0), 0))
     })
     return () => { vivo = false }
-  }, [periodo, tick]) // eslint-disable-line
+  }, [periodo, tick, esAdmin, perfil.id]) // eslint-disable-line
 
   const resumen = useMemo(() => {
     const ok = (datos || []).filter((f) => f.estado !== 'anulada')

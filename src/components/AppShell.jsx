@@ -35,7 +35,7 @@ export function ThemeToggle() {
   return <button onClick={toggle} className="icon-button" aria-label="Cambiar tema"><Icon name={dark ? 'sun' : 'moon'} className="w-5 h-5" /></button>
 }
 
-export default function AppShell({ title, sub, onBack, right, footer, homeAside, header, children }) {
+export default function AppShell({ title, sub, onBack, right, footer, homeAside, header, className = '', children }) {
   const deviceRef = useRef(null)
   useSearchViewport(deviceRef)
   const { pathname } = useLocation()
@@ -48,7 +48,7 @@ export default function AppShell({ title, sub, onBack, right, footer, homeAside,
   const greeting = hour < 12 ? 'Buenos días,' : hour < 18 ? 'Buenas tardes,' : 'Buenas noches,'
   const volver = onBack || (pathname !== '/' ? () => navigate(-1) : null)
   return (
-    <div className={'device' + (pathname === '/' ? ' home-experience' : '')} ref={deviceRef}>
+    <div className={'device' + (pathname === '/' ? ' home-experience' : '') + (className ? ' ' + className : '')} ref={deviceRef}>
       {header ? <header className={'top top-custom ' + (navType === 'POP' ? 'page-back' : 'page-fwd')} key={'h' + pathname}>{header}</header> : <header key={'h' + pathname} className={'top page-anim' + (pathname === '/' ? ' top-home' : '')}>
         {pathname === '/' && <div className="home-hero-photo" aria-hidden="true" style={{backgroundImage:`url(${heroPhoto})`}} />}{pathname === '/' && <img className="home-hero-light" src={heroPhoneLight} alt="" aria-hidden="true" />}
         {pathname === '/' ? <><div className="home-masthead"><Brand compact/><div className="header-controls">{right}{pathname === '/' && <><button className="icon-button" aria-label={isDemoMode?'Ver notificaciones locales':'Ver actividad reciente'} onClick={() => isDemoMode ? setNotificationsOpen(true) : document.querySelector('.activity-list')?.scrollIntoView({behavior:'smooth',block:'start'})}><Icon name="bell" className="w-5 h-5" />{isDemoMode&&notices.some(n=>!n.read)&&<span className="notification-count">{notices.filter(n=>!n.read).length}</span>}</button><button className="profile-avatar" aria-label="Mi perfil" onClick={() => setProfileOpen(true)}>{perfil?.nombre?.slice(0,1)}</button></>}<ThemeToggle /></div></div><div className="home-welcome"><div><p>{greeting}</p><h1>{perfil?.nombre?.split(' ')[0] || 'Tu negocio'}</h1>{sub && <p className="home-date">{sub}</p>}</div>{homeAside}</div></> : (<div className="top-inner">

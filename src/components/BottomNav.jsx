@@ -10,18 +10,18 @@ const ADMIN = [
   { to: '/mas', icon: 'menu', label: 'Más' },
 ]
 const VENDEDOR = [
-  { to: '/', icon: 'home', label: 'Mis ventas' },
-  { to: '/vender', icon: 'cart', label: 'Vender' },
-  { to: '/inventario', icon: 'box', label: 'Productos' },
+  { to: '/', icon: 'home', label: 'Inicio' },
+  { to: '/inventario', icon: 'box', label: 'Inventario', permiso: 'ver_inventario' },
+  { to: '/vender', icon: 'cart', label: 'Vender', permiso: 'vender' },
+  { to: '/facturas', icon: 'doc', label: 'Facturas' },
   { to: '/clientes', icon: 'users', label: 'Clientes' },
-  { to: '/mas', icon: 'menu', label: 'Más' },
 ]
 
 export default function BottomNav() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { esAdmin } = useAuth()
-  const tabs = esAdmin ? ADMIN : VENDEDOR
+  const { esAdmin, can } = useAuth()
+  const tabs = esAdmin ? ADMIN : VENDEDOR.filter(t => !t.permiso || can(t.permiso))
   return (
     <nav className="nav" aria-label="Navegación principal">
       {tabs.map((t) => {

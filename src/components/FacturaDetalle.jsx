@@ -1,3 +1,4 @@
+import { consultarFacturasVisibles } from '../lib/sellerHome'
 import { useEffect, useMemo, useState } from 'react'
 import Modal from './Modal'
 import InvoicePreview from './InvoicePreview'
@@ -17,7 +18,7 @@ import { subirFacturaPdf, mensajeWhatsApp, correoFactura } from '../lib/facturaE
 const soloNum = (t) => String(t || '').replace(/\D/g, '')
 
 export default function FacturaDetalle({ id, onClose, nueva = false, onCambio }) {
-  const { can, tienda, perfil } = useAuth()
+  const { can, tienda, perfil, esAdmin } = useAuth()
   const [f, setF] = useState(null)
   const [items, setItems] = useState([])
   const [devs, setDevs] = useState([])
@@ -40,7 +41,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio })
   const [confirmRefund,setConfirmRefund] = useState(false), [newWarranty,setNewWarranty] = useState(false)
 
   async function cargar() {
-    const { data, error } = await supabase.from('facturas').select(isDemoMode ? '*, clientes(*), perfiles(nombre)' : '*, clientes(*), perfiles!facturas_vendedor_id_fkey(nombre,correo,telefono)').eq('id', id).single()
+    const { data, error } = await consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, isDemoMode ? '*, clientes(*), perfiles(nombre)' : '*, clientes(*), perfiles!facturas_vendedor_id_fkey(nombre,correo,telefono)').eq('id', id).single()
     if (error) return setErr(mensajeError(error))
     const [it, dv] = await Promise.all([
       supabase.from('factura_items').select('*').eq('factura_id', id).order('id'),
