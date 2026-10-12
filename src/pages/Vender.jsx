@@ -1,3 +1,4 @@
+import { quitarFocoEntrada } from '../lib/invoiceDelivery'
 import { useEffect, useMemo, useState } from 'react'
 import ModuleBanner from '../components/ModuleBanner'
 import AppShell, { ThemeToggle } from '../components/AppShell'
@@ -82,6 +83,8 @@ export default function Vender() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [facturaId, setFacturaId] = useState(null)
+  const [verFacturaVenta, setVerFacturaVenta] = useState(false)
+  const cerrarVenta = () => { quitarFocoEntrada(); setFacturaId(null); setVerFacturaVenta(false) }
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -176,6 +179,7 @@ export default function Vender() {
       return setErr(mensajeError(error))
     }
     const id = typeof data === 'object' && data !== null ? (data.id ?? data.factura_id ?? Object.values(data)[0]) : data
+    quitarFocoEntrada(); setVerFacturaVenta(false)
     setCarrito([]); setCliente(null); setDescuento(''); setNotas(''); setVerCarrito(false); setQ('')
     setRequestId(imageKey()); setRefresh(n=>n+1); setFacturaId(id); toast('Venta registrada')
   }
@@ -319,7 +323,7 @@ export default function Vender() {
       {remove && <ConfirmAction title={remove==='all'?'Vaciar carrito':'Quitar producto'} label="Quitar" onClose={()=>setRemove(null)} onConfirm={()=>setCarrito(c=>remove==='all'?[]:c.filter(i=>i.key!==remove.key))}>Se quitaran {remove==='all'?'todos los productos':remove.producto.nombre} del carrito. No cambia el inventario.</ConfirmAction>}
       {verCliente === 'nuevo' && <ClienteForm onClose={() => setVerCliente(false)} onSaved={(c) => { setCliente(c); setVerCliente(false) }} />}
       {verCliente && verCliente !== 'nuevo' && <ClientePicker sinConsumidor onClose={() => setVerCliente(false)} onPick={(c) => { setCliente(c); setVerCliente(false) }} />}
-      {facturaId && <FacturaDetalle id={facturaId} nueva onClose={() => setFacturaId(null)} />}
+      {facturaId && <FacturaDetalle key={facturaId + (verFacturaVenta ? ':detalle' : ':postventa')} id={facturaId} nueva={!verFacturaVenta} onClose={verFacturaVenta ? () => { quitarFocoEntrada(); setVerFacturaVenta(false) } : cerrarVenta} onViewInvoice={() => { quitarFocoEntrada(); setVerFacturaVenta(true) }} onNewSale={cerrarVenta} />}
 
       {serialDe && (
         <Modal title={`Serial · ${serialDe.nombre}`} subtitle="Selecciona una unidad disponible" className="experience-sheet serial-picker-sheet" keyboardAware onClose={() => setSerialDe(null)}>
@@ -330,7 +334,7 @@ export default function Vender() {
 
       {verCarrito && (() => {
         const mp = METODOS_PAGO.find(m => m[0] === metodo) || METODOS_PAGO[0]
-        return <Modal expanded={expand} title="Tu venta" subtitle="Revisa y cobra" className="experience-sheet checkout-sheet pos-checkout pos-ck" keyboardAware onClose={() => setVerCarrito(false)} footer={
+        return <Modal expanded={expand} title="Tu venta" subtitle="Revisa y cobra" className="experience-sheet checkout-sheet pos-checkout pos-ck" keyboardAware restoreInputFocus={false} onClose={() => setVerCarrito(false)} footer={
           <button className={'pos-pay2' + (cliente ? '' : ' locked')} disabled={busy || pendingSale || carrito.length === 0} onClick={() => { if (!cliente) { setFaltaCliente(true); setTimeout(() => setFaltaCliente(false), 600); return toast('Elige o registra el cliente para continuar') } facturar() }}>
             <span className="pos-pay2-ic"><I n={cliente ? mp[2] : 'user'} /></span>
             <span className="pos-pay2-txt"><small>{busy ? 'Procesando…' : cliente ? 'Cobrar en ' + mp[1].toLowerCase() : 'Falta el cliente'}</small><b>{busy ? 'Facturando' : money(total)}</b></span>

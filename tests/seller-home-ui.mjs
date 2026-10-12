@@ -115,7 +115,9 @@ try {
       const failures = [];
       for (const el of document.querySelectorAll('.device,.top,.top-title,.view,.page-content,.card,.row,.sheet,.sheet-body,.login-layout,.login-form,.stat-value,.search-bar,.cart-bar-button,h1,.row p,.badge')) {
         const r = el.getBoundingClientRect();
-        if (r.width && (r.left < -1 || r.right > innerWidth + 1 || el.scrollWidth > el.clientWidth + 2)) failures.push({element:el.className || el.tagName,left:r.left,right:r.right,scroll:el.scrollWidth,client:el.clientWidth});
+        // ModuleBanner deliberately ellipsizes its title; keep bounds checks and strict seller amount checks.
+        const bannerEllipsis = el.matches('.mb-title') && getComputedStyle(el).textOverflow === 'ellipsis';
+        if (r.width && (r.left < -1 || r.right > innerWidth + 1 || (!bannerEllipsis && el.scrollWidth > el.clientWidth + 2))) failures.push({element:el.className || el.tagName,left:r.left,right:r.right,scroll:el.scrollWidth,client:el.clientWidth});
       }
       const nav = document.querySelector('.nav'), nr = nav?.getBoundingClientRect();
       return {width:innerWidth,height:innerHeight,documentWidth:document.documentElement.scrollWidth,failures,themeButtons:document.querySelectorAll('[aria-label="Cambiar tema"]').length,nav:nr?{top:nr.top,bottom:nr.bottom,count:nav.children.length,minimumTarget:Math.min(...[...nav.children].map(el=>el.getBoundingClientRect().height))}:null};
@@ -152,6 +154,7 @@ try {
   const home = async () => { await go('/'); await waitFor("!!document.querySelector('.seller-total')"); }
   const period = async key => { await evaluate('(()=>{const s=document.querySelector(".seller-period select");Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set.call(s,'+JSON.stringify(key)+');s.dispatchEvent(new Event("change",{bubbles:true}))})()'); await waitFor("!!document.querySelector('.seller-total')"); }
   await login('admin@angietech.demo'); await waitFor("!!document.querySelector('.ah-sales')")
+  await evaluate('document.fonts.ready.then(()=>true)'); await delay(100) // Measure the final font, not the fallback during loading.
   assert.equal(await evaluate("!!document.querySelector('.seller-home')"),false)
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.nav button')].map(b=>b.textContent.trim())"),['Inicio','Inventario','Facturas','Vender','Más'])
   await geometry('admin-unchanged',390,844); await screenshot('admin-unchanged'); check('Admin home and navigation retained')

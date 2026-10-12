@@ -32,7 +32,7 @@ function lockBackground() {
   return () => { if (--backgroundLocks === 0) { restoreBackground(); restoreBackground = null } }
 }
 
-export default function Modal({ title, onClose, footer, children, expanded = false, className = '', subtitle, keyboardAware = false }) {
+export default function Modal({ title, onClose, footer, children, expanded = false, className = '', subtitle, keyboardAware = false, validateFooter = true, restoreInputFocus = true }) {
   const id = useId()
   const dialogRef = useRef(null)
   const overlayRef = useRef(null)
@@ -90,7 +90,7 @@ export default function Modal({ title, onClose, footer, children, expanded = fal
     return () => {
       document.removeEventListener('keydown', keys)
       unlockBackground()
-      if (previous?.isConnected) {
+      if (previous?.isConnected && (restoreInputFocus || !previous.matches?.('input,textarea,select'))) {
         // Returning focus after a dialog is not a new request to open search.
         // Safari can finish its closing resize before this cleanup runs.
         previous.setAttribute('data-dialog-restoring-focus', '')
@@ -110,6 +110,7 @@ export default function Modal({ title, onClose, footer, children, expanded = fal
 
   return createPortal(
     <div ref={overlayRef} className={'overlay' + (keyboardAware ? ' keyboard-aware-overlay' : '')} onClick={(e) => { if (e.target === e.currentTarget) onClose() }} onClickCapture={e => {
+      if (!validateFooter) return
       const button = e.target.closest('button')
       if (!button || !button.closest('.sheet-foot') || button.closest('.sheet') !== dialogRef.current || button.classList.contains('sec')) return
       const inputs = [...dialogRef.current.querySelectorAll('.sheet-body input:not(:disabled),.sheet-body select:not(:disabled),.sheet-body textarea:not(:disabled)')]

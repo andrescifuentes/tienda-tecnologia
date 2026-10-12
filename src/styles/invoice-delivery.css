@@ -1,0 +1,14 @@
+.post-sale-footer { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr); gap:10px; }
+.post-sale-footer button { min-height:56px; min-width:0; font-size:14px; }
+.post-sale-note { font-size:12px; line-height:1.6; color:var(--muted); margin:14px 0; }
+.post-sale-view { min-height:48px; }
+.post-sale-view .inv-i { width:18px; height:18px; }
+.delivery-optional { margin-left:auto; font-size:10px; font-weight:500; text-transform:none; letter-spacing:0; color:var(--muted); }
+.delivery-attachment { border-left:2px solid var(--gold); padding:8px 10px; color:var(--ink); background:var(--accent-soft); font-size:12px; line-height:1.6; }
+.invoice-delivery .invoice-preview pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
+.invoice-delivery .invoice-preview>.btn { min-height:44px; margin-top:10px; }
+.invoice-delivery .invoice-pdf-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.invoice-delivery .invoice-pdf-actions .btn { flex:1; min-height:44px; }
+.invoice-delivery .fd-actions { margin-bottom:12px; }
+.invoice-delivery .fd-hint { margin:10px 0; }
+@media (max-width:350px) { .post-sale-footer { gap:8px; }.post-sale-footer button { font-size:12px; } }
