@@ -1,6 +1,7 @@
+import { loadCustomers } from '../lib/customerQueries'
 import { useEffect, useState } from 'react'
 import Modal from './Modal'
-import { SearchBar, Empty, Input, Select, ErrorBox } from './ui'
+import { SearchBar, Empty, Input, Select, ErrorBox, Loader } from './ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { limpiarBusqueda, mensajeError } from '../lib/format'
 import { useAction } from '../lib/useAction'
@@ -60,24 +61,28 @@ export default function ClientePicker({ onPick, onClose, sinConsumidor = false }
   const [q, setQ] = useState('')
   const [lista, setLista] = useState([])
   const [nuevo, setNuevo] = useState(false)
+  const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(''), [retry, setRetry] = useState(0)
   useEffect(() => {
-    const t = setTimeout(async () => {
-      const s = limpiarBusqueda(q)
-      let qq = supabase.from('clientes').select('*').order('nombre').limit(25)
-      if(isDemoMode) qq=qq.eq('activo',true)
-      if (s) qq = qq.or(`nombre.ilike.%${s}%,documento.ilike.%${s}%,telefono.ilike.%${s}%`)
-      const { data } = await qq
-      setLista(data || [])
+    let live = true
+    const controller = new AbortController()
+    setLoading(true); setLoadError('')
+    const timer = setTimeout(() => {
+      loadCustomers(supabase, { search: q, limit: 25, activeOnly: isDemoMode, signal: controller.signal })
+        .then(rows => { if (live) setLista(rows) })
+        .catch(error => { if (live) setLoadError('No se pudieron cargar los clientes. ' + error.message) })
+        .finally(() => { if (live) setLoading(false) })
     }, 250)
-    return () => clearTimeout(t)
-  }, [q])
+    return () => { live = false; clearTimeout(timer); controller.abort() }
+  }, [q, retry])
   if (nuevo) return <ClienteForm onClose={() => setNuevo(false)} onSaved={(c) => onPick(c)} />
   return (
     <Modal title="Elegir cliente" className="experience-sheet client-picker-sheet" keyboardAware onClose={onClose}>
       <SearchBar value={q} onChange={setQ} placeholder="Nombre, documento o teléfono" />
       {!sinConsumidor && <button className="btn sec full mb-2" onClick={() => onPick(null)}>Consumidor final</button>}
       {can('crear_clientes') && <button className="btn sec full mb-3" onClick={() => setNuevo(true)}>+ Nuevo cliente</button>}
-      {lista.length === 0 ? <Empty text="Sin clientes" /> : lista.map((c) => (
+      <ErrorBox text={loadError} />
+      {loadError && <button type="button" className="btn sec full" onClick={() => setRetry(n => n + 1)}>Reintentar clientes</button>}
+      {loading ? <Loader /> : loadError ? null : lista.length === 0 ? <Empty text="Sin clientes" /> : lista.map((c) => (
         <div key={c.id} className="row cursor-pointer" onClick={() => onPick(c)}>
           <div className="flex-1"><p className="m-0 text-sm font-semibold">{c.nombre}</p><p className="m-0 text-xs text-muted">{c.tipo_documento} {c.documento}{c.telefono ? ' · ' + c.telefono : ''}</p></div>
         </div>

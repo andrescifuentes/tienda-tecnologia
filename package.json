@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
+    "@electric-sql/pglite": "^0.5.9",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.41",

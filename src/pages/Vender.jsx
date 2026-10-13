@@ -1,5 +1,7 @@
+import { createSaleAttempt, readSaleAttempt, saveSaleAttempt, clearSaleAttempt, submitSale, reconcileSale } from '../lib/saleCompletion'
+import { invoiceTable, invoiceItemsTable } from '../lib/invoiceQueries'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ModuleBanner from '../components/ModuleBanner'
 import AppShell, { ThemeToggle } from '../components/AppShell'
 import { monetaryError } from '../lib/money'
@@ -24,10 +26,15 @@ import '../styles/sale-quantity.css'
 export default function Vender() {
   const { perfil, esAdmin, can } = useAuth()
   const draftKey = 'angie:cart:' + perfil.id
-  const [draft] = useState(() => { try { return isDemoMode ? JSON.parse(sessionStorage.getItem(draftKey) || '{}') : {} } catch { return {} } })
+  const [draft] = useState(() => { try { return JSON.parse(sessionStorage.getItem(draftKey) || '{}') } catch { return {} } })
+  const [saleAttempt, setSaleAttempt] = useState(() => readSaleAttempt(sessionStorage, perfil.id))
+  const attemptRef = useRef(saleAttempt), mounted = useRef(true)
+  const [recoveryInvoiceId, setRecoveryInvoiceId] = useState(null)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  const cartEditable = () => { if (!attemptRef.current) return true; toast('Comprueba la venta pendiente antes de modificar el carrito.'); return false }
   const [seller, setSeller] = useState(draft.seller || perfil.id)
   const [sellers, setSellers] = useState([]), [remove, setRemove] = useState(null), [expand, setExpand] = useState(false)
-  const [requestId, setRequestId] = useState(draft.requestId || imageKey())
+  const [requestId, setRequestId] = useState(saleAttempt?.id || draft.requestId || imageKey())
   useEffect(() => { if (isDemoMode && esAdmin) supabase.from('perfiles').select('*').eq('activo',true).then(({data})=>setSellers(data||[])) }, [esAdmin])
 
   const [categoryOptions,setCategoryOptions]=useState([])
@@ -43,7 +50,7 @@ export default function Vender() {
   const [hoyMio, setHoyMio] = useState({ n: 0, total: 0 })
   useEffect(() => {
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-    supabase.from('facturas').select('total,estado,fecha').eq('vendedor_id', perfil.id).gte('fecha', hoy + 'T00:00:00-05:00').then(({ data }) => {
+    supabase.from(invoiceTable(supabase, { esAdmin })).select('total,estado,fecha').eq('vendedor_id', perfil.id).gte('fecha', hoy + 'T00:00:00-05:00').then(({ data }) => {
       const ok = (data || []).filter(f => f.estado !== 'anulada')
       setHoyMio({ n: ok.length, total: ok.reduce((a, f) => a + Number(f.total || 0), 0) })
     })
@@ -53,12 +60,12 @@ export default function Vender() {
     let vivo = true
     ;(async () => {
       const contar = async (soloMio) => {
-        let qf = supabase.from('facturas').select('id').eq('estado', 'emitida').order('fecha', { ascending: false }).limit(500)
+        let qf = supabase.from(invoiceTable(supabase, { esAdmin })).select('id').eq('estado', 'emitida').order('fecha', { ascending: false }).limit(500)
         if (soloMio) qf = qf.eq('vendedor_id', perfil.id)
         const { data: fs } = await qf
         const ids = (fs || []).map(f => f.id)
         if (!ids.length) return {}
-        const { data: its } = await supabase.from('factura_items').select('producto_id,cantidad,factura_id').in('factura_id', ids)
+        const { data: its } = await supabase.from(invoiceItemsTable(supabase, esAdmin)).select('producto_id,cantidad,factura_id').in('factura_id', ids)
         const c = {}; for (const it of its || []) c[it.producto_id] = (c[it.producto_id] || 0) + Number(it.cantidad || 0)
         return c
       }
@@ -97,9 +104,9 @@ export default function Vender() {
     return () => clearTimeout(t)
   }, [q, refresh])
 
-  useEffect(() => { if (!isDemoMode) return; try { sessionStorage.setItem(draftKey, JSON.stringify({carrito,cliente,metodo,descuento,notas,seller,requestId})) } catch { /* Draft does not block checkout. */ } }, [carrito,cliente,metodo,descuento,notas,seller,requestId,draftKey])
+  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({carrito,cliente,metodo,descuento,notas,seller,requestId})) } catch { /* Draft does not block checkout. */ } }, [carrito,cliente,metodo,descuento,notas,seller,requestId,draftKey])
   useEffect(() => {
-    if (!isDemoMode || !draft.carrito?.length) return
+    if (!draft.carrito?.length) return
     let live = true
     supabase.from('productos_venta').select('*').in('id', draft.carrito.map(i=>i.producto.id)).then(({data,error})=>{
       if (!live || error) return
@@ -110,6 +117,7 @@ export default function Vender() {
   const enCarrito = (id) => carrito.filter((i) => i.producto.id === id).reduce((a, i) => a + i.cantidad, 0)
 
   async function agregar(p) {
+    if (!cartEditable()) return
     if (p.maneja_serial) {
       const { data } = await supabase.from('unidades_serializadas').select('id,serial').eq('producto_id', p.id).eq('estado', 'disponible').order('id')
       const usadas = carrito.map((i) => i.unidad?.id)
@@ -126,6 +134,7 @@ export default function Vender() {
     toast(`${p.nombre} agregado`)
   }
   function agregarUnidad(u) {
+    if (!cartEditable()) return
     setCarrito((c) => c.some(i=>i.unidad?.id===u.id) ? c : [...c, { key: 'u' + u.id, producto: serialDe, cantidad: 1, unidad: u }])
     setSerialDe(null); toast('Agregado con serial ' + u.serial)
   }
@@ -142,6 +151,7 @@ export default function Vender() {
     toast('No se encontró ese código')
   }
   function agregarUnidadDirecto(p, u) {
+    if (!cartEditable()) return
     if (carrito.some((i) => i.unidad?.id === u.id)) return
     setCarrito((c) => [...c, { key: 'u' + u.id, producto: p, cantidad: 1, unidad: u }]); setSerialDe(null)
   }
@@ -151,9 +161,10 @@ export default function Vender() {
   const total = subtotal - desc
   const unidadesTotal = carrito.reduce((a, i) => a + i.cantidad, 0)
 
-  function cambiarCant(i, n) { setCarrito((c) => c.map((x) => (x === i ? { ...x, cantidad: Math.min(n, i.producto.stock) } : x))) }
-  function quitar(i) { setRemove(i) }
+  function cambiarCant(i, n) { if (!cartEditable()) return; setCarrito((c) => c.map((x) => (x === i ? { ...x, cantidad: Math.min(n, i.producto.stock) } : x))) }
+  function quitar(i) { if (!cartEditable()) return; setRemove(i) }
   function disminuir(p) {
+    if (!cartEditable()) return
     setCarrito(c=>{
       // A serialized line always represents one explicitly selected unit.
       const item = [...c].reverse().find(i=>i.producto.id===p.id)
@@ -162,26 +173,54 @@ export default function Vender() {
     })
   }
 
-  const [facturar, pendingSale] = useAction(facturarImpl, () => setBusy(false))
-  async function facturarImpl() {
-    if (!cliente) return setErr('Elige un cliente registrado o registra uno nuevo para continuar.')
-    for (const value of [descuento,subtotal,total,...carrito.flatMap(i=>[i.producto.precio_venta,i.producto.precio_compra ?? 0])]) if (monetaryError(value)) return setErr(monetaryError(value))
-    if (carrito.some(i=>!Number.isInteger(i.cantidad)||i.cantidad<=0||i.cantidad>i.producto.stock||i.producto.activo===false)) return setErr('Revisa el carrito: un producto está desactivado o no tiene stock suficiente. Reduce su cantidad o quítalo.')
-    setErr(''); setBusy(true)
-    const items = carrito.map((i) => ({ producto_id:i.producto.id, cantidad:i.unidad?1:i.cantidad, ...(i.unidad?{unidad_id:i.unidad.id}:{descuento:0}), ...(isDemoMode?{precio_unitario:i.producto.precio_venta}:{}) }))
-    const { data, error } = await supabase.rpc('emitir_factura', { p_cliente_id: cliente?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notas.trim() || null, ...(isDemoMode?{p_request_id:requestId,p_total_confirmado:total,p_vendedor_id:esAdmin?seller:undefined}:{}) })
-    setBusy(false)
-    if (error) {
-      if (isDemoMode && /^El precio cambió/.test(error.message)) {
-        const fresh = await supabase.from('productos_venta').select('*').in('id',carrito.map(i=>i.producto.id))
-        if (!fresh.error) setCarrito(rows=>rows.map(i=>({...i,producto:fresh.data.find(p=>p.id===i.producto.id)||i.producto})))
-      }
-      return setErr(mensajeError(error))
-    }
-    const id = typeof data === 'object' && data !== null ? (data.id ?? data.factura_id ?? Object.values(data)[0]) : data
+  function finishSale(result, attempt) {
+    if (!mounted.current) return
+    clearSaleAttempt(sessionStorage, perfil.id, attempt.id)
+    attemptRef.current = null; setSaleAttempt(null)
     quitarFocoEntrada(); setVerFacturaVenta(false)
     setCarrito([]); setCliente(null); setDescuento(''); setNotas(''); setVerCarrito(false); setQ('')
-    setRequestId(imageKey()); setRefresh(n=>n+1); setFacturaId(id); toast('Venta registrada')
+    setRequestId(imageKey()); setRefresh(n => n + 1); setFacturaId(result.invoiceId); toast('Venta registrada')
+  }
+  function rememberAttempt(attempt) {
+    saveSaleAttempt(sessionStorage, attempt)
+    attemptRef.current = attempt
+    if (mounted.current) setSaleAttempt({ ...attempt })
+  }
+  const [facturar, pendingSale] = useAction(facturarImpl, () => { if (mounted.current) setBusy(false) })
+  async function facturarImpl() {
+    setErr(''); setBusy(true)
+    let attempt = attemptRef.current
+    if (attempt) {
+      const checked = await reconcileSale(supabase, attempt)
+      if (checked.status === 'persisted') return finishSale(checked, attempt)
+      if (attempt.status !== 'retryable' || checked.status !== 'retryable') {
+        rememberAttempt({ ...attempt, status: checked.status, ...(checked.invoiceId ? { invoiceId: checked.invoiceId } : {}) })
+        return setErr(checked.message)
+      }
+    } else {
+      if (!cliente) return setErr('Elige un cliente registrado o registra uno nuevo para continuar.')
+      for (const value of [descuento,subtotal,total,...carrito.flatMap(i => [i.producto.precio_venta,i.producto.precio_compra ?? 0])]) if (monetaryError(value)) return setErr(monetaryError(value))
+      if (carrito.some(i => !Number.isInteger(i.cantidad) || i.cantidad <= 0 || i.cantidad > i.producto.stock || i.producto.activo === false)) return setErr('Revisa el carrito: un producto está desactivado o no tiene stock suficiente. Reduce su cantidad o quítalo.')
+      const items = carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.unidad ? 1 : i.cantidad, ...(i.unidad ? { unidad_id: i.unidad.id } : { descuento: 0 }), ...(isDemoMode ? { precio_unitario: i.producto.precio_venta } : {}) }))
+      attempt = createSaleAttempt({ id: requestId, actorId: perfil.id, admin: esAdmin, mode: isDemoMode ? 'demo' : supabase.idempotentSales ? 'secure' : 'legacy', total,
+        args: { p_cliente_id: cliente?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notas.trim() || null, ...(isDemoMode ? { p_total_confirmado: total, p_vendedor_id: esAdmin ? seller : undefined } : {}) } })
+      try { rememberAttempt(attempt) }
+      catch { return setErr('No se pudo proteger el estado de esta venta. Habilita el almacenamiento del navegador y reintenta; no se envió ningún cobro.') }
+    }
+    const result = await submitSale(supabase, attempt, { onReceipt: updated => {
+      // A late response may record the ID, but cannot overwrite a newer attempt or reopen a closed modal.
+      if (readSaleAttempt(sessionStorage, perfil.id)?.id === updated.id) saveSaleAttempt(sessionStorage, updated)
+    } })
+    if (!mounted.current) return
+    if (result.status === 'persisted') return finishSale(result, attempt)
+    if (result.status === 'failed') {
+      clearSaleAttempt(sessionStorage, perfil.id, attempt.id); attemptRef.current = null; setSaleAttempt(null)
+      if (isDemoMode && /^El precio cambió/.test(result.message)) {
+        const fresh = await supabase.from('productos_venta').select('*').in('id', carrito.map(i => i.producto.id))
+        if (!fresh.error) setCarrito(rows => rows.map(i => ({ ...i, producto: fresh.data.find(p => p.id === i.producto.id) || i.producto })))
+      }
+    } else rememberAttempt({ ...attempt, status: result.status, ...(result.invoiceId ? { invoiceId: result.invoiceId } : {}) })
+    setErr(result.message)
   }
 
   const disponibles = res
@@ -200,6 +239,7 @@ export default function Vender() {
   const METODOS_PAGO = [['efectivo', 'Efectivo', 'cash'], ['tarjeta', 'Tarjeta', 'card'], ['transferencia', 'Transferencia', 'bank']]
 
   function agregarVarios(p, k) {
+    if (!cartEditable()) return
     if (p.maneja_serial) return agregar(p)
     const libre = p.stock - enCarrito(p.id), add = Math.min(k, libre)
     if (add <= 0) return toast('No hay más stock de este producto')
@@ -320,9 +360,10 @@ export default function Vender() {
           {libre > 0 && libre <= p.stock_min && <p className="pos-detail-note warn"><I n="warn" />Quedan pocas unidades de este producto.</p>}
         </Modal>
       })()}
-      {remove && <ConfirmAction title={remove==='all'?'Vaciar carrito':'Quitar producto'} label="Quitar" onClose={()=>setRemove(null)} onConfirm={()=>setCarrito(c=>remove==='all'?[]:c.filter(i=>i.key!==remove.key))}>Se quitaran {remove==='all'?'todos los productos':remove.producto.nombre} del carrito. No cambia el inventario.</ConfirmAction>}
+      {remove && <ConfirmAction title={remove==='all'?'Vaciar carrito':'Quitar producto'} label="Quitar" onClose={()=>setRemove(null)} onConfirm={()=>{if(cartEditable())setCarrito(c=>remove==='all'?[]:c.filter(i=>i.key!==remove.key))}}>Se quitaran {remove==='all'?'todos los productos':remove.producto.nombre} del carrito. No cambia el inventario.</ConfirmAction>}
       {verCliente === 'nuevo' && <ClienteForm onClose={() => setVerCliente(false)} onSaved={(c) => { setCliente(c); setVerCliente(false) }} />}
       {verCliente && verCliente !== 'nuevo' && <ClientePicker sinConsumidor onClose={() => setVerCliente(false)} onPick={(c) => { setCliente(c); setVerCliente(false) }} />}
+      {recoveryInvoiceId && <FacturaDetalle id={recoveryInvoiceId} onClose={() => setRecoveryInvoiceId(null)} />}
       {facturaId && <FacturaDetalle key={facturaId + (verFacturaVenta ? ':detalle' : ':postventa')} id={facturaId} nueva={!verFacturaVenta} onClose={verFacturaVenta ? () => { quitarFocoEntrada(); setVerFacturaVenta(false) } : cerrarVenta} onViewInvoice={() => { quitarFocoEntrada(); setVerFacturaVenta(true) }} onNewSale={cerrarVenta} />}
 
       {serialDe && (
@@ -335,14 +376,16 @@ export default function Vender() {
       {verCarrito && (() => {
         const mp = METODOS_PAGO.find(m => m[0] === metodo) || METODOS_PAGO[0]
         return <Modal expanded={expand} title="Tu venta" subtitle="Revisa y cobra" className="experience-sheet checkout-sheet pos-checkout pos-ck" keyboardAware restoreInputFocus={false} onClose={() => setVerCarrito(false)} footer={
-          <button className={'pos-pay2' + (cliente ? '' : ' locked')} disabled={busy || pendingSale || carrito.length === 0} onClick={() => { if (!cliente) { setFaltaCliente(true); setTimeout(() => setFaltaCliente(false), 600); return toast('Elige o registra el cliente para continuar') } facturar() }}>
+          <button className={'pos-pay2' + (cliente ? '' : ' locked')} disabled={busy || pendingSale || (!carrito.length && !saleAttempt)} onClick={() => { if (!cliente && !saleAttempt) { setFaltaCliente(true); setTimeout(() => setFaltaCliente(false), 600); return toast('Elige o registra el cliente para continuar') } facturar() }}>
             <span className="pos-pay2-ic"><I n={cliente ? mp[2] : 'user'} /></span>
-            <span className="pos-pay2-txt"><small>{busy ? 'Procesando…' : cliente ? 'Cobrar en ' + mp[1].toLowerCase() : 'Falta el cliente'}</small><b>{busy ? 'Facturando' : money(total)}</b></span>
+            <span className="pos-pay2-txt"><small>{busy ? 'Procesando…' : saleAttempt ? saleAttempt.status === 'retryable' ? 'Reintentar esta venta' : 'Comprobar venta' : cliente ? 'Cobrar en ' + mp[1].toLowerCase() : 'Falta el cliente'}</small><b>{busy ? 'Facturando' : money(saleAttempt?.total ?? total)}</b></span>
             <span className="pos-pay2-go"><I n="back" className="flip" /></span>
           </button>}>
           <ErrorBox text={err} />
+          {saleAttempt && <p role="status" className="text-sm text-muted">Esta venta espera comprobación. Puedes cerrar la pantalla; el intento se conserva y no se volverá a cobrar automáticamente.</p>}
+          {saleAttempt?.invoiceId && <button type="button" className="btn sec full" onClick={() => setRecoveryInvoiceId(saleAttempt.invoiceId)}>Abrir factura registrada</button>}
 
-          <div className="pos-step-head"><span className="pos-step-n">1</span><h4>Productos</h4><button type="button" className="pos-clear" disabled={!carrito.length} onClick={()=>setRemove('all')}><I n="trash" />Vaciar</button></div>
+          <div className="pos-step-head"><span className="pos-step-n">1</span><h4>Productos</h4><button type="button" className="pos-clear" disabled={!carrito.length || !!saleAttempt} onClick={()=>setRemove('all')}><I n="trash" />Vaciar</button></div>
           <div className="pos-lines">
           {carrito.map((i) => (
             <div key={i.key} className="pos-line">
@@ -359,20 +402,20 @@ export default function Vender() {
           {cliente ? <div className="pos-client in-sheet sel">
             <span className="pos-client-av">{cliente.nombre.split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</span>
             <span className="pos-client-txt"><small>{[cliente.tipo_documento, cliente.documento].filter(Boolean).join(' ') || 'Cliente'}{cliente.telefono ? ' · ' + cliente.telefono : ''}</small><b>{cliente.nombre}</b></span>
-            <button type="button" className="pos-client-act" onClick={() => setCliente(null)}>Cambiar</button>
+            <button type="button" className="pos-client-act" onClick={() => { if (cartEditable()) setCliente(null) }}>Cambiar</button>
           </div> : <div className={'pos-who2' + (faltaCliente ? ' shake' : '')}>
             <button type="button" onClick={() => setVerCliente('buscar')}><span className="pos-who2-ic"><I n="search" /></span><span><b>Cliente registrado</b><small>Buscar por nombre o documento</small></span></button>
             {can('crear_clientes') && <button type="button" onClick={() => setVerCliente('nuevo')}><span className="pos-who2-ic"><I n="plus" /></span><span><b>Cliente nuevo</b><small>Registrar sus datos</small></span></button>}
           </div>}
-          {isDemoMode && esAdmin && <Select label="Vendedor" value={seller} onChange={e=>setSeller(e.target.value)}>{sellers.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</Select>}
+          {isDemoMode && esAdmin && <Select disabled={!!saleAttempt} label="Vendedor" value={seller} onChange={e=>setSeller(e.target.value)}>{sellers.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</Select>}
 
           <div className="pos-step-head"><span className="pos-step-n">3</span><h4>Forma de pago</h4></div>
-          <div className="pos-pays2">{METODOS_PAGO.map(([k, l, ic]) => <button key={k} type="button" className={'m-' + k + (metodo === k ? ' on' : '')} aria-pressed={metodo === k} onClick={() => setMetodo(k)}><span className="pos-pays2-ic"><I n={ic} /></span><span>{l}</span></button>)}</div>
+          <div className="pos-pays2">{METODOS_PAGO.map(([k, l, ic]) => <button key={k} type="button" className={'m-' + k + (metodo === k ? ' on' : '')} aria-pressed={metodo === k} disabled={!!saleAttempt} onClick={() => setMetodo(k)}><span className="pos-pays2-ic"><I n={ic} /></span><span>{l}</span></button>)}</div>
 
           {!extras && !desc && !notas ? <button type="button" className="pos-more" onClick={() => setExtras(true)}><I n="plus" />Agregar descuento o nota</button>
           : <div className="pos-extra">
-            <Input disabled={!can('editar_precios')} title={!can('editar_precios')?'Tu perfil no puede aplicar descuentos':undefined} label="Descuento ($)" inputMode="numeric" value={descuento} onChange={(e) => setDescuento(e.target.value.replace(/\D/g, ''))} />
-            <Input label="Nota (opcional)" value={notas} onChange={(e) => setNotas(e.target.value)} />
+            <Input disabled={!can('editar_precios') || !!saleAttempt} title={!can('editar_precios')?'Tu perfil no puede aplicar descuentos':undefined} label="Descuento ($)" inputMode="numeric" value={descuento} onChange={(e) => setDescuento(e.target.value.replace(/\D/g, ''))} />
+            <Input disabled={!!saleAttempt} label="Nota (opcional)" value={notas} onChange={(e) => setNotas(e.target.value)} />
           </div>}
           <div className="pos-sum">
             <div><span>Subtotal · {unidadesTotal} {unidadesTotal === 1 ? 'producto' : 'productos'}</span><b>{money(subtotal)}</b></div>

@@ -1,3 +1,4 @@
+import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { money, numFactura } from '../lib/format'
 import { invoiceBusiness, invoiceIdentity } from '../lib/invoiceSnapshot'
 import logoGold from '../assets/brand/angie-tech-logo-gold.png'
@@ -6,7 +7,7 @@ import logoGold from '../assets/brand/angie-tech-logo-gold.png'
 export default function InvoicePreview({ invoice, items, tienda, demo = false }) {
   invoice = invoiceIdentity(invoice)
   tienda = invoiceBusiness(invoice, tienda) || {}
-  const marca = !tienda.nombre || /^techstore$/i.test(tienda.nombre) ? 'ANGIE TECH' : tienda.nombre
+  const marca = invoiceBrand(tienda)
   const c = invoice.clientes || {}, v = invoice.perfiles || {}
   const f = new Date(invoice.fecha)
   const fecha = f.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' })
@@ -46,7 +47,7 @@ export default function InvoicePreview({ invoice, items, tienda, demo = false })
       <div className="fx-row fx-th"><span>#</span><span>Descripción</span><span>Cant.</span><span>Total</span></div>
       {items.map((it, i) => <div className="fx-row" key={it.id || i}>
         <span className="fx-n">{String(i + 1).padStart(2, '0')}</span>
-        <span className="fx-desc"><b>{it.nombre}</b>{it.codigo && <small className="fx-meta"><span className="fx-ref-tag">REF.</span> <span className="fx-code">{it.codigo}</span></small>}<small className="fx-meta fx-unit">{it.cantidad} × {money(it.precio_unitario)}</small></span>
+        <span className="fx-desc"><b>{it.nombre}</b>{it.serial && <small className="fx-meta">Serial/IMEI: {it.serial}</small>}{it.codigo && <small className="fx-meta"><span className="fx-ref-tag">REF.</span> <span className="fx-code">{it.codigo}</span></small>}<small className="fx-meta fx-unit">{it.cantidad} × {money(it.precio_unitario)}</small></span>
         <span className="fx-q">{it.cantidad}</span>
         <span className="fx-t">{money(it.cantidad * it.precio_unitario - (Number(it.descuento) || 0))}</span>
       </div>)}

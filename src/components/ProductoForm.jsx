@@ -1,3 +1,4 @@
+import { withDeadline, requireData, cancellableQuery } from '../lib/asyncResult'
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import FullPage from './FullPage'
 import { I, CategoryIcon } from './InvIcons'
@@ -39,22 +40,33 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
   const [picker, setPicker] = useState(null) // 'cat' | 'color'
   const [foto, setFoto] = useState(null) // { blob, url } | { remove:true }
   const [err, setErr] = useState('')
+  const [optionsError, setOptionsError] = useState(''), [optionsTick, setOptionsTick] = useState(0)
   const [skuManual, setSkuManual] = useState(editando)
   const camRef = useRef(null), fileRef = useRef(null)
   const set = k => e => { const v = e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e; setF(prev => ({ ...prev, [k]: v })) }
 
   useEffect(() => {
-    supabase.from('categorias').select('id,nombre').eq('activa', true).order('nombre').then(({ data }) => setCats(data || []))
-    supabase.from('productos').select('color').not('color', 'is', null).then(({ data }) => {
-      const usados = [...new Set((data || []).map(r => String(r.color).trim()).filter(Boolean))]
-      setColores(prev => [...prev, ...usados.filter(c => !prev.some(x => x.toLowerCase() === c.toLowerCase()))])
-    })
-    supabase.from('productos').select('marca').not('marca', 'is', null).then(({ data }) => {
-      const usadas = [...new Set((data || []).map(r => String(r.marca).trim()).filter(Boolean))]
-      setMarcas(prev => [...prev, ...usadas.filter(m => !prev.some(x => x.toLowerCase() === m.toLowerCase()))].sort((a, b) => a === 'Genérica' ? 1 : b === 'Genérica' ? -1 : a.localeCompare(b)))
-    })
-    supabase.from('proveedores').select('id,nombre').eq('activo', true).order('nombre').then(({ data }) => setProvs(data || []))
-  }, [])
+    let live = true
+    const controller = new AbortController()
+    setOptionsError('')
+    withDeadline(async signal => {
+      const results = await Promise.all([
+        cancellableQuery(supabase.from('categorias').select('id,nombre').eq('activa', true).order('nombre'), signal),
+        cancellableQuery(supabase.from('productos').select('color').not('color', 'is', null), signal),
+        cancellableQuery(supabase.from('productos').select('marca').not('marca', 'is', null), signal),
+        cancellableQuery(supabase.from('proveedores').select('id,nombre').eq('activo', true).order('nombre'), signal),
+      ])
+      return results.map(requireData)
+    }, { signal: controller.signal }).then(([categories, colors, brands, suppliers]) => {
+      if (!live) return
+      setCats(categories || []); setProvs(suppliers || [])
+      const usedColors = [...new Set((colors || []).map(r => String(r.color).trim()).filter(Boolean))]
+      setColores(prev => [...prev, ...usedColors.filter(c => !prev.some(x => x.toLowerCase() === c.toLowerCase()))])
+      const usedBrands = [...new Set((brands || []).map(r => String(r.marca).trim()).filter(Boolean))]
+      setMarcas(prev => [...prev, ...usedBrands.filter(m => !prev.some(x => x.toLowerCase() === m.toLowerCase()))].sort((a, b) => a === 'Genérica' ? 1 : b === 'Genérica' ? -1 : a.localeCompare(b)))
+    }).catch(error => { if (live) setOptionsError('No se pudieron cargar las opciones del producto. ' + mensajeError(error)) })
+    return () => { live = false; controller.abort() }
+  }, [optionsTick])
   useEffect(() => () => { if (foto?.url) URL.revokeObjectURL(foto.url) }, [foto])
 
   const categoria = cats.find(c => String(c.id) === String(f.categoria_id))
@@ -70,7 +82,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
 
   // Devuelve el código si está libre; si ya existe (en otro producto) agrega -002, -003...
   async function codigoLibre(base) {
-    const { data } = await supabase.from('productos').select('id,codigo').ilike('codigo', base + '%')
+    const data = await withDeadline(async signal => requireData(await cancellableQuery(supabase.from('productos').select('id,codigo').ilike('codigo', base + '%'), signal)))
     const usados = new Set((data || []).filter(r => r.id !== inicial?.id).map(r => String(r.codigo).toUpperCase()))
     if (!usados.has(base)) return base
     let n = 2; while (usados.has(`${base}-${String(n).padStart(3, '0')}`)) n++
@@ -78,7 +90,9 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
   }
 
   const [guardar, pending] = useAction(async () => {
+    try {
     setErr('')
+    if (optionsError) return setErr('Reintenta la carga de opciones antes de guardar.')
     if (!f.nombre.trim()) return setErr('Escribe el nombre del producto.')
     if (!f.categoria_id) return setErr('Elige la categoría.')
     if (!soloDigitos(f.precio_venta)) return setErr('Escribe el precio de venta.')
@@ -116,31 +130,34 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
       }
     } else if (foto?.remove) { if (isDemoMode) { d.image_ref = null; d.image_removed = true } else d.foto_url = null }
 
-    let error, nuevoId
+    let error, nuevoId, recordSaved = false
     if (isDemoMode && !editando) {
       ({ error } = await supabase.rpc('crear_producto_demo', { producto: d, stock: Number(stock), seriales: [] }))
+      recordSaved = !error
     } else if (editando) {
       ({ error } = await supabase.from('productos').update(d).eq('id', inicial.id))
+      recordSaved = !error
       const diff = Number(stock) - Number(inicial.stock || 0)
       if (!error && diff !== 0 && !bloqueaCantidad) {
         const a = await supabase.rpc('ajustar_inventario', { p_producto_id: inicial.id, p_cantidad: Math.abs(diff), p_tipo: diff > 0 ? 'ajuste_entrada' : 'ajuste_salida', p_motivo: 'Ajuste desde edición del producto' })
         if (a.error) error = { message: 'Se guardaron los datos, pero no se pudo ajustar la cantidad: ' + mensajeError(a.error) }
       }
     } else {
-      const r = await supabase.from('productos').insert(d).select('id').single(); error = r.error; nuevoId = r.data?.id
+      const r = await supabase.from('productos').insert(d).select('id').single(); error = r.error; nuevoId = r.data?.id; recordSaved = !error && !!nuevoId
       if (!error && nuevoId && Number(stock) > 0) {
         const a = await supabase.rpc('ajustar_inventario', { p_producto_id: nuevoId, p_cantidad: Number(stock), p_tipo: 'ajuste_entrada', p_motivo: 'Stock inicial' })
         if (a.error) error = { message: 'El producto se creó, pero no se pudo cargar el stock inicial: ' + mensajeError(a.error) }
       }
     }
     if (error) {
-      if (nuevaRef) await removeImage(nuevaRef).catch(() => {})
-      if (nuevaRuta && !nuevoId) await supabase.storage.from('productos').remove([nuevaRuta]).catch(() => {})
+      if (nuevaRef && !recordSaved) await removeImage(nuevaRef).catch(() => {})
+      if (nuevaRuta && !recordSaved) await supabase.storage.from('productos').remove([nuevaRuta]).catch(() => {})
       const m = mensajeError(error)
       return setErr(/modelo|color|descripcion|foto_url|stock_max/i.test(m) && /column|columna/i.test(m) ? 'Falta actualizar la base de datos: ejecuta supabase/03_productos_detalle.sql en Supabase.' : m)
     }
     if (foto && inicial?.image_ref) await removeImage(inicial.image_ref).catch(() => {})
     onSaved()
+    } catch (error) { setErr('No se pudo guardar el producto. ' + mensajeError(error)) }
   })
 
   const preview = foto?.url || null
@@ -149,6 +166,8 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
   return <FullPage title={editando ? 'Editar producto' : 'Agregar producto'} onBack={onClose} className="inv-form"
     footer={<button type="button" className="inv-btn-gold full" disabled={pending} onClick={guardar}>{pending ? 'Guardando…' : editando ? 'Guardar cambios' : 'Guardar producto'}</button>}>
     <ErrorBox text={err} />
+    <ErrorBox text={optionsError} />
+    {optionsError && <button type="button" className="btn sec" onClick={() => setOptionsTick(n => n + 1)}>Reintentar opciones</button>}
 
     {/* Foto */}
     <div className={'pf-photo' + (tieneFoto ? ' has' : '')}>

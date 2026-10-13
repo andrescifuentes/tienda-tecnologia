@@ -1,3 +1,6 @@
+import { consultarFacturasVisibles } from '../lib/sellerHome'
+import { loadCustomers } from '../lib/customerQueries'
+import { withDeadline, requireData, cancellableQuery } from '../lib/asyncResult'
 import { useEffect, useMemo, useState } from 'react'
 import ModuleBanner from '../components/ModuleBanner'
 import AppShell, { ThemeToggle } from '../components/AppShell'
@@ -8,7 +11,7 @@ import RecordStatus from '../components/RecordStatus'
 import { ClienteForm } from '../components/ClientePicker'
 import { AnimatedCard, Brand } from '../components/TechVisuals'
 import { I } from '../components/InvIcons'
-import { Empty, Loader } from '../components/ui'
+import { Empty, Loader, ErrorBox } from '../components/ui'
 import Modal from '../components/Modal'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -35,7 +38,7 @@ function nivel(st) {
 }
 
 export default function Clientes() {
-  const { can } = useAuth()
+  const { can, esAdmin, perfil } = useAuth()
   const [params] = useSearchParams()
   const [q, setQ] = useState(params.get('q') || '')
   const [filtro, setFiltro] = useState('todos')
@@ -46,9 +49,15 @@ export default function Clientes() {
   const [form, setForm] = useState(null)
   const [ficha, setFicha] = useState(null)
   const [tick, setTick] = useState(0)
+  const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState('')
+  const [statsError, setStatsError] = useState('')
 
   useEffect(() => {
-    supabase.from(isDemoMode ? 'facturas_netas' : 'facturas').select('*').eq('estado', 'emitida').then(({ data }) => {
+    let live = true
+    const controller = new AbortController()
+    setStatsError('')
+    withDeadline(async signal => requireData(await cancellableQuery(consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, net: isDemoMode }, 'id,estado,cliente_id,fecha,total' + (isDemoMode ? ',total_neto' : '')).eq('estado', 'emitida'), signal)), { signal: controller.signal }).then(data => {
+      if (!live) return
       const stats = {}
       for (const f of data || []) {
         if (!f.cliente_id) continue
@@ -58,18 +67,20 @@ export default function Clientes() {
         if (ymDe(f.fecha) === ymActual()) v.mes = true
       }
       setTotales(stats)
-    })
+    }).catch(error => { if (live) setStatsError('No se pudo actualizar el historial de compras. ' + error.message) })
+    return () => { live = false; controller.abort() }
   }, [tick])
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      const s = limpiarBusqueda(q)
-      let qq = supabase.from('clientes').select('*').order('nombre').limit(200)
-      if (s) qq = qq.or(`nombre.ilike.%${s}%,documento.ilike.%${s}%,telefono.ilike.%${s}%,correo.ilike.%${s}%`)
-      const { data } = await qq
-      setLista(data || [])
+    let live = true
+    const controller = new AbortController()
+    setLoading(true); setLoadError('')
+    const timer = setTimeout(() => {
+      loadCustomers(supabase, { search: q, signal: controller.signal }).then(rows => { if (live) setLista(rows) })
+        .catch(error => { if (live) setLoadError('No se pudieron cargar los clientes. ' + error.message) })
+        .finally(() => { if (live) setLoading(false) })
     }, 250)
-    return () => clearTimeout(t)
+    return () => { live = false; clearTimeout(timer); controller.abort() }
   }, [q, tick])
 
   const cuenta = (k) => (lista || []).filter((c) => pasa(k, totales[c.id]?.count || 0)).length
@@ -118,7 +129,9 @@ export default function Clientes() {
         </div>
       </Modal>}
 
-      {!visibles ? <Loader /> : visibles.length === 0 ? <Empty text="No hay clientes para mostrar" description={q ? 'Prueba con otro nombre, documento o teléfono.' : 'Registra un cliente para relacionar sus compras.'} action={can('crear_clientes') ? () => setForm({}) : undefined} actionLabel="+ Crear cliente" /> : (
+      <ErrorBox text={loadError || statsError} />
+      {(loadError || statsError) && <button type="button" className="btn sec" onClick={() => setTick(n => n + 1)}>Reintentar clientes</button>}
+      {loading ? <Loader /> : loadError ? null : !visibles ? <Loader /> : visibles.length === 0 ? <Empty text="No hay clientes para mostrar" description={q ? 'Prueba con otro nombre, documento o teléfono.' : 'Registra un cliente para relacionar sus compras.'} action={can('crear_clientes') ? () => setForm({}) : undefined} actionLabel="+ Crear cliente" /> : (
         <div className="fv-list">
           {visibles.map((c, index) => {
             const st = totales[c.id], nv = nivel(st)
@@ -146,9 +159,17 @@ export default function Clientes() {
 }
 
 function Ficha({ c, st, onClose, onEditar, puedeEditar }) {
+  const { esAdmin, perfil } = useAuth()
+  const [historyError, setHistoryError] = useState('')
   const [fac, setFac] = useState(null)
   const [ver, setVer] = useState(null)
-  const cargar = () => supabase.from(isDemoMode ? 'facturas_netas' : 'facturas').select('*').eq('cliente_id', c.id).order('fecha', { ascending: false }).then(({ data }) => setFac(data || []))
+  const cargar = async () => {
+    setHistoryError('')
+    try {
+      const rows = await withDeadline(async signal => requireData(await cancellableQuery(consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, net: isDemoMode }, 'id,prefijo,numero,total,estado,fecha' + (isDemoMode ? ',total_neto' : '')).eq('cliente_id', c.id).order('fecha', { ascending: false }), signal)))
+      setFac(rows || [])
+    } catch (error) { setHistoryError('No se pudo cargar el historial. ' + error.message) }
+  }
   useEffect(() => { cargar() }, [c.id]) // eslint-disable-line
   const vigentes = (fac || []).filter((f) => f.estado === 'emitida')
   const total = vigentes.reduce((n, f) => n + Number(f.total_neto ?? f.total), 0)
@@ -188,7 +209,9 @@ function Ficha({ c, st, onClose, onEditar, puedeEditar }) {
     {isDemoMode && puedeEditar && <RecordStatus table="clientes" record={c} onSaved={onClose} />}
 
     <h3 className="cl-section">Historial de compras {fac?.length ? <span>{fac.length}</span> : null}</h3>
-    {!fac ? <Loader /> : fac.length === 0 ? <p className="cl-empty">Este cliente todavía no tiene compras.</p> : <div className="fv-list">
+    <ErrorBox text={historyError} />
+    {historyError && <button type="button" className="btn sec" onClick={cargar}>Reintentar historial</button>}
+    {historyError ? null : !fac ? <Loader /> : fac.length === 0 ? <p className="cl-empty">Este cliente todavía no tiene compras.</p> : <div className="fv-list">
       {fac.map((f) => {
         const anulada = f.estado === 'anulada'
         return <button key={f.id} type="button" className={'fv-card' + (anulada ? ' void' : '')} onClick={() => setVer(f.id)}>

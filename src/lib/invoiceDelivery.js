@@ -1,3 +1,5 @@
+import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
+import { crearBorradorCorreoFactura, validarCorreoFactura, abrirCorreoFactura } from './invoiceEmail.js'
 import { money, numFactura } from './format.js'
 import { enlaceWhatsApp, soloDigitos } from './whatsapp.js'
 
@@ -7,11 +9,12 @@ export function quitarFocoEntrada() {
 }
 
 // Sharing has no dependency on cancellation, administrator credentials or permissions.
-export function prepararEnvioFactura({ canal, invoice, telefono, correo, pdfUrl = '', detalle = '' }) {
+export function prepararEnvioFactura({ canal, invoice, telefono, correo, pdfUrl = '', detalle = '', tienda }) {
   const number = numFactura(invoice)
   const nombre = invoice.clientes?.nombre?.trim().split(/\s+/)[0] || 'cliente'
-  const asunto = 'Factura ' + number + ' de ANGIE TECH'
-  const cuerpo = ['Hola ' + nombre + ',', '', 'Te compartimos tu factura ' + number + ' de ANGIE TECH por ' + money(invoice.total) + '.', '', pdfUrl ? 'Descarga tu PDF: ' + pdfUrl : 'El PDF debe adjuntarse manualmente.', detalle ? '\n' + detalle.replace(/\*/g, '') : ''].filter(Boolean).join('\n')
+  const brand = invoiceBrand(invoice.tienda_snapshot || tienda).toUpperCase()
+  const asunto = 'Factura ' + number + ' de ' + brand
+  const cuerpo = ['Hola ' + nombre + ',', '', 'Te compartimos tu factura ' + number + ' de ' + brand + ' por ' + money(invoice.total) + '.', '', pdfUrl ? 'Descarga tu PDF: ' + pdfUrl : 'El PDF debe adjuntarse manualmente.', detalle ? '\n' + detalle.replace(/\*/g, '') : ''].filter(Boolean).join('\n')
   if (canal === 'whatsapp') {
     const destino = String(telefono || '').trim(), digits = soloDigitos(destino)
     if (!digits) throw new Error('El cliente no tiene un número de WhatsApp registrado.')
@@ -19,10 +22,9 @@ export function prepararEnvioFactura({ canal, invoice, telefono, correo, pdfUrl 
     return { canal, destino, asunto, cuerpo, adjuntoManual: !pdfUrl, url: enlaceWhatsApp(destino, cuerpo) }
   }
   if (canal !== 'correo') throw new Error('Acción de envío no válida.')
-  const destino = String(correo || '').trim()
-  if (!destino) throw new Error('El cliente no tiene un correo registrado.')
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destino)) throw new Error('Escribe un correo válido para el cliente.')
-  return { canal, destino, asunto, cuerpo, adjuntoManual: !pdfUrl, url: 'mailto:' + encodeURIComponent(destino) + '?subject=' + encodeURIComponent(asunto) + '&body=' + encodeURIComponent(cuerpo) }
+  const invalid = validarCorreoFactura(correo)
+  if (invalid) throw new Error(invalid)
+  return crearBorradorCorreoFactura({ invoice, correo, detalle, tienda })
 }
 
 export async function conLimiteEnvio(action, timeoutMs = 10000) {
@@ -31,8 +33,9 @@ export async function conLimiteEnvio(action, timeoutMs = 10000) {
   finally { clearTimeout(timer) }
 }
 
-export function abrirEnvioFactura(envio, opener = globalThis.window?.open?.bind(globalThis.window)) {
+export function abrirEnvioFactura(envio, opener = globalThis.window?.open?.bind(globalThis.window), navigate) {
   if (!envio?.url || !['whatsapp', 'correo'].includes(envio.canal)) throw new Error('No hay un mensaje preparado.')
+  if (envio.canal === 'correo') return abrirCorreoFactura(envio, navigate)
   if (!opener) throw new Error('No se pudo abrir la aplicación. Puedes volver e intentarlo de nuevo.')
   const popup = opener(envio.url, '_blank')
   if (!popup) throw new Error('El navegador no abrió la aplicación. Puedes volver e intentarlo de nuevo.')

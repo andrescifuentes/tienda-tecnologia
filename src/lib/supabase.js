@@ -18,6 +18,11 @@ if (isDemoMode) {
   catch { configurationError = 'La configuración de Supabase no es válida. Revisa la URL y la clave pública.' }
 }
 
+if (client) Object.defineProperties(client, {
+  secureInvoiceViews: { value: !isDemoMode && import.meta.env.VITE_SAFE_INVOICE_VIEWS === 'true' },
+  idempotentSales: { value: !isDemoMode && import.meta.env.VITE_IDEMPOTENT_SALES === 'true' },
+})
+
 export const supabase = client
 export const supabaseConfigurationError = configurationError
 

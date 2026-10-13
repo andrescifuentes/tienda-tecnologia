@@ -1,3 +1,4 @@
+import { invoiceTable } from './invoiceQueries.js'
 const TZ = 'America/Bogota'
 const dayKey = date => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(date)
 const shiftDay = (day, offset) => new Date(Date.parse(day + 'T12:00:00Z') + offset * 864e5).toISOString().slice(0, 10)
@@ -19,9 +20,9 @@ export function periodoVendedor(periodo = 'hoy', now = new Date()) {
 }
 
 // Keep the owner constraint in the query, in addition to existing remote RLS/demo permissions.
-export function consultarFacturasVisibles(client, { esAdmin = false, perfilId }, columnas) {
+export function consultarFacturasVisibles(client, { esAdmin = false, perfilId, net = false }, columnas) {
   if (!esAdmin && !perfilId) throw new Error('No se pudo identificar al vendedor.')
-  const query = client.from('facturas').select(columnas)
+  const query = client.from(invoiceTable(client, { esAdmin }, net)).select(columnas)
   return esAdmin ? query : query.eq('vendedor_id', perfilId)
 }
 

@@ -26,7 +26,7 @@ test('Opening is a synchronous user action and keeps caller page unchanged',()=>
  assert.equal(abrirEnvioFactura(envio,(...args)=>{calls.push(args);return popup}),true);assert.deepEqual(calls,[[envio.url,'_blank']]);assert.equal(popup.opener,null)
 })
 test('Blocked/cancelled popup returns an actionable error instead of changing page',()=>assert.throws(()=>abrirEnvioFactura(prepare({canal:'whatsapp',telefono:'3001234567'}),()=>null),/navegador no abrió/))
-test('Opening failure stays visible to UI',()=>assert.throws(()=>abrirEnvioFactura(prepare({canal:'correo',correo:'a@example.test'}),()=>{throw Error('App unavailable')}),/App unavailable/))
+test('Email protocol failure leaves a safe fallback without opening a popup',()=>assert.equal(abrirEnvioFactura(prepare({canal:'correo',correo:'a@example.test'}),()=>{throw Error('Do not open popup')},()=>{throw Error('App unavailable')}),'unavailable'))
 test('Opening requires prepared sharing action',()=>assert.throws(()=>abrirEnvioFactura({canal:'anular',url:'https://example.test'},()=>({})),/No hay un mensaje/))
 test('Optional PDF preparation cannot wait indefinitely',async()=>await assert.rejects(conLimiteEnvio(()=>new Promise(()=>{}),20),/tardó demasiado/))
 test('Preparation success and failure preserve result/error',async()=>{assert.equal(await conLimiteEnvio(async()=>42,100),42);await assert.rejects(conLimiteEnvio(()=>Promise.reject(Error('Storage unavailable')),100),/Storage unavailable/)})

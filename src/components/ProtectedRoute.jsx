@@ -3,8 +3,9 @@ import { useAuth } from '../context/AuthContext'
 import { Loader, PageSkeleton } from './ui'
 
 export default function ProtectedRoute({ children, soloAdmin = false, permiso }) {
-  const { session, loading, perfil, sinPerfil, activo, esAdmin, can, salir } = useAuth()
+  const { session, loading, perfil, sinPerfil, activo, esAdmin, can, salir, authError, reintentarSesion } = useAuth()
   if (loading) return <PageSkeleton />
+  if (authError) return <main className="min-h-screen grid place-items-center p-6"><div className="card max-w-sm"><h2>Conexión de sesión</h2><p role="alert">{authError}</p><button type="button" className="btn full" onClick={reintentarSesion}>Reintentar conexión</button><button type="button" className="btn sec full mt-2" onClick={salir}>Cerrar sesión</button></div></main>
   if (!session) return <Navigate to="/login" replace />
   if (sinPerfil || (perfil && !activo)) {
     return (

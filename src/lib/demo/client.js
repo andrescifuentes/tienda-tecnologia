@@ -96,7 +96,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
   const hasPermission = (state, permission) => user(state)?.rol === 'admin' || state.tables.perfil_permisos.some(p => p.perfil_id === user(state)?.id && p.permiso === permission)
   const costKeys = new Set(['precio_compra','costo_unitario','costo_total','costo_neto','margen','utilidad_mes','valor_inventario'])
   function visible(state, value) {
-    if (hasPermission(state, 'ver_costos')) return value
+    if (user(state)?.rol === 'admin') return value
     const redact = data => Array.isArray(data) ? data.map(redact) : data && typeof data === 'object' ? Object.fromEntries(Object.entries(data).filter(([key]) => !costKeys.has(key)).map(([key,item]) => [key,redact(item)])) : data
     return redact(value)
   }
@@ -119,6 +119,22 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     else data=state.tables[table] || fail(`Módulo demo desconocido: ${table}`)
     const profile=user(state)
     if(profile.rol!=='admin') { if(table==='facturas'||table==='facturas_netas') data=data.filter(f=>f.vendedor_id===profile.id); if(table==='perfiles')data=data.filter(p=>p.id===profile.id); if(['movimientos','compras_saldo','actividad'].includes(table) && !state.tables.perfil_permisos.some(p=>p.perfil_id===profile.id && p.permiso==='ver_finanzas')) data=table==='actividad'?data.filter(a=>a.perfil_id===profile.id):[] }
+    if (profile.rol !== 'admin') {
+      const invoices = new Set(state.tables.facturas.filter(f => f.vendedor_id === profile.id).map(f => f.id))
+      const lines = new Set(state.tables.factura_items.filter(i => invoices.has(i.factura_id)).map(i => i.id))
+      const refunds = new Set(state.tables.devoluciones.filter(d => invoices.has(d.factura_id)).map(d => d.id))
+      const warranties = new Set(state.tables.garantias.filter(g => lines.has(g.factura_item_id)).map(g => g.id))
+      if (['factura_items','factura_envios','devoluciones'].includes(table)) data = data.filter(r => invoices.has(r.factura_id))
+      if (table === 'devolucion_items') data = data.filter(r => refunds.has(r.devolucion_id) && lines.has(r.factura_item_id))
+      if (table === 'garantias') data = data.filter(r => lines.has(r.factura_item_id))
+      if (['garantia_eventos','reclamos_garantia'].includes(table)) data = data.filter(r => warranties.has(r.garantia_id))
+      if (table === 'actividad') data = data.filter(r => r.perfil_id === profile.id)
+      if (table === 'movimientos') data = data.filter(r => r.factura_id == null || invoices.has(r.factura_id))
+      if (table === 'movimientos_inventario') data = data.filter(r => ['factura','anulacion'].includes(r.referencia_tipo) ? invoices.has(Number(r.referencia_id)) : r.referencia_tipo === 'devolucion' ? refunds.has(Number(r.referencia_id)) : true)
+
+      // Available serials remain visible to build a sale; sold units must belong to the seller.
+      if (table === 'unidades_serializadas') data = data.filter(r => r.estado === 'disponible' || lines.has(r.factura_item_id))
+    }
     return data.map(row=>visible(state,hydrate(state,table,row)))
   }
   function validate(state, table, data, id) {
@@ -139,6 +155,15 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     constructor(table) { this.table=table; this.filters=[]; this.sort=[]; this.operation='read'; this.returning=true }
     select() { this.returning=true; return this }
     eq(key,value) { this.filters.push(r=>String(r[key])===String(value)); return this }
+    ilike(key, pattern) {
+      const escaped = [...String(pattern)].map(char => char === '%' ? '.*' : char === '_' ? '.' : ('.+?^$[](){}|'.includes(char) || char.charCodeAt(0) === 92) ? String.fromCharCode(92) + char : char).join('')
+      const match = new RegExp('^' + escaped + '$', 'iu')
+      this.filters.push(r => r[key] != null && match.test(String(r[key]))); return this
+    }
+    not(key, operator, value) {
+      if (operator !== 'is' || value !== null) throw new Error('Filtro demo no soportado: not solo acepta is null.')
+      this.filters.push(r => r[key] != null); return this
+    }
     in(key,values) { this.filters.push(r=>values.some(v=>String(v)===String(r[key]))); return this }
     gt(key,value) { this.filters.push(r=>r[key]>value); return this }
     gte(key,value) { this.filters.push(r=>r[key]>=value); return this }
@@ -174,6 +199,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
   }
   function sell(state, args) {
     const actor=permit(state,'vender'), items=args.p_items
+    if (args.p_actor_id && args.p_actor_id !== actor.id) fail('La sesión cambió. No se puede cobrar con otro usuario.')
     const previous = args.p_request_id && state.tables.facturas.find(f => f.request_id === args.p_request_id && f.creado_por === actor.id)
     if (previous) return previous.id
     const profile = args.p_vendedor_id ? (permit(state,'admin'),find(state,'perfiles',args.p_vendedor_id)) : actor
@@ -265,13 +291,39 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     while (state.tables.perfiles.some(p => p.id === `demo-employee-${number}`)) number++
     return `demo-employee-${number}`
   }
-  const emit=(event,session)=>{for(const callback of listeners)queueMicrotask(()=>callback(event,clone(session)))}
+  let sessionSignature
+  const signature = session => JSON.stringify([session?.user?.id || null, session?.access_token || null])
+  const emit = (event, session) => {
+    sessionSignature = signature(session)
+    for (const callback of listeners) queueMicrotask(() => { if (listeners.has(callback)) callback(event, clone(session)) })
+  }
+  const storedSession = event => {
+    if (event.key !== DEMO_KEY && event.key !== null) return
+    try {
+      const raw = event.key === DEMO_KEY ? event.newValue : storage.getItem(DEMO_KEY)
+      const session = raw ? JSON.parse(raw).session || null : null
+      if (signature(session) !== sessionSignature) emit(session ? 'SIGNED_IN' : 'SIGNED_OUT', session)
+    } catch { emit('SESSION_ERROR', null) }
+  }
+  const localSession = () => storedSession({ key: null })
+  const subscribe = callback => {
+    if (!listeners.size && sharedBrowserStorage) {
+      try { sessionSignature = signature(read().session) } catch { sessionSignature = undefined }
+      window.addEventListener('storage', storedSession)
+      window.addEventListener('demo-data-change', localSession)
+    }
+    listeners.add(callback)
+    return { data: { subscription: { unsubscribe() {
+      listeners.delete(callback)
+      if (!listeners.size && sharedBrowserStorage) { window.removeEventListener('storage', storedSession); window.removeEventListener('demo-data-change', localSession) }
+    } } } }
+  }
   return {
     from:(table)=>new Query(table),
     rpc:(name,args={})=>safe(()=>name==='resumen_dashboard'?readCurrent(state=>visible(state,dashboard(state,args))):name==='ventas_por_empleado'?readCurrent(state=>employeeSales(state,args)):transaction(state=>visible(state,rpcAction(state,name,args)))),
     auth:{
       getSession:async()=>{const result=await safe(()=>readCurrent(state=>state.session));return {data:{session:result.data},error:result.error}},
-      onAuthStateChange:(callback)=>{listeners.add(callback);return {data:{subscription:{unsubscribe:()=>listeners.delete(callback)}}}},
+      onAuthStateChange:subscribe,
       signInWithPassword:async({email,password})=>{const result=await safe(async()=>{const digest=await hash(password);return transaction(state=>{const p=state.tables.perfiles.find(p=>p.correo===email.toLowerCase().trim()&&p.password_hash===digest);if(!p)fail('Invalid login credentials');if(!p.activo)fail('Este usuario demo está desactivado');state.session={user:{id:p.id,email:p.correo},access_token:'local-demo-only'};return {session:state.session,user:state.session.user}})});if(!result.error)emit('SIGNED_IN',result.data.session);return result},
       signOut:async()=>{const result=await safe(()=>transaction(state=>{state.session=null}));if(!result.error)emit('SIGNED_OUT',null);return result},
     },

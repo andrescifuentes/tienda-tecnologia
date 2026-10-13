@@ -1,3 +1,4 @@
+import { invoiceFields, invoiceItemFields, invoiceItemsTable } from '../lib/invoiceQueries'
 import InvoiceDelivery from './InvoiceDelivery'
 import SellerSaleComplete from './SellerSaleComplete'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
@@ -30,17 +31,17 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
   const [confirmRefund,setConfirmRefund] = useState(false), [newWarranty,setNewWarranty] = useState(false)
 
   async function cargar() {
-    const { data, error } = await consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, isDemoMode ? '*, clientes(*), perfiles(nombre)' : '*, clientes(*), perfiles!facturas_vendedor_id_fkey(nombre,correo,telefono)').eq('id', id).single()
+    const { data, error } = await consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, invoiceFields(esAdmin, isDemoMode) + (isDemoMode ? ', clientes(*), perfiles(nombre)' : ', clientes(*), perfiles!facturas_vendedor_id_fkey(nombre,correo,telefono)')).eq('id', id).single()
     if (error) return setErr(mensajeError(error))
     const [it, dv] = await Promise.all([
-      supabase.from('factura_items').select('*').eq('factura_id', id).order('id'),
+      supabase.from(invoiceItemsTable(supabase, esAdmin)).select(invoiceItemFields(esAdmin, isDemoMode)).eq('factura_id', id).order('id'),
       supabase.from('devoluciones').select('id, motivo, total_devuelto, fecha, devolucion_items(factura_item_id, cantidad)').eq('factura_id', id),
     ])
     let lineas = it.data || []
     // Código del producto (las líneas guardan nombre y precio; el código se toma del inventario)
     const sinCodigo = [...new Set(lineas.filter(l => !l.codigo).map(l => l.producto_id))]
     if (sinCodigo.length) {
-      let { data: cods } = await supabase.from('productos').select('id,codigo').in('id', sinCodigo)
+      let { data: cods } = await supabase.from(esAdmin ? 'productos' : 'productos_venta').select('id,codigo').in('id', sinCodigo)
       if (!cods?.length) ({ data: cods } = await supabase.from('productos_venta').select('id,codigo').in('id', sinCodigo))
       const mapa = Object.fromEntries((cods || []).map(r => [r.id, r.codigo]))
       lineas = lineas.map(l => l.codigo ? l : { ...l, codigo: mapa[l.producto_id] || '' })

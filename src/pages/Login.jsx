@@ -42,7 +42,7 @@ function useLoginViewport(ref) {
 
 function rememberedEmail() { try { return localStorage.getItem('angie:remember-email') || '' } catch { return '' } }
 export default function Login() {
-  const { session, entrar, loading } = useAuth()
+  const { session, entrar, loading, authError, reintentarSesion } = useAuth()
   const [correo, setCorreo] = useState(isDemoMode ? 'admin@angietech.demo' : rememberedEmail())
   const [clave, setClave] = useState(isDemoMode ? DEMO_PASSWORD : '')
   const [visible, setVisible] = useState(false)
@@ -78,6 +78,7 @@ export default function Login() {
     </section>
     <form onSubmit={e => { e.preventDefault(); acceder() }} className="login-form">
       <div className="login-heading"><div><span className="premium-eyebrow">TU ESPACIO PRIVADO</span><h2>Entra a tu negocio</h2></div><span className="login-access-mark" aria-hidden="true"><Icon name="arrow"/></span></div>
+      {authError && <div className="mb-3"><p role="alert" className="text-bad text-sm">{authError}</p><button type="button" className="btn sec full" onClick={reintentarSesion}>Reintentar conexión</button></div>}
       {err && <div role="alert" className="bg-badbg text-bad rounded-xl p-3 text-sm mb-3">{err}</div>}
       <label className="sr-only" htmlFor="login-email">Correo</label>
       <div className="login-input"><Icon name="mail" /><input id="login-email" className="inp" type="email" placeholder="Correo electrónico" autoComplete="username" autoCapitalize="none" value={correo} onChange={e => setCorreo(e.target.value)} required /></div>
