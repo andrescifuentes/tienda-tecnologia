@@ -33,7 +33,11 @@ export function mensajeError(e) {
   if (/duplicate key.*codigo/i.test(m)) return 'Ese código de producto ya existe.'
   if (/duplicate key.*serial/i.test(m)) return 'Ese serial ya está registrado.'
   if (/duplicate key/i.test(m)) return 'Ya existe un registro con esos datos.'
+  if (/violates check constraint/i.test(m)) return 'Revisa los valores: no se permiten cantidades ni precios negativos.'
+  if (/violates not-null constraint/i.test(m)) return 'Falta un dato obligatorio. Revisa el formulario.'
   if (/row-level security|permission denied/i.test(m)) return 'No tienes permiso para esta acción.'
   if (/Failed to fetch|NetworkError/i.test(m)) return 'Sin conexión. Revisa tu internet.'
+  if (/quota|space|storage/i.test(m)) return 'No se pudo guardar: revisa el espacio disponible del navegador.'
+  if (/TypeError|undefined|null|JSON|SyntaxError|stack/i.test(m)) return 'No se pudo completar la operación. Inténtalo de nuevo; tus datos anteriores se conservan.'
   return m
 }

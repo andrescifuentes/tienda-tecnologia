@@ -1,30 +1,38 @@
 import { useEffect, useRef, useState } from 'react'
 import Modal from './Modal'
+import { Icon } from './Icons'
 
 // Escáner con la cámara (BarcodeDetector del navegador/WebView). Si no está disponible, se digita el código.
 export default function Scanner({ onClose, onScan }) {
   const videoRef = useRef(null)
   const [manual, setManual] = useState('')
   const [camOk, setCamOk] = useState(true)
+  const [camActive, setCamActive] = useState(false)
   const done = useRef(false)
 
   useEffect(() => {
     let stream, timer, vivo = true
     async function iniciar() {
+      setCamActive(false)
       if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) { setCamOk(false); return }
       try {
-        const det = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'] })
+        const supported = await window.BarcodeDetector.getSupportedFormats?.()
+        const formats = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'].filter(f => !supported || supported.includes(f))
+        if (!formats.length) { setCamOk(false); return }
+        const det = new window.BarcodeDetector({ formats })
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
         if (!vivo) return stream.getTracks().forEach((t) => t.stop())
         videoRef.current.srcObject = stream
         await videoRef.current.play()
+        if (!vivo) return
+        setCamActive(true)
         timer = setInterval(async () => {
           try {
             const r = await det.detect(videoRef.current)
-            if (r[0] && !done.current) { done.current = true; onScan(r[0].rawValue) }
+            if (r[0] && vivo && !done.current) { done.current = true; onScan(r[0].rawValue) }
           } catch { /* ignore */ }
         }, 350)
-      } catch { setCamOk(false) }
+      } catch { stream?.getTracks().forEach(t => t.stop()); if (vivo) { setCamOk(false); setCamActive(false) } }
     }
     iniciar()
     return () => { vivo = false; clearInterval(timer); stream?.getTracks().forEach((t) => t.stop()) }
@@ -33,14 +41,17 @@ export default function Scanner({ onClose, onScan }) {
   const enviar = () => { const c = manual.trim(); if (c && !done.current) { done.current = true; onScan(c) } }
 
   return (
-    <Modal title="Escanear código" onClose={onClose}>
+    <Modal title="Escanear código" subtitle="Encuentra el producto al instante" className="experience-sheet scanner-sheet" keyboardAware onClose={onClose} footer={<button className="btn full" disabled={!manual.trim()} onClick={enviar}>Buscar producto<Icon name="arrow" className="w-4 h-4"/></button>}>
       {camOk
-        ? <video ref={videoRef} playsInline muted className="w-full rounded-2xl bg-black mb-3" style={{ maxHeight: 280 }} />
-        : <p className="text-muted text-sm mb-3">La cámara no está disponible aquí. Digita el código.</p>}
-      <label className="lbl">…o digita el código</label>
-      <div className="flex gap-2">
-        <input className="inp" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && enviar()} placeholder="Código de barras o serial" />
-        <button className="btn" onClick={enviar}>OK</button>
+        ? <><div className="scanner-frame">
+            <video ref={videoRef} playsInline muted />
+            <div className="scanner-corners" aria-hidden="true" />
+            {camActive ? <span className="scanner-line" aria-hidden="true" /> : <div className="scanner-wait" role="status">Preparando cámara…</div>}
+          </div>{camActive && <p className="scanner-status" role="status">Cámara activa · centra el código</p>}</>
+        : <div className="scanner-fallback"><span className="notice-icon"><Icon name="scan"/></span><h4>Búsqueda por código</h4><p>La cámara no está disponible aquí. Digita el código.</p><small>En un navegador compatible y un contexto seguro, se solicita permiso para usar la cámara.</small></div>}
+      <label className="lbl" htmlFor="scanner-code">…o digita el código</label>
+      <div className="scanner-manual">
+        <input id="scanner-code" className="inp" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && enviar()} placeholder="Código de barras o serial" />
       </div>
     </Modal>
   )

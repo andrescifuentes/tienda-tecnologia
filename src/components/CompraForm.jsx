@@ -1,20 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Modal from './Modal'
+import { monetaryError } from '../lib/money'
 import Scanner from './Scanner'
+import DateField from './DateField'
+import { FormSection } from './AdminPrimitives'
+import { ProductThumbnail } from './TechVisuals'
 import { Input, Select, ErrorBox, Empty, SearchBar } from './ui'
-import { supabase } from '../lib/supabase'
+import { useAction } from '../lib/useAction'
+import { imageKey } from '../lib/demo/images'
+import { supabase, isDemoMode } from '../lib/supabase'
 import { money, limpiarBusqueda, mensajeError, hoyBogota } from '../lib/format'
 import { toast } from '../lib/toast'
+import { I } from './InvIcons'
 
 // Ingreso de mercancía = registrar compra a un proveedor
-export default function CompraForm({ proveedorId, onClose, onSaved }) {
+export default function CompraForm({ proveedorId, productoInicial, cantidadInicial, onClose, onSaved }) {
   const [provs, setProvs] = useState([])
   const [prov, setProv] = useState(proveedorId || '')
+  const requestId = useRef(imageKey())
+  const [date, setDate] = useState(hoyBogota()), [notes, setNotes] = useState('')
   const [doc, setDoc] = useState('')
   const [forma, setForma] = useState('contado')
   const [vence, setVence] = useState('')
   const [metodo, setMetodo] = useState('efectivo')
-  const [items, setItems] = useState([]) // {producto, cantidad, costo, seriales:''}
+  const [items, setItems] = useState(() => productoInicial ? [{ producto: productoInicial, cantidad: cantidadInicial || 1, costo: productoInicial.precio_compra || 0, seriales: '' }] : []) // {producto, cantidad, costo, seriales:''}
   const [buscar, setBuscar] = useState(false)
   const [scan, setScan] = useState(false)
   const [err, setErr] = useState('')
@@ -30,15 +39,19 @@ export default function CompraForm({ proveedorId, onClose, onSaved }) {
   const upd = (idx, k, v) => setItems(items.map((it, i) => (i === idx ? { ...it, [k]: v } : it)))
   const total = items.reduce((a, i) => a + (Number(i.cantidad) || 0) * (Number(i.costo) || 0), 0)
 
-  async function guardar() {
+  const [guardar, pendingSave] = useAction(guardarImpl, () => setBusy(false))
+  async function guardarImpl() {
     setErr('')
     if (!prov) return setErr('Elige el proveedor.')
     if (items.length === 0) return setErr('Agrega al menos un producto.')
+    for (const item of items) if (monetaryError(item.costo)) return setErr(monetaryError(item.costo))
+    if (monetaryError(total)) return setErr(monetaryError(total))
     if (forma === 'credito' && !vence) return setErr('Indica la fecha de vencimiento del crédito.')
     const p_items = [], p_seriales = []
     for (const i of items) {
-      const cant = parseInt(i.cantidad, 10)
-      if (!cant || cant <= 0) return setErr(`Cantidad inválida en ${i.producto.nombre}`)
+      const cant = Number(i.cantidad)
+      if (!Number.isInteger(cant) || cant <= 0) return setErr(`Cantidad inválida en ${i.producto.nombre}`)
+      if (!Number.isFinite(Number(i.costo)) || Number(i.costo) < 0) return setErr(`Costo inválido en ${i.producto.nombre}`)
       p_items.push({ producto_id: i.producto.id, cantidad: cant, costo_unitario: Number(i.costo) || 0 })
       if (i.producto.maneja_serial) {
         const ss = i.seriales.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean)
@@ -49,6 +62,7 @@ export default function CompraForm({ proveedorId, onClose, onSaved }) {
     setBusy(true)
     const { error } = await supabase.rpc('registrar_compra', {
       p_proveedor_id: Number(prov), p_numero_documento: doc.trim() || null, p_forma_pago: forma,
+      ...(isDemoMode?{p_fecha:date,p_notas:notes.trim(),p_request_id:requestId.current}:{}),
       p_vence_el: forma === 'credito' ? vence : null, p_items, p_seriales, p_metodo_pago: metodo,
     })
     setBusy(false)
@@ -56,40 +70,47 @@ export default function CompraForm({ proveedorId, onClose, onSaved }) {
     toast('Mercancía registrada'); onSaved?.()
   }
 
+  const provSel = provs.find((x) => String(x.id) === String(prov))
   return (
-    <Modal title="Ingreso de mercancía" onClose={onClose} footer={<button className="btn full" onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : `Registrar compra · ${money(total)}`}</button>}>
+    <Modal title="Compra a proveedor" subtitle="Registra la mercancía que llegó" className="experience-sheet cf-sheet cp-sheet" keyboardAware onClose={onClose} footer={
+      <button className="cf-save" onClick={guardar} disabled={busy || pendingSave}><I n="check" />{busy ? 'Guardando…' : `Guardar compra · ${money(total)}`}</button>}>
       <ErrorBox text={err} />
-      <Select label="Proveedor" value={prov} onChange={(e) => setProv(e.target.value)}>
-        <option value="">Elegir…</option>{provs.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-      </Select>
-      <Input label="N.º factura del proveedor" value={doc} onChange={(e) => setDoc(e.target.value)} />
-      <div className="grid grid-cols-2 gap-2">
-        <Select label="Forma de pago" value={forma} onChange={(e) => setForma(e.target.value)}><option value="contado">Contado</option><option value="credito">Crédito</option></Select>
-        {forma === 'contado'
-          ? <Select label="Método" value={metodo} onChange={(e) => setMetodo(e.target.value)}><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="tarjeta">Tarjeta</option></Select>
-          : <Input label="Vence el" type="date" min={hoyBogota()} value={vence} onChange={(e) => setVence(e.target.value)} />}
-      </div>
-      <h4 className="text-sm text-muted uppercase mb-1">Productos</h4>
-      {items.length === 0 && <Empty text="Agrega productos" />}
-      {items.map((i, idx) => (
-        <div key={i.producto.id} className="card !p-3 mb-2">
-          <div className="flex justify-between"><b className="text-sm">{i.producto.nombre}</b><button className="btn bad sm" onClick={() => setItems(items.filter((_, k) => k !== idx))}>✕</button></div>
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            <Input label="Cantidad" type="number" min="1" value={i.cantidad} onChange={(e) => upd(idx, 'cantidad', e.target.value)} />
-            <Input label="Costo unitario" type="number" min="0" value={i.costo} onChange={(e) => upd(idx, 'costo', e.target.value)} />
+
+      <h4 className="cf-sec"><span>1</span>¿Qué llegó?</h4>
+      {items.length === 0 && <p className="cu-note"><I n="box" />Agrega los productos que recibiste.</p>}
+      <div className="cp-items">
+        {items.map((i, idx) => (
+          <div key={i.producto.id} className="cp-item">
+            <div className="cp-item-head"><ProductThumbnail product={i.producto} /><span><b>{i.producto.nombre}</b><small>Hoy tiene {i.producto.stock ?? 0} → quedará con {(Number(i.producto.stock) || 0) + (Number(i.cantidad) || 0)}</small></span><button type="button" className="pos-line-x" aria-label={`Quitar ${i.producto.nombre}`} onClick={() => setItems(items.filter((_, k) => k !== idx))}><I n="trash" /></button></div>
+            <div className="cp-item-grid">
+              <label><small>Cantidad</small><div className="pos-step"><button type="button" onClick={() => upd(idx, 'cantidad', Math.max(1, (Number(i.cantidad) || 1) - 1))}>−</button><output>{i.cantidad}</output><button type="button" onClick={() => upd(idx, 'cantidad', (Number(i.cantidad) || 0) + 1)}>+</button></div></label>
+              <label><small>Costo por unidad</small><span className="cf-box sm"><span className="cf-prefix">$</span><input inputMode="numeric" value={i.costo} onChange={(e) => upd(idx, 'costo', e.target.value.replace(/\D/g, ''))} /></span></label>
+            </div>
+            {i.producto.maneja_serial && <label className="cp-serial"><small>Seriales / IMEI · uno por línea ({i.cantidad})</small><textarea rows={3} value={i.seriales} onChange={(e) => upd(idx, 'seriales', e.target.value)} placeholder="356789012345678" /></label>}
+            <div className="cp-sub"><span>Subtotal</span><b>{money(Number(i.cantidad) * Number(i.costo))}</b></div>
           </div>
-          {i.producto.maneja_serial && (
-            <div><label className="lbl">Seriales / IMEI (uno por línea)</label><textarea className="inp" rows={3} value={i.seriales} onChange={(e) => upd(idx, 'seriales', e.target.value)} /></div>
-          )}
-        </div>
-      ))}
-      <button className="btn sec full" onClick={() => setBuscar(true)}>+ Agregar producto</button>
-      {buscar && <BuscarProducto onClose={() => setBuscar(false)} onPick={add} onScan={() => setScan(true)} />}
-      {scan && <Scanner onClose={() => setScan(false)} onScan={async (c) => {
-        setScan(false)
-        const { data } = await supabase.from('productos').select('*').or(`codigo_barras.eq.${limpiarBusqueda(c)},codigo.eq.${limpiarBusqueda(c)}`).limit(1)
-        data?.[0] ? add(data[0]) : toast('Producto no encontrado: créalo primero en Inventario')
-      }} />}
+        ))}
+      </div>
+      <button type="button" className="pos-more" onClick={() => setBuscar(true)}><I n="plus" />{items.length ? 'Agregar otro producto' : 'Agregar producto'}</button>
+
+      <h4 className="cf-sec"><span>2</span>¿A quién se lo compraste?</h4>
+      {provs.length === 0 ? <p className="cu-note"><I n="warn" />Aún no tienes proveedores. Créalo en Más › Proveedores y vuelve aquí.</p> : <label className={'cf-field' + (prov ? ' filled' : '')}>
+        <span className="cf-box"><span className="cf-ic"><I n="truck" /></span><select className="cp-select" value={prov} onChange={(e) => setProv(e.target.value)}><option value="">Elegir proveedor…</option>{provs.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select><I n="chevDown" className="pos-dd-chev" /></span>
+      </label>}
+      <label className={'cf-field' + (doc ? ' filled' : '')}><span className="cf-label">N.º de factura del proveedor <small>(opcional)</small></span><span className="cf-box"><span className="cf-ic"><I n="receipt" /></span><input value={doc} onChange={(e) => setDoc(e.target.value)} placeholder="Ej. FE-1234" /></span></label>
+
+      <h4 className="cf-sec"><span>3</span>¿Cómo la pagaste?</h4>
+      <div className="cu-opts cp-pay">
+        <button type="button" className={forma === 'contado' ? 'on' : ''} onClick={() => setForma('contado')}><span className="cu-opt-ic"><I n="cash" /></span><span className="cu-opt-txt"><b>Pagué completo</b><small>No quedó deuda con {provSel?.nombre || 'el proveedor'}.</small></span><span className="cu-radio" /></button>
+        <button type="button" className={forma === 'credito' ? 'on' : ''} onClick={() => setForma('credito')}><span className="cu-opt-ic"><I n="history" /></span><span className="cu-opt-txt"><b>Quedé debiendo</b><small>Se suma a cuentas por pagar hasta que la pagues.</small></span><span className="cu-radio" /></button>
+      </div>
+      {forma === 'contado'
+        ? <div className="pos-pays2 cp-methods">{[['efectivo', 'Efectivo', 'cash'], ['transferencia', 'Transferencia', 'bank'], ['tarjeta', 'Tarjeta', 'card']].map(([k, l, ic]) => <button key={k} type="button" className={'m-' + k + (metodo === k ? ' on' : '')} onClick={() => setMetodo(k)}><span className="pos-pays2-ic"><I n={ic} /></span><span>{l}</span></button>)}</div>
+        : <div className="cp-due"><DateField label="¿Hasta cuándo tienes para pagar?" min={hoyBogota()} value={vence} onChange={setVence} /></div>}
+      {isDemoMode && <><DateField label="Fecha compra" value={date} onChange={setDate}/><Input label="Notas compra" value={notes} onChange={e=>setNotes(e.target.value)} /></>}
+
+      <div className="pos-sum"><div><span>{items.reduce((a, i) => a + (Number(i.cantidad) || 0), 0)} unidades · {items.length} {items.length === 1 ? 'producto' : 'productos'}</span><b /></div><div className="grand"><span>Total de la compra</span><b>{money(total)}</b></div></div>
+      {buscar && <BuscarProducto onClose={() => setBuscar(false)} onPick={add} />}
     </Modal>
   )
 }
@@ -106,9 +127,9 @@ function BuscarProducto({ onPick, onClose, onScan }) {
     return () => clearTimeout(t)
   }, [q])
   return (
-    <Modal title="Elegir producto" onClose={onClose}>
-      <SearchBar value={q} onChange={setQ} onScan={onScan} placeholder="Nombre o código" />
-      {lista.map((p) => <div key={p.id} className="row cursor-pointer" onClick={() => onPick(p)}><div className="flex-1"><p className="m-0 text-sm font-semibold">{p.nombre}</p><p className="m-0 text-xs text-muted">{p.codigo} · stock {p.stock}</p></div></div>)}
+    <Modal title="Elegir producto" className="experience-sheet product-picker-sheet" keyboardAware onClose={onClose}>
+      <SearchBar value={q} onChange={setQ} placeholder="Nombre o código" />
+      {lista.map((p) => <button type="button" key={p.id} className="row product-pick" onClick={() => onPick(p)}><ProductThumbnail product={p}/><div className="flex-1"><p className="m-0 text-sm font-semibold">{p.nombre}</p><p className="m-0 text-xs text-muted">{p.codigo} · stock {p.stock}</p></div><span aria-hidden="true">›</span></button>)}
     </Modal>
   )
 }

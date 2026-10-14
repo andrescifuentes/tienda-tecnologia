@@ -1,5 +1,5 @@
 -- =====================================================================
---  TechStore · Esquema de base de datos para Supabase (Postgres)
+--  Angie Tech · Esquema de base de datos para Supabase (Postgres)
 --  Ejecutar completo en: Supabase > SQL Editor > New query > Run
 --  Contenido: tipos, tablas, restricciones, índices, triggers, funciones
 --  de negocio (rpc), vistas, políticas RLS y datos iniciales.
@@ -276,7 +276,7 @@ create table movimientos (
 
 create table tienda (
   id                    smallint primary key default 1 check (id = 1),
-  nombre                text not null default 'TechStore',
+  nombre                text not null default 'Angie Tech',
   nit                   text,
   direccion             text,
   telefono              text,

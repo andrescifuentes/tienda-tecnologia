@@ -1,14 +1,18 @@
+import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { money, fechaHora, numFactura } from './format'
+import { invoiceBusiness } from './invoiceSnapshot'
 
 export function textoFactura(f, items, tienda, cliente) {
+  tienda = invoiceBusiness(f, tienda)
+  cliente = Object.hasOwn(f,'cliente_snapshot') ? f.cliente_snapshot : cliente
   const L = []
-  L.push(`*${tienda?.nombre || 'TechStore'}*`)
+  L.push(`*${invoiceBrand(tienda)}*`)
   if (tienda?.nit) L.push(`NIT ${tienda.nit}`)
   L.push(`Factura ${numFactura(f)} · ${fechaHora(f.fecha)}`)
   if (cliente) L.push(`Cliente: ${cliente.nombre}`)
   L.push('')
   items.forEach((i) => {
-    const sub = i.precio_unitario * i.cantidad - (i.descuento || 0)
+    const sub = i.precio_unitario * i.cantidad
     L.push(`• ${i.cantidad} x ${i.nombre} — ${money(sub)}`)
   })
   L.push('')

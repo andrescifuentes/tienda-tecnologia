@@ -1,0 +1,97 @@
+  const state=()=>evaluate("JSON.parse(localStorage.getItem('angie-tech:demo:v1'))")
+  // Both CDP targets use the actual shared localStorage and IndexedDB, without
+  // mocking locks or reducing the overlapping workloads.
+  const evidence={concurrency:[],sync:[]}
+  try {
+    await peerSend('Page.enable');await peerSend('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});await peerSend('Page.navigate',{url:base+'/finanzas'})
+    for(let i=0;i<100&&!(await peerEval("!!document.querySelector('.finance-period')"));i++)await delay(100)
+    for(const count of [20,50]) {
+      const write=side=>`import('/src/lib/supabase.js').then(async({supabase})=>{let success=0;for(let i=0;i<${count};i++){const r=await supabase.from('movimientos').insert({tipo:'ingreso',categoria:'Servicio',descripcion:'FIX-${count}-${side}-'+i,monto:1,fecha:new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bogota'}).format(new Date())});if(r.error)throw Error(r.error.message);success++}return success})`
+      const successes=await Promise.all([evaluate(write('A')),peerEval(write('B'))])
+      const snapshot=await state(),rows=snapshot.tables.movimientos.filter(m=>m.descripcion?.startsWith(`FIX-${count}-`))
+      assert.equal(successes.reduce((a,b)=>a+b,0),count*2);assert.equal(rows.length,count*2)
+      assert.equal(new Set(rows.map(r=>r.id)).size,count*2);assert.equal(new Set(rows.map(r=>r.descripcion)).size,count*2)
+      for(const records of Object.values(snapshot.tables))assert.equal(new Set(records.map(r=>r.id)).size,records.length)
+      evidence.concurrency.push({perTab:count,confirmed:count*2,persisted:rows.length,uniqueIds:count*2})
+      check(`AT-AUD-03: ${count}+${count} simultaneous writes persist exactly once with unique IDs`)
+    }
+    await go('/');await waitFor("!!document.querySelector('.home-metrics')")
+    const income=()=>evaluate("Number(document.querySelector('[aria-label=\"Ingresos del mes\"] .stat-value').textContent.replace(/\\D/g,''))")
+    const before=await income()
+    const peerRpc=async(name,args)=>peerEval(`import('/src/lib/supabase.js').then(async({supabase})=>{const r=await supabase.rpc(${JSON.stringify(name)},${JSON.stringify(args)});if(r.error)throw Error(r.error.message);return r.data})`)
+    const peerMovement=async(tipo,description,monto)=>peerEval(`import('/src/lib/supabase.js').then(async({supabase})=>{const r=await supabase.from('movimientos').insert({tipo:${JSON.stringify(tipo)},categoria:'Servicio',descripcion:${JSON.stringify(description)},monto:${monto},fecha:new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bogota'}).format(new Date())});if(r.error)throw Error(r.error.message)})`)
+    await peerMovement('ingreso','FIX-SYNC-INCOME',12345)
+    await waitFor(`Number(document.querySelector('[aria-label="Ingresos del mes"] .stat-value').textContent.replace(/\\D/g,''))===${before+12345}`)
+    assert.equal(await income(),before+12345);check('AT-AUD-01: other-tab income updates Dashboard by exactly 12.345 without reload')
+    let snapshot=await state();const product=snapshot.tables.productos.find(p=>!p.maneja_serial&&p.stock>=3&&p.garantia_meses)
+    const stock=product.stock,invoiceCount=snapshot.tables.facturas.length
+    const sale={p_items:[{producto_id:product.id,cantidad:1}],p_metodo_pago:'efectivo',p_cliente_id:1,p_vendedor_id:'demo-ana',p_request_id:'FIX-SALE-IDEMPOTENT'}
+    const mainRpc=(name,args)=>evaluate(`import('/src/lib/supabase.js').then(async({supabase})=>{const r=await supabase.rpc(${JSON.stringify(name)},${JSON.stringify(args)});if(r.error)throw Error(r.error.message);return r.data})`)
+    const ids=await Promise.all([mainRpc('emitir_factura',sale),peerRpc('emitir_factura',sale)])
+    assert.equal(ids[0],ids[1]);snapshot=await state();assert.equal(snapshot.tables.facturas.length,invoiceCount+1)
+    const invoice=snapshot.tables.facturas.find(f=>f.id===ids[0]);assert.equal(invoice.comision,Math.round(invoice.total*.03))
+    assert.equal(snapshot.tables.productos.find(p=>p.id===product.id).stock,stock-1)
+    assert.equal(snapshot.tables.movimientos.filter(m=>m.factura_id===invoice.id&&m.origen==='venta').length,1)
+    assert.equal(snapshot.tables.garantias.filter(g=>snapshot.tables.factura_items.some(i=>i.factura_id===invoice.id&&i.id===g.factura_item_id)).length,1)
+    assert.equal(snapshot.tables.actividad.filter(a=>a.entidad==='factura'&&a.entidad_id===String(invoice.id)).length,1)
+    await waitFor(`Number(document.querySelector('[aria-label="Ingresos del mes"] .stat-value').textContent.replace(/\\D/g,''))===${before+12345+invoice.total}`)
+    check('AT-AUD-03/01: simultaneous duplicate sale creates one invoice, stock movement, ledger, commission, warranty and history; Dashboard refreshes')
+    const purchase={p_proveedor_id:1,p_items:[{producto_id:product.id,cantidad:2,costo_unitario:product.precio_compra}],p_forma_pago:'contado',p_metodo_pago:'efectivo',p_request_id:'FIX-PURCHASE-IDEMPOTENT'}
+    const purchases=await Promise.all([mainRpc('registrar_compra',purchase),peerRpc('registrar_compra',purchase)])
+    assert.equal(purchases[0],purchases[1]);snapshot=await state();assert.equal(snapshot.tables.productos.find(p=>p.id===product.id).stock,stock+1)
+    assert.equal(snapshot.tables.movimientos.filter(m=>m.compra_id===purchases[0]).length,1)
+    await button('Ver todo ›');await waitFor("document.querySelector('.sheet')?.textContent.includes('Ingreso de mercancía')");await close()
+    check('AT-AUD-03/01: simultaneous duplicate purchase commits once and open activity updates')
+    await peerMovement('gasto','FIX-SYNC-EXPENSE',54321);await button('Ver detalle ›')
+    const expected=(await peerEval("import('/src/lib/supabase.js').then(async({supabase})=>(await supabase.rpc('resumen_dashboard')).data[0].gastos_mes)"))
+    await waitFor(`document.querySelector('.sheet')?.textContent.includes(${JSON.stringify(Number(expected).toLocaleString('es-CO'))})`);await close()
+    await go('/inventario');await waitFor("!!document.querySelector('.product-card')")
+    await peerRpc('ajustar_stock_fisico_demo',{id:product.id,stock:0,motivo:'FIX-SYNC-STOCK'})
+    await waitFor(`[...document.querySelectorAll('.product-card')].some(r=>r.textContent.includes(${JSON.stringify(product.nombre)})&&r.textContent.includes('Stock: 0'))`)
+    check('AT-AUD-01: inventory refreshes stock after other-tab adjustment without reload')
+    await go('/finanzas');await waitFor("!!document.querySelector('.finance-movement')")
+    await peerMovement('ingreso','FIX-SYNC-FINANCE',22);await waitFor("document.body.innerText.includes('FIX-SYNC-FINANCE')")
+    check('AT-AUD-01: open Finance refreshes other-tab movement without reload')
+    await go('/');await waitFor("!!document.querySelector('.home-metrics')")
+    await tap('[aria-label="Ver notificaciones locales"]');await waitFor("!!document.querySelector('.sheet')")
+    const other=(await state()).tables.productos.find(p=>p.stock>p.stock_min&&!p.maneja_serial&&p.id!==product.id)
+    await peerRpc('ajustar_stock_fisico_demo',{id:other.id,stock:0,motivo:'FIX-SYNC-NOTIFICATIONS'})
+    await waitFor(`document.querySelector('.sheet')?.textContent.includes(${JSON.stringify(other.nombre)})`);await close()
+    check('AT-AUD-01: open notifications refresh after other-tab stock adjustment')
+    await peerRpc('actualizar_perfil_demo',{nombre:'FIX-SYNC-PROFILE',telefono:'3001234567'})
+    await waitFor("document.querySelector('.activity-list')?.textContent.includes('Perfil actualizado')")
+    check('AT-AUD-01/04: genuine new action becomes visible in recent activity without reload')
+    const beforeFailure=(await state()).tables.movimientos.length
+    const quota=await peerEval(`import('/src/lib/supabase.js').then(async({supabase})=>{const original=Storage.prototype.setItem;let thrown=false;Storage.prototype.setItem=function(key,value){if(key==='angie-tech:demo:v1'&&!thrown){thrown=true;throw new DOMException('Quota exceeded','QuotaExceededError')}return original.call(this,key,value)};try{const result=await supabase.from('movimientos').insert({tipo:'ingreso',categoria:'Servicio',monto:1,fecha:'2026-10-08',descripcion:'FIX-QUOTA'});return {rejected:!!result.error,count:(await supabase.from('movimientos').select('*')).data.length}}finally{Storage.prototype.setItem=original}})`)
+    assert.equal(quota.rejected,true);assert.equal(quota.count,beforeFailure);assert.equal((await state()).tables.movimientos.length,beforeFailure)
+    check('AT-AUD-03: failed compatibility-store write aborts authoritative transaction without partial data')
+    // Same scarce product, different request IDs: one sale must fail rather than
+    // oversell. Existing invoice/ledger/history counts must stay coherent.
+    await peerRpc('ajustar_stock_fisico_demo',{id:product.id,stock:1,motivo:'FIX-SCARCE-STOCK'})
+    const scarceResults=await Promise.all([evaluate(`import('/src/lib/supabase.js').then(({supabase})=>supabase.rpc('emitir_factura',${JSON.stringify({...sale,p_request_id:'FIX-SCARCE-A'})}))`),peerEval(`import('/src/lib/supabase.js').then(({supabase})=>supabase.rpc('emitir_factura',${JSON.stringify({...sale,p_request_id:'FIX-SCARCE-B'})}))`)])
+    assert.equal(scarceResults.filter(r=>!r.error).length,1);assert.equal(scarceResults.filter(r=>r.error).length,1)
+    assert.equal((await state()).tables.productos.find(p=>p.id===product.id).stock,0)
+    check('AT-AUD-03: different concurrent sales cannot oversell the final stock unit')
+    await go('/inventario');await button('+ Nuevo');await field('Nombre','FIX-MONEY-UI');await field('Código único (SKU)','FIX-MONEY-UI');await field('Categoría','1');await field('Precio compra','18000')
+    for(const unsafe of ['9007199254740992','9007199254740993']){
+      await field('Precio venta',unsafe);assert.equal((await value('Precio venta')).replaceAll('.',''),unsafe)
+      await button('Guardar');assert.ok(await evaluate("document.querySelector('.product-form [role=alert]')?.textContent.includes('El valor ingresado es demasiado grande.')"))
+      assert.ok(!(await state()).tables.productos.some(p=>p.codigo==='FIX-MONEY-UI'))
+    }
+    await field('Precio venta','9007199254740991');await button('Guardar');await waitFor("!document.querySelector('.product-form')")
+    assert.equal((await state()).tables.productos.find(p=>p.codigo==='FIX-MONEY-UI').precio_venta,9007199254740991)
+    check('AT-AUD-02: product COP input rejects both unsafe values and saves exact maximum through the actual form')
+    await go('/finanzas');await button('+ Registrar');await field('Categoría','Transporte')
+    for(const unsafe of ['9007199254740992','9007199254740993']){
+      await field('Monto',unsafe);await button('Registrar gasto');assert.ok(await evaluate("document.querySelector('.movement-form [role=alert]')?.textContent.includes('El valor ingresado es demasiado grande.')"))
+    }
+    await close();check('AT-AUD-02: movement COP input rejects unsafe values through the actual form')
+    await send('Page.reload');await waitFor("!!document.querySelector('.finance-period')")
+    const reloaded=await state();for(const count of [20,50])assert.equal(reloaded.tables.movimientos.filter(m=>m.descripcion?.startsWith(`FIX-${count}-`)).length,count*2)
+    check('AT-AUD-03: all concurrent writes survive a real reload')
+    evidence.sync.push({incomeBefore:before,incomeAfter:before+12345,sale:invoice.id,purchase:purchases[0],inventoryStock:0})
+    await writeFile(join(artifacts,'evidence.json'),JSON.stringify(evidence,null,2))
+  } finally {peer.close();await send('Target.closeTarget',{targetId:peerTarget.id}).catch(()=>{})}
+  assert.equal(browserErrors.length,0);assert.equal(externalRequests.length,0)
+  await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'PASS',cases:results.length,results,externalRequests,browserErrors},null,2))
+  console.log(JSON.stringify({status:'PASS',cases:results.length,artifacts,origin:base}))
