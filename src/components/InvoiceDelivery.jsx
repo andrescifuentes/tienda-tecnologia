@@ -12,6 +12,7 @@ import { supabase, isDemoMode } from '../lib/supabase'
 import { textoFactura } from '../lib/factura'
 import { createInvoicePdf, invoicePdfFile, canSharePdf, saveInvoicePdf, logoListo } from '../lib/invoicePdf'
 import { subirFacturaPdf } from '../lib/facturaEnvio'
+import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { prepararEnvioFactura, conLimiteEnvio, abrirEnvioFactura, quitarFocoEntrada } from '../lib/invoiceDelivery'
 import { mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
@@ -107,7 +108,7 @@ export default function InvoiceDelivery({ invoice, items, tienda, obligatorio = 
     const token = ++shareSequence.current, trip = { kind: 'share', left: false }
     handoff.current = trip
     quitarFocoEntrada(); setError(''); setInfo(''); setEmailNotice(''); setSharing(true)
-    const result = await compartirFacturaPorSistema(readyFile, navigator, { title: 'Factura ' + invoice.prefijo + '-' + String(invoice.numero).padStart(4, '0') + ' - Angie Tech', text: 'Tu factura de Angie Tech. Gracias por tu compra.' })
+    const result = await compartirFacturaPorSistema(readyFile, navigator, { title: 'Factura ' + invoice.prefijo + '-' + String(invoice.numero).padStart(4, '0') + ' - ' + invoiceBrand(invoice.tienda_snapshot || tienda), text: 'Tu factura de ' + invoiceBrand(invoice.tienda_snapshot || tienda) + '. Gracias por tu compra.' })
     if (!alive.current || token !== shareSequence.current) return
     shareLocked.current = false; setSharing(false)
     if (result !== 'shared' && !trip.left) handoff.current = null

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { createAuthSession, emptyAuthState } from '../lib/authSession'
+import { recordarNegocio } from '../lib/marca'
 
 const AuthContext = createContext(null)
 
@@ -13,6 +14,7 @@ export function AuthProvider({ children }) {
     void manager.start()
     return () => { manager.stop(); if (service.current === manager) service.current = null }
   }, [])
+  useEffect(() => { recordarNegocio(state.tienda) }, [state.tienda])
   const value = useMemo(() => ({
     ...state,
     esAdmin: state.perfil?.rol === 'admin',

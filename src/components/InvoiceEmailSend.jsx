@@ -26,7 +26,7 @@ export default function InvoiceEmailSend({invoice,tienda,onCancel,onManual,onSen
   finally{if(generation.current===token)lock.current=false}
  }
  return <section className="invoice-preview invoice-email-preview invoice-email-send" aria-label="Enviar factura por correo">
-  <header ref={heading} className="email-preview-head"><span className="email-preview-icon"><I n="mail" /></span><div><span className="email-preview-eyebrow">{meta?.nombreComercial||'Angie Tech'}</span><h4>Enviar factura por correo</h4><p>{meta?.numero||numFactura(invoice)} · {money(meta?.total??invoice.total)} COP</p></div></header>
+  <header ref={heading} className="email-preview-head"><span className="email-preview-icon"><I n="mail" /></span><div><span className="email-preview-eyebrow">{meta?.nombreComercial||invoiceBrand(tienda)}</span><h4>Enviar factura por correo</h4><p>{meta?.numero||numFactura(invoice)} · {money(meta?.total??invoice.total)} COP</p></div></header>
   <p className="email-preview-status"><I n="receipt" />PDF adjunto automáticamente</p>
   <ErrorBox text={error}/>
   {phase==='preparing'&&<p className="email-preview-info" role="status">Preparando factura…</p>}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Modal from './Modal'
 import { Input, ErrorBox } from './ui'
 import { useAuth } from '../context/AuthContext'
+import { nombreNegocio } from '../lib/marca'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { getTheme, setTheme } from '../lib/theme'
 import { useAction } from '../lib/useAction'
@@ -11,7 +12,7 @@ import { Icon } from './Icons'
 import '../styles/profile-finance.css'
 
 export default function ProfileDialog({ onClose }) {
-  const { perfil, recargarPerfil, salir } = useAuth()
+  const { perfil, recargarPerfil, salir, tienda } = useAuth()
   const [name,setName]=useState(perfil.nombre),[phone,setPhone]=useState(perfil.telefono||''),[error,setError]=useState(''),[theme,setLocalTheme]=useState(getTheme())
   const [save,busy]=useAction(async()=>{
     if(!name.trim())return setError('El nombre es obligatorio.')
@@ -19,7 +20,7 @@ export default function ProfileDialog({ onClose }) {
     if(result.error)return setError(mensajeError(result.error))
     await recargarPerfil();toast('Perfil guardado');onClose()
   })
-  return <Modal title="Mi perfil" subtitle="Tu espacio personal en ANGIE TECH" className="profile-sheet premium-account-sheet" keyboardAware onClose={onClose} footer={isDemoMode&&<button className="btn full" disabled={busy} onClick={save}>{busy?'Guardando…':'Guardar perfil'}</button>}>
+  return <Modal title="Mi perfil" subtitle={'Tu espacio personal en ' + nombreNegocio(tienda).toUpperCase()} className="profile-sheet premium-account-sheet" keyboardAware onClose={onClose} footer={isDemoMode&&<button className="btn full" disabled={busy} onClick={save}>{busy?'Guardando…':'Guardar perfil'}</button>}>
     <ErrorBox text={error} />
     <section className="profile-identity">
       <span className="profile-avatar" aria-hidden="true">{(perfil.nombre.trim()[0] || 'A').toUpperCase()}</span>

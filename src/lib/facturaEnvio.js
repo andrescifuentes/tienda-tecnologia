@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { createInvoicePdf, logoListo } from './invoicePdf'
 import { money, numFactura } from './format'
+import { nombreNegocio } from './marca'
 
 // Sube el PDF de la factura al bucket "facturas" y devuelve un enlace para el cliente.
 export async function subirFacturaPdf(f, items, tienda) {
@@ -8,7 +9,8 @@ export async function subirFacturaPdf(f, items, tienda) {
   const pdf = createInvoicePdf(f, items, tienda, false)
   const año = new Date(f.fecha || Date.now()).getFullYear()
   const id = (crypto.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36))
-  const ruta = `${año}/${id}-${pdf.filename}`
+  // Cada negocio guarda sus facturas en su propia carpeta (script 10)
+  const ruta = `negocio-${f.negocio_id ?? tienda?.id ?? 1}/${año}/${id}-${pdf.filename}`
   const { error } = await supabase.storage.from('facturas').upload(ruta, pdf.blob, { contentType: 'application/pdf', upsert: false })
   if (error) {
     if (/bucket not found/i.test(error.message || '')) throw new Error('Falta configurar el envío de facturas: ejecuta supabase/04_facturas_envio.sql.')
@@ -23,12 +25,12 @@ export async function subirFacturaPdf(f, items, tienda) {
 
 const primerNombre = (n) => String(n || '').trim().split(/\s+/)[0] || ''
 
-export function mensajeWhatsApp(f, url) {
+export function mensajeWhatsApp(f, url, tienda) {
   const nombre = primerNombre(f.clientes?.nombre)
   return [
     `Hola${nombre ? ' ' + nombre : ''} 👋`,
     '',
-    `Gracias por tu compra en *ANGIE TECH*.`,
+    `Gracias por tu compra en *${nombreNegocio(tienda).toUpperCase()}*.`,
     `Te compartimos tu factura *${numFactura(f)}* por *${money(f.total)}*.`,
     '',
     `📄 Descárgala aquí:`,
@@ -38,13 +40,14 @@ export function mensajeWhatsApp(f, url) {
   ].join('\n')
 }
 
-export function correoFactura(f, url) {
+export function correoFactura(f, url, tienda) {
+  const marca = nombreNegocio(tienda).toUpperCase()
   const nombre = primerNombre(f.clientes?.nombre)
-  const asunto = `Tu factura ${numFactura(f)} · ANGIE TECH`
+  const asunto = `Tu factura ${numFactura(f)} · ${marca}`
   const cuerpo = [
     `Hola${nombre ? ' ' + nombre : ''},`,
     '',
-    `Gracias por tu compra en ANGIE TECH.`,
+    `Gracias por tu compra en ${marca}.`,
     `Adjuntamos el enlace a tu factura ${numFactura(f)} por ${money(f.total)}:`,
     '',
     url,
@@ -52,7 +55,7 @@ export function correoFactura(f, url) {
     'Si tienes alguna pregunta, responde a este correo.',
     '',
     'Saludos,',
-    'ANGIE TECH',
+    marca,
   ].join('\n')
   // Devuelve la parte de consulta del mailto (?subject=...&body=...)
   return `?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`

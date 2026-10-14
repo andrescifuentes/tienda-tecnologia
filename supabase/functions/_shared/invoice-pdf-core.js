@@ -1,4 +1,4 @@
-import { invoiceBrand } from './invoice-brand.js'
+import { invoiceBrand, isAngieBrand, brandSlug } from './invoice-brand.js'
 const money = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO')
 const numFactura = f => f.prefijo + '-' + String(f.numero).padStart(4, '0')
 const invoiceBusiness = (f, store) => f?.tienda_snapshot || store
@@ -7,12 +7,13 @@ const invoiceIdentity = f => ({ ...f, clientes: Object.hasOwn(f,'cliente_snapsho
 /** @param {{jsPDF: any, logo?: string|null, demo?: boolean}} options */
 export function renderInvoicePdf(invoice, items, tienda, options) {
   const { jsPDF, logo = null, demo = false } = options
-  const LOGO = logo
+  let LOGO = logo
   invoice = invoiceIdentity(invoice)
   tienda = invoiceBusiness(invoice, tienda) || {}
+  if (!isAngieBrand(tienda)) LOGO = null
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const number = numFactura(invoice)
-  const filename = `ANGIE-TECH-${number.replace(/[^a-zA-Z0-9-]/g, '')}.pdf`
+  const filename = `${brandSlug(tienda)}-${number.replace(/[^a-zA-Z0-9-]/g, '')}.pdf`
   const marca = invoiceBrand(tienda).toUpperCase()
   doc.setProperties({ title: `${marca} · ${number}`, subject: 'Factura de venta', creator: marca })
   const W = 210, M = 16, R = W - M

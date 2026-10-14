@@ -6,6 +6,8 @@ import photoSources from '../assets/products/sources.json'
 import { Icon } from './Icons'
 import { CategoryIcon } from './InvIcons'
 import { loadImage } from '../lib/demo/images'
+import { useAuth } from '../context/AuthContext'
+import { esMarcaAngie, negocioRecordado, nombreNegocio } from '../lib/marca'
 
 const photos = import.meta.glob('../assets/products/*.{jpg,png,webp}', { eager: true, query: '?url', import: 'default' })
 export function productPhoto(product) {
@@ -15,6 +17,10 @@ export function productPhoto(product) {
 }
 export function Brand({ compact = false }) {
   const filterId = 'brand-' + useId().replaceAll(':', '')
+  const tienda = useAuth()?.tienda || negocioRecordado()
+  if (tienda && !esMarcaAngie(tienda)) return <div className={'brand-lockup brand-text-lockup' + (compact ? ' compact' : '')}>
+    {tienda.logo_url ? <img src={tienda.logo_url} alt={nombreNegocio(tienda)} className="brand-logo brand-logo-custom" /> : <span className="brand-name">{nombreNegocio(tienda)}</span>}
+  </div>
   return <div className={'brand-lockup' + (compact ? ' compact' : '')}>
     <svg width="0" height="0" className="brand-filter" aria-hidden="true" focusable="false"><defs><filter id={filterId} colorInterpolationFilters="sRGB">
       <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  .2126 .7152 .0722 0 0" />
@@ -37,6 +43,7 @@ export function ProductThumbnail({ product }) {
 export default function TechHero() {
   const ref = useRef(null)
   const navigate = useNavigate()
+  const marca = nombreNegocio(useAuth()?.tienda).toUpperCase()
   useEffect(() => {
     let visible = true
     const pause = () => { if (ref.current) ref.current.dataset.paused = String(!visible || document.hidden) }
@@ -45,9 +52,9 @@ export default function TechHero() {
     document.addEventListener('visibilitychange', pause)
     return () => { observer.disconnect(); document.removeEventListener('visibilitychange', pause) }
   }, [])
-  return <section className="tech-hero" ref={ref} aria-label="ANGIE TECH, inicio">
+  return <section className="tech-hero" ref={ref} aria-label={marca + ', inicio'}>
     <img className="hero-photo" src={homePhoto} alt="Dispositivos y accesorios tecnológicos" />
-    <div className="hero-copy"><span className="hero-eyebrow">ANGIE TECH</span><h2>Tecnología para<br/><em>vender mejor.</em></h2><p>Inventario, ventas y gestión en un solo lugar.</p><button className="hero-arrow" onClick={() => navigate('/vender')} aria-label="Ir a nueva venta"><span>Nueva venta</span><Icon name="arrow" /></button></div>
+    <div className="hero-copy"><span className="hero-eyebrow">{marca}</span><h2>Tecnología para<br/><em>vender mejor.</em></h2><p>Inventario, ventas y gestión en un solo lugar.</p><button className="hero-arrow" onClick={() => navigate('/vender')} aria-label="Ir a nueva venta"><span>Nueva venta</span><Icon name="arrow" /></button></div>
   </section>
 }
 export function AnimatedCard({ as: Element = 'div', index = 0, className = '', style, children, ...props }) {
