@@ -3,6 +3,15 @@ import { createInvoicePdf, logoListo } from './invoicePdf'
 import { money, numFactura } from './format'
 import { nombreNegocio } from './marca'
 
+// Enlace corto y bonito para el cliente (script 11): https://<app>/f/<código>
+// Si el script 11 aún no se ejecutó, se usa el enlace del PDF de antes.
+export async function enlaceFactura(f, items, tienda) {
+  const { data, error } = await supabase.rpc('crear_enlace_factura', { p_factura: f.id })
+  if (!error && data) return `${window.location.origin}/f/${data}`
+  if (error && error.code !== 'PGRST202' && !/Could not find the function/i.test(error.message || '')) throw error
+  return subirFacturaPdf(f, items, tienda)
+}
+
 // Sube el PDF de la factura al bucket "facturas" y devuelve un enlace para el cliente.
 export async function subirFacturaPdf(f, items, tienda) {
   await logoListo

@@ -3,7 +3,7 @@ import { I } from './InvIcons'
 import { ErrorBox } from './ui'
 import { createInvoicePdf, invoicePdfFile, saveInvoicePdf, logoListo } from '../lib/invoicePdf'
 import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
-import { esIOSCorreo, crearBorradorCorreoFactura, copiarTextoFactura, puedeCompartirFactura, compartirFacturaPorSistema } from '../lib/invoiceEmail'
+import { crearBorradorCorreoFactura, copiarTextoFactura, puedeCompartirFactura, compartirFacturaPorSistema } from '../lib/invoiceEmail'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
 import { isDemoMode } from '../lib/supabase'
 import { numFactura } from '../lib/format'
@@ -39,7 +39,7 @@ export default function InvoiceEmailPreview({ invoice, items, tienda, correo, on
   const draft = useMemo(() => crearBorradorCorreoFactura({ invoice, correo, detalle, tienda }), [invoice, correo, detalle, tienda])
   const pdf = useMemo(() => { try { return createInvoicePdf(invoice, items, tienda, isDemoMode) } catch { return null } }, [invoice, items, tienda, logoReady])
   const file = useMemo(() => { try { return pdf ? invoicePdfFile(pdf) : null } catch { return null } }, [pdf])
-  const shareable = puedeCompartirFactura(file), ios = esIOSCorreo()
+  const shareable = puedeCompartirFactura(file)
   async function copy(kind, text) {
     quitarFocoEntrada(); setError(''); setInfo(''); setManual(null)
     if (!text?.trim()) return setError('Escribe un destinatario o descarga la factura para compartirla.')
@@ -73,33 +73,28 @@ export default function InvoiceEmailPreview({ invoice, items, tienda, correo, on
     if (result !== 'shared' && !trip.left) handoff.current = null
     setInfo(result === 'shared' ? 'Confirma el envío en la aplicación que elegiste.' : result === 'cancelled' ? 'Compartir cancelado. Puedes copiar el mensaje o descargar el PDF.' : 'Descarga el PDF y adjúntalo desde tu aplicación de correo.')
   }
-  return <section className="invoice-preview invoice-email-preview" aria-label="Preparar correo">
-    <header ref={headingRef} className="email-preview-head"><span className="email-preview-icon"><I n="mail" /></span><div><span className="email-preview-eyebrow">FACTURA {numFactura(invoice)}</span><h4>Más opciones de envío</h4><p>Elige una aplicación o copia los datos del correo.</p></div></header>
-    <div className="email-preview-status"><span />Mensaje preparado · pendiente de envío</div>
-    <div className="email-preview-actions">
-      {shareable && <button type="button" className="btn email-share" disabled={sharing} onClick={share}><svg className="inv-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M5 11v8a2 2 0 002 2h10a2 2 0 002-2v-8" /></svg><span className="email-share-label"><b>{sharing ? 'Abriendo compartir…' : 'Compartir factura'}</b><small>Elige tu aplicación</small></span></button>}
+  return <section className="invoice-preview invoice-email-preview email-simple" aria-label="Enviar factura por correo">
+    <header ref={headingRef} className="email-preview-head"><span className="email-preview-icon"><I n="mail" /></span><div><span className="email-preview-eyebrow">FACTURA {numFactura(invoice)}</span><h4>Enviar por correo</h4><p>Revisa el correo del cliente y elige cómo enviarla.</p></div></header>
+    <div className="email-preview-recipient"><label htmlFor="invoice-email-recipient">Correo del cliente</label><input id="invoice-email-recipient" aria-label="Destinatario" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} value={correo} onChange={event => { ++copyGeneration.current; setCopying(''); onCorreo(event.target.value); setError(''); setInfo(''); setManual(null) }} placeholder="cliente@correo.com" />{!correo.trim() && <small>Sin correo registrado. Escríbelo aquí o usa «Compartir PDF».</small>}</div>
     <ErrorBox text={error} />
     {info && <p className="email-preview-info" role="status">{info}</p>}
-    {manual && <div className="email-manual-copy"><span>{manual.kind === 'correo' ? 'Correo' : manual.kind === 'asunto' ? 'Asunto' : 'Mensaje'} para copiar</span><pre ref={manualRef} tabIndex={0}>{manual.text}</pre></div>}
-      <div className="email-secondary-actions">
-        <button type="button" className="btn sec email-gmail" onClick={() => { quitarFocoEntrada(); onOpenProvider('gmail') }}><I n="mail" />{ios ? 'Intentar app Gmail' : 'Abrir Gmail'}</button>
-        {ios && <><button type="button" className="btn sec email-gmail-web" onClick={() => { quitarFocoEntrada(); onOpenGmailWeb() }}><I n="mail" />Abrir Gmail web manualmente</button><p className="email-preview-info">En iOS, Gmail web puede abrir la bandeja. No garantiza un mensaje nuevo preparado.</p></>}
-        <button type="button" className="btn sec email-outlook" onClick={() => { quitarFocoEntrada(); onOpenProvider('outlook') }}><I n="mail" />Abrir Outlook</button>
-        <button type="button" className="btn sec email-open" onClick={() => { quitarFocoEntrada(); onOpenProvider('system') }}><I n="mail" />Aplicación del sistema</button>
-        <button type="button" className={'btn email-download' + (shareable ? ' sec' : '')} onClick={download}><I n="receipt" />Descargar PDF</button>
+    <div className="email-preview-actions">
+      {shareable && <button type="button" className="btn email-share" disabled={sharing} onClick={share}><svg className="inv-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M5 11v8a2 2 0 002 2h10a2 2 0 002-2v-8" /></svg><span className="email-share-label"><b>{sharing ? 'Abriendo compartir…' : 'Compartir PDF'}</b><small>Con el archivo adjunto · eliges Gmail o Correo</small></span></button>}
+      <div className="email-secondary-actions email-two">
+        <button type="button" className="btn sec email-gmail" disabled={!correo.trim()} onClick={() => { quitarFocoEntrada(); onOpenProvider('gmail') }}><I n="mail" />Abrir Gmail</button>
+        <button type="button" className="btn sec email-open" disabled={!correo.trim()} onClick={() => { quitarFocoEntrada(); onOpenProvider('system') }}><I n="mail" />Abrir Correo</button>
       </div>
-      <div className="email-copy-actions">
-        <button type="button" className="btn sec" disabled={!!copying || !correo.trim()} onClick={() => copy('correo', draft.destino)}><I n="copy" />{copying === 'correo' ? 'Copiando…' : 'Copiar correo'}</button>
-        <button type="button" className="btn sec" disabled={!!copying} onClick={() => copy('asunto', draft.asunto)}><I n="copy" />{copying === 'asunto' ? 'Copiando…' : 'Copiar asunto'}</button>
-        <button type="button" className="btn sec" disabled={!!copying} onClick={() => copy('mensaje', draft.cuerpo)}><I n="copy" />{copying === 'mensaje' ? 'Copiando…' : 'Copiar mensaje'}</button>
+      <p className="email-simple-note">Gmail y Correo se abren con el mensaje y el enlace a la factura listos.</p>
+      <div className="email-simple-links">
+        <button type="button" className="email-quick-link email-download" onClick={download}><I n="receipt" />Descargar PDF</button>
+        <button type="button" className="email-quick-link" disabled={!!copying} onClick={() => copy('mensaje', draft.cuerpo)}><I n="copy" />{copying === 'mensaje' ? 'Copiando…' : 'Copiar mensaje'}</button>
       </div>
-      <button type="button" className="email-preview-cancel" onClick={() => { quitarFocoEntrada(); onCancel() }}>Cancelar</button>
+      {manual && <div className="email-manual-copy"><span>Mensaje para copiar</span><pre ref={manualRef} tabIndex={0}>{manual.text}</pre></div>}
     </div>
-    <div className="email-preview-recipient"><label htmlFor="invoice-email-recipient">Destinatario</label><input id="invoice-email-recipient" aria-label="Destinatario" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} value={correo} onChange={event => { ++copyGeneration.current; setCopying(''); onCorreo(event.target.value); setError(''); setInfo(''); setManual(null) }} placeholder="cliente@correo.com" />{!correo.trim() && <small>Sin correo registrado. Escribe uno o comparte el PDF.</small>}</div>
-    <div className="email-preview-subject"><span>Asunto</span><p>{draft.asunto}</p></div>
-    <div className="email-preview-message"><span>Mensaje</span><pre>{draft.cuerpo}</pre></div>
-    <p className="email-preview-attachment"><I n="receipt" /><span>El PDF debe adjuntarse manualmente desde tu aplicación de correo.{shareable && <small>Compartir factura incluye el archivo PDF.</small>}</span></p>
-
-
+    <details className="email-simple-preview"><summary>Ver el mensaje</summary>
+      <div className="email-preview-subject"><span>Asunto</span><p>{draft.asunto}</p></div>
+      <div className="email-preview-message"><span>Mensaje</span><pre>{draft.cuerpo}</pre></div>
+    </details>
+    <button type="button" className="email-preview-cancel" onClick={() => { quitarFocoEntrada(); onCancel() }}>Cancelar</button>
   </section>
 }

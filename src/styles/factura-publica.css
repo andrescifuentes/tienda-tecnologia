@@ -1,0 +1,23 @@
+/* Factura que abre el cliente desde el enlace (/f/<código>) */
+.fp-page{min-height:100dvh;background:radial-gradient(120% 60% at 50% 0%,#211b12 0%,#0d0c0a 55%);color:#f6f3ec;padding:calc(env(safe-area-inset-top) + 28px) 16px calc(env(safe-area-inset-bottom) + 28px);box-sizing:border-box;font-family:Inter,system-ui,sans-serif}
+.fp-head,.fp-actions,.fp-doc,.fp-foot,.fp-nota,.fp-aviso,.fp-empty{max-width:760px;margin-left:auto;margin-right:auto}
+.fp-eyebrow{display:block;font-size:11px;letter-spacing:.28em;color:#c79a52;font-weight:600}
+.fp-head h1,.fp-empty h1{font-family:'Playfair Display',Georgia,serif;font-weight:500;font-size:clamp(26px,7.4vw,38px);line-height:1.1;margin:10px 0 8px;color:#f6f3ec}
+.fp-head p,.fp-empty p{margin:0;color:#bdb3a2;font-size:15px;line-height:1.5}
+.fp-actions{display:flex;gap:10px;margin-top:20px;margin-bottom:18px}
+.fp-btn{flex:1;min-height:52px;border-radius:16px;border:0;background:linear-gradient(135deg,#e9cf98,#c79a52);color:#1b150b;font-weight:700;font-size:16px;cursor:pointer}
+.fp-btn.sec{background:transparent;color:#f1d6a7;border:1px solid #5a4a31}
+.fp-btn:active{transform:scale(.98)}
+.fp-doc{border-radius:20px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.fp-doc .print-invoice{margin:0}
+.fp-nota,.fp-aviso{font-size:14px;color:#e5c78c;background:#1a1814;border:1px solid #3a3226;border-radius:14px;padding:12px 14px;margin-bottom:14px}
+.fp-aviso{color:#ffb4b4;border-color:#5c2a2a}
+.fp-foot{text-align:center;color:#7d7262;font-size:12px;margin-top:22px;letter-spacing:.04em}
+.fp-loading{min-height:70dvh;display:grid;place-items:center;align-content:center;gap:14px;color:#bdb3a2}
+.fp-spinner{width:34px;height:34px;border-radius:50%;border:3px solid #3a3226;border-top-color:#c79a52;animation:fp-gira 1s linear infinite}
+@keyframes fp-gira{to{transform:rotate(360deg)}}
+.fp-empty{padding-top:18vh}
+.fp-empty .fp-btn{margin-top:22px;width:100%}
+@media print{.fp-page{background:#fff;padding:0}.fp-head,.fp-actions,.fp-foot,.fp-nota{display:none}.fp-doc{box-shadow:none}}
+.fp-page header.fp-head{display:block!important;position:static!important;padding:0!important;background:none!important;border:0!important;height:auto!important}
+.fp-page footer.fp-foot{display:block!important;position:static!important;background:none!important}

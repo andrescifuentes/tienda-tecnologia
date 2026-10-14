@@ -99,3 +99,31 @@
   .executive-icon { width:20px; height:20px; }
   .executive-metric.expense .stat-value { font-size:20px; }
 }
+/* Últimas facturas: cada fila abre la factura */
+.executive-invoices .executive-invoice{width:100%;background:none;border:0;border-bottom:1px solid var(--line);text-align:left;color:inherit;font:inherit;cursor:pointer;min-height:44px}
+.executive-invoices .executive-invoice:active{background:color-mix(in srgb,var(--gold) 8%,transparent)}
+.executive-invoice-go{flex:none;color:var(--gold);font-size:22px;line-height:1;margin-left:2px}
+.executive-all{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:48px;margin-top:12px;border-radius:14px;border:1px solid var(--line);background:none;color:var(--gold);font:inherit;font-weight:600;cursor:pointer}
+/* Empleado: la tarjeta abre sus ventas del mes */
+button.executive-person{display:block;width:100%;text-align:left;color:inherit;font:inherit;cursor:pointer}
+button.executive-person:active{transform:scale(.99)}
+.executive-person-more{display:block;margin-top:10px;font-size:12.5px;font-weight:600;color:var(--gold)}
+.executive-back{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0;border:0;background:none;color:var(--gold);font:inherit;font-weight:600;cursor:pointer}
+.executive-back span{font-size:22px;line-height:1}
+.executive-seller-head{display:flex;align-items:center;gap:12px;margin:6px 0 14px}
+.executive-seller-head b{display:block;font-family:'Playfair Display',serif;font-size:22px;font-weight:500}
+.executive-seller-head small{color:var(--muted);font-size:12.5px}
+.executive-seller-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.executive-seller-kpis>div{border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--surface);min-width:0}
+.executive-seller-kpis span{display:block;font-size:11px;color:var(--muted)}
+.executive-seller-kpis strong{display:block;font-size:clamp(14px,4.2vw,18px);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Tarjetas del detalle: cada una lleva a su módulo, y los montos no se parten */
+.business-detail .executive-metric.is-link{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.business-detail .executive-metric.is-link:active{transform:scale(.985)}
+.executive-metric-go{position:relative;z-index:1;display:inline-block;margin-top:8px;font-size:11.5px;font-weight:600;color:var(--gold)}
+.executive-metric.headline .executive-metric-go{color:#5b4316}
+.business-detail .executive-grid .executive-metric .stat-value,.business-detail .executive-today .executive-metric .stat-value{font-size:clamp(17px,5.2vw,24px)!important;white-space:nowrap!important;overflow-wrap:normal!important;letter-spacing:-.04em!important}
+.business-detail .executive-metric .stat-value{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button.executive-stock-row{width:100%;background:none;border:0;border-bottom:1px solid var(--line);text-align:left;font:inherit;color:inherit;cursor:pointer}
+.executive-seller-kpis{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) minmax(0,1fr)}
+.executive-seller-kpis strong{font-size:clamp(14px,4vw,17px)}

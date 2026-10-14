@@ -123,8 +123,32 @@ function ActivityRow({ a, onOpen }) {
   </button>
 }
 
+// Ventas del mes de un empleado (desde «Detalle del negocio»)
+function VentasEmpleado({ e, onVolver, onFactura }) {
+  const [facturas, setFacturas] = useState(null), [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    const mes = rangoMes()
+    supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,clientes(nombre)').eq('vendedor_id', e.vendedor_id)
+      .gte('fecha', mes.ini + 'T00:00:00-05:00').lte('fecha', mes.fin + 'T23:59:59-05:00').order('fecha', { ascending: false })
+      .then(r => { if (!active) return; if (r.error) setError(mensajeError(r.error)); else setFacturas(r.data || []) })
+    return () => { active = false }
+  }, [e.vendedor_id])
+  const anuladas = (facturas || []).filter(f => f.estado === 'anulada').length
+  return <div className="executive-seller">
+    <button type="button" className="executive-back" onClick={onVolver}><span aria-hidden="true">‹</span> Volver al resumen</button>
+    <div className="executive-seller-head"><span className="executive-avatar" aria-hidden="true">{e.nombre?.trim().slice(0, 1)}</span><div><b>{e.nombre}</b><small>Ventas de {rangoMes().label}</small></div></div>
+    <div className="executive-seller-kpis"><div><span>Vendido</span><strong>{money(e.total_vendido)}</strong></div><div><span>Facturas</span><strong>{e.facturas}</strong></div><div><span>Anuladas</span><strong>{facturas ? anuladas : '—'}</strong></div></div>
+    <ErrorBox text={error} />
+    {!facturas && !error ? <Loader /> : facturas && (facturas.length ? <div className="executive-invoices">{facturas.map(f => <button type="button" className="executive-invoice" key={f.id} aria-label={'Ver factura ' + numFactura(f)} onClick={() => onFactura(f.id)}><span className="executive-invoice-icon"><Icon name="doc" /></span><div><b>{numFactura(f)}</b><small>{fechaHora(f.fecha)}</small><small>{f.clientes?.nombre || 'Consumidor final'}</small></div><div><strong>{money(f.total)}</strong>{f.estado === 'anulada' && <span className="badge bad">Anulada</span>}</div><span className="executive-invoice-go" aria-hidden="true">›</span></button>)}</div> : <Empty text="Sin facturas este mes" />)}
+  </div>
+}
+
 function DetalleNegocio({ onClose }) {
   const { can, tienda } = useAuth()
+  const navigate = useNavigate()
+  const irA = to => { onClose(); navigate(to) }
+  const [empleado, setEmpleado] = useState(null)
   const revision = useDemoRevision()
   const [datos, setDatos] = useState(null), [error, setError] = useState('')
   useEffect(() => {
@@ -145,7 +169,7 @@ function DetalleNegocio({ onClose }) {
   }, [revision])
   return <Modal title="Detalle del negocio" subtitle={'Resumen ejecutivo de ' + nombreNegocio(tienda).toUpperCase()} className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
     <ErrorBox text={error} />
-    {!datos && !error ? <Loader /> : datos && <BusinessDetail data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} />}
+    {empleado ? <VentasEmpleado e={empleado} onVolver={() => setEmpleado(null)} onFactura={id => irA('/facturas?factura=' + id)} /> : !datos && !error ? <Loader /> : datos && <BusinessDetail onEmpleado={setEmpleado} onIr={irA} data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} onFactura={id => irA('/facturas?factura=' + id)} onVerFacturas={() => irA('/facturas')} />}
   </Modal>
 }
 
@@ -226,7 +250,7 @@ function DashboardAdmin() {
         <Chevron />
       </button>
 
-      <button type="button" className="btn sec full mt-4" onClick={() => setDetalleNegocio(true)}>Detalle del negocio <Chevron /></button>
+      <button type="button" className="ah-detail-cta" onClick={() => setDetalleNegocio(true)}><span className="ah-detail-ic"><Icon name="chart" /></span><span className="ah-detail-txt"><b>Detalle del negocio</b><small>Ventas, utilidad, inventario y tu equipo</small></span><Chevron /></button>
       <div className="ah-section"><h2>Actividad reciente</h2>{data.feed.length > 4 && <button type="button" onClick={() => setVerTodo(true)}>Ver todas <Chevron /></button>}</div>
       <div className="ah-acts activity-list">
         {data.feed.length ? data.feed.slice(0, 4).map(a => <ActivityRow key={a.key} a={a} onOpen={() => navigate(a.to)} />) : <Empty text="Sin actividad reciente" description="Aquí verás tus ventas, compras y movimientos apenas ocurran." />}

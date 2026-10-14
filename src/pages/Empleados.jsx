@@ -7,6 +7,21 @@ import { FormSection, PremiumSwitch, RoleField, PasswordField } from '../compone
 import { Empty, Loader, Badge, Input, ErrorBox, SearchBar, Select } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { fechaHora, mensajeError, money, hoyBogota, rangoMes } from '../lib/format'
+import { describirActividad } from '../lib/actividadTexto'
+import { Icon } from '../components/Icons'
+import { useNavigate } from 'react-router-dom'
+
+// Una línea del historial, escrita para personas (no códigos internos)
+function ActividadFila({ a }) {
+  const navigate = useNavigate()
+  const x = describirActividad(a)
+  const Tag = x.to ? 'button' : 'div'
+  return <Tag {...(x.to ? { type: 'button', onClick: () => navigate(x.to) } : {})} className={'emp-act' + (x.to ? ' is-link' : '')}>
+    <span className={'emp-act-ic ' + x.tono}><Icon name={x.icono} /></span>
+    <span className="emp-act-main"><b>{x.titulo}</b>{x.detalle && <small>{x.detalle}</small>}</span>
+    <span className="emp-act-time">{fechaHora(a.fecha)}</span>
+  </Tag>
+}
 import { toast } from '../lib/toast'
 import { createEmployee, loadEmployees, normalizeEmployeeInput } from '../lib/employeeCreation'
 
@@ -189,7 +204,7 @@ function Detalle({ p, onClose, onCambio }) {
       {isDemoMode&&<details className="admin-history"><summary>Ventas</summary><p className="text-sm">Mes actual: {money(sales.filter(f=>f.estado==='emitida'&&f.fecha.slice(0,7)===hoyBogota().slice(0,7)).reduce((n,f)=>n+(f.total_neto||0),0))}</p>{sales.map(f=><div className="row" key={f.id}><span className="flex-1 text-sm">{f.prefijo}-{f.numero} - {f.estado}</span><span className="text-xs">{money(f.total_neto)}</span></div>)}</details>}
       <details className="admin-history"><summary>Historial de actividad</summary>
       {!act ? <Loader /> : act.length === 0 ? <Empty text="Sin actividad" /> : act.map((a) => (
-        <div key={a.id} className="row"><div className="flex-1"><p className="m-0 text-sm">{a.accion}{a.entidad ? ` · ${a.entidad} ${a.entidad_id ?? ''}` : ''}</p><p className="m-0 text-xs text-muted">{fechaHora(a.fecha)}</p></div></div>
+        <ActividadFila key={a.id} a={a} />
       ))}
       </details>
     </Modal>

@@ -12,7 +12,12 @@ let configurationError = ''
 // Avisa a la interfaz cuando se pierde o recupera la conexión con el servidor
 let enLinea = true
 const avisarConexion = (ok) => { if (ok !== enLinea) { enLinea = ok; window.dispatchEvent(new CustomEvent('app-conexion', { detail: ok })) } }
-const fetchVigilado = (...args) => fetch(...args).then((r) => { avisarConexion(true); return r }, (e) => { if (e?.name !== 'AbortError') avisarConexion(false); throw e })
+const fetchVigilado = (...args) => fetch(...args).then((r) => { avisarConexion(true); return r }, (e) => {
+  // Una función del servidor que no responde no significa que el celular esté sin internet
+  const funcion = String(args[0]?.url || args[0] || '').includes('/functions/v1/')
+  if (e?.name !== 'AbortError' && !funcion) avisarConexion(false)
+  throw e
+})
 
 if (isDemoMode) {
   client = createDemoClient()

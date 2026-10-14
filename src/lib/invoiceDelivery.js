@@ -14,7 +14,10 @@ export function prepararEnvioFactura({ canal, invoice, telefono, correo, pdfUrl 
   const nombre = invoice.clientes?.nombre?.trim().split(/\s+/)[0] || 'cliente'
   const brand = invoiceBrand(invoice.tienda_snapshot || tienda).toUpperCase()
   const asunto = 'Factura ' + number + ' de ' + brand
-  const cuerpo = ['Hola ' + nombre + ',', '', 'Te compartimos tu factura ' + number + ' de ' + brand + ' por ' + money(invoice.total) + '.', '', pdfUrl ? 'Descarga tu PDF: ' + pdfUrl : 'El PDF debe adjuntarse manualmente.', detalle ? '\n' + detalle.replace(/\*/g, '') : ''].filter(Boolean).join('\n')
+  // Con enlace: mensaje corto (el detalle lo ve el cliente en la página de la factura)
+  const cuerpo = pdfUrl
+    ? ['Hola ' + nombre + ',', '', 'Gracias por tu compra en ' + invoiceBrand(invoice.tienda_snapshot || tienda) + '.', 'Aquí puedes ver y descargar tu factura ' + number + ' por ' + money(invoice.total) + ':', '', pdfUrl].join('\n')
+    : ['Hola ' + nombre + ',', '', 'Te compartimos tu factura ' + number + ' de ' + brand + ' por ' + money(invoice.total) + '.', '', 'El PDF debe adjuntarse manualmente.', detalle ? '\n' + detalle.replace(/\*/g, '') : ''].filter(Boolean).join('\n')
   if (canal === 'whatsapp') {
     const destino = String(telefono || '').trim(), digits = soloDigitos(destino)
     if (!digits) throw new Error('El cliente no tiene un número de WhatsApp registrado.')

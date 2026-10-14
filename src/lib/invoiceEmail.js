@@ -8,7 +8,7 @@ export function validarCorreoFactura(value) {
   return ''
 }
 
-export function crearBorradorCorreoFactura({ invoice, correo = '', detalle = '', tienda } ) {
+export function crearBorradorCorreoFactura({ invoice, correo = '', detalle = '', tienda, pdfUrl = '' } ) {
   const destino = String(correo || '').trim()
   const number = numFactura(invoice)
   const nombre = invoice.clientes?.nombre?.trim().split(/\s+/)[0]
@@ -18,12 +18,13 @@ export function crearBorradorCorreoFactura({ invoice, correo = '', detalle = '',
     nombre ? 'Hola ' + nombre + ',' : 'Hola,', '',
     'Gracias por tu compra en ' + brand + '.',
     'Te compartimos la factura ' + number + ' correspondiente a tu compra por ' + money(invoice.total) + '.', '',
+    pdfUrl ? 'Descarga tu factura en PDF:\n' + pdfUrl + '\n' : '',
     detalle ? detalle.replace(/\*/g, '') + '\n' : '',
     'Si tienes alguna pregunta sobre tu compra, estaremos encantados de ayudarte.', '',
     'Saludos,', brand,
   ].join('\n')
   const url = validarCorreoFactura(destino) ? '' : 'mailto:' + encodeURIComponent(destino) + '?subject=' + encodeURIComponent(asunto) + '&body=' + encodeURIComponent(cuerpo)
-  return { canal: 'correo', destino, asunto, cuerpo, adjuntoManual: true, url }
+  return { canal: 'correo', destino, asunto, cuerpo, adjuntoManual: !pdfUrl, url }
 }
 
 // An OS protocol hand-off does not acknowledge opening an app or sending mail.

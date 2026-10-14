@@ -18,6 +18,7 @@ const Finanzas = lazy(() => import('./pages/Finanzas'))
 const FinanzasMovimientos = lazy(() => import('./pages/FinanzasMovimientos'))
 const Restablecer = lazy(() => import('./pages/Restablecer'))
 const Registro = lazy(() => import('./pages/Registro'))
+const FacturaPublica = lazy(() => import('./pages/FacturaPublica'))
 
 function Privada({ children, ...p }) {
   return <ProtectedRoute {...p}><Suspense fallback={<PageSkeleton />}>{children}</Suspense></ProtectedRoute>
@@ -28,6 +29,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/registro" element={<Suspense fallback={<PageSkeleton />}><Registro /></Suspense>} />
+      <Route path="/f/:token" element={<Suspense fallback={<PageSkeleton />}><FacturaPublica /></Suspense>} />
       <Route path="/restablecer" element={<Suspense fallback={<PageSkeleton />}><Restablecer /></Suspense>} />
       <Route path="/" element={<Privada><Inicio /></Privada>} />
       <Route path="/vender" element={<Privada permiso="vender"><Vender /></Privada>} />

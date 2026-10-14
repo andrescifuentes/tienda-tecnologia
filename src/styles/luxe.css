@@ -2258,3 +2258,26 @@ html,body{overflow-x:hidden;max-width:100%}
 .brand-text-lockup .brand-logo-custom{position:static!important;filter:none!important;width:auto!important;max-width:100%;max-height:44px;object-fit:contain}
 :root[data-theme="light"] .brand-text-lockup .brand-name{background:linear-gradient(135deg,#a27532,#6e4d1d);-webkit-background-clip:text;background-clip:text}
 .fx-logo.fx-logo-txt{width:auto;font-family:'Playfair Display',Georgia,serif;font-size:22px;font-weight:600;color:#f1d6a7;letter-spacing:.03em;line-height:1.1;max-width:60%}
+.notice-summary .notice-read-all{margin-top:10px;background:none;border:0;padding:6px 0;min-height:44px;color:var(--gold,#c79a52);font-weight:600;font-size:13px;cursor:pointer}
+/* Inicio: acceso destacado a «Detalle del negocio» */
+.ah-detail-cta{display:flex;align-items:center;gap:14px;width:100%;margin-top:16px;padding:16px 16px;min-height:76px;border-radius:20px;border:1px solid color-mix(in srgb,var(--gold,#c79a52) 55%,transparent);background:linear-gradient(120deg,color-mix(in srgb,var(--gold,#c79a52) 18%,var(--surface,#151310)),var(--surface,#151310) 70%);box-shadow:0 10px 28px #0000002e,inset 0 1px 0 #ffffff14;color:var(--ink,#f6f3ec);text-align:left;font:inherit;cursor:pointer}
+.ah-detail-cta:active{transform:scale(.985)}
+.ah-detail-ic{flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#e9cf98,#c79a52);color:#1b150b}
+.ah-detail-ic svg{width:22px;height:22px}
+.ah-detail-txt{flex:1;min-width:0}
+.ah-detail-txt b{display:block;font-family:'Playfair Display',serif;font-weight:500;font-size:20px;line-height:1.2}
+.ah-detail-txt small{display:block;margin-top:3px;font-size:12.5px;color:var(--muted)}
+.ah-detail-cta>svg:last-child{flex:none;color:var(--gold,#c79a52)}
+/* Filtros › Marca: todas las marcas visibles en varias filas (sin carrusel cortado) */
+.flt-sheet .pos-brands.in-sheet{display:flex!important;flex-wrap:wrap!important;gap:8px!important;overflow:visible!important;margin:0!important;padding:0 0 4px!important;mask-image:none!important;-webkit-mask-image:none!important;scroll-snap-type:none!important}
+.flt-sheet .pos-brands.in-sheet>button{flex:0 0 auto!important;min-height:44px;max-width:100%}
+/* Empleados › Historial de actividad con el estilo de la app */
+.emp-act{display:flex;align-items:center;gap:12px;width:100%;padding:12px 0;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;font:inherit;text-align:left}
+.emp-act.is-link{cursor:pointer}.emp-act.is-link:active{opacity:.8}
+.emp-act-ic{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:13px;background:color-mix(in srgb,var(--gold,#c79a52) 14%,transparent);color:var(--gold,#c79a52)}
+.emp-act-ic svg{width:19px;height:19px}
+.emp-act-ic.good{background:var(--good-bg);color:var(--good)}.emp-act-ic.bad{background:var(--bad-bg);color:var(--bad)}.emp-act-ic.warn{background:var(--warn-bg);color:var(--warn)}
+.emp-act-main{flex:1;min-width:0}
+.emp-act-main b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
+.emp-act-main small{display:block;margin-top:2px;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emp-act-time{flex:none;max-width:34%;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.35}
