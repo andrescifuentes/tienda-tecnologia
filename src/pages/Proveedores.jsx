@@ -9,6 +9,8 @@ import RecordStatus from '../components/RecordStatus'
 import { useAction } from '../lib/useAction'
 import CompraForm from '../components/CompraForm'
 import { Brand, AnimatedCard } from '../components/TechVisuals'
+import { nombreNegocio } from '../lib/marca'
+import { useAuth } from '../context/AuthContext'
 import { I } from '../components/InvIcons'
 import { Empty, Loader, ErrorBox } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
@@ -152,6 +154,7 @@ function Form({ inicial, onClose, onSaved }) {
 }
 
 function Detalle({ compraId, p, onClose, onEditar, onCambio }) {
+  const { tienda } = useAuth() || {}
   const [seePurchase, setSeePurchase] = useState(null)
   useEffect(() => { setSeePurchase(compraId || null) }, [compraId])
   const [compras, setCompras] = useState(null)
@@ -188,7 +191,7 @@ function Detalle({ compraId, p, onClose, onEditar, onCambio }) {
         <p>{p.activo === false && <em className="cl-tier off">Inactivo</em>}<span>{[p.nit && 'NIT ' + p.nit, p.contacto].filter(Boolean).join(' · ') || 'Sin datos de contacto'}</span></p>
         <div className="cl-actions">
           <a className={'cl-act' + (tel ? '' : ' off')} href={tel ? 'tel:' + tel : undefined}><I n="phone" /><span>Llamar</span></a>
-          <a className={'cl-act' + (tel ? '' : ' off')} href={tel ? enlaceWhatsApp(tel, `Hola${p.contacto ? ' ' + p.contacto.split(' ')[0] : ''}, te escribimos de ANGIE TECH.`) : undefined} target="_blank" rel="noreferrer"><I n="chat" /><span>WhatsApp</span></a>
+          <a className={'cl-act' + (tel ? '' : ' off')} href={tel ? enlaceWhatsApp(tel, `Hola${p.contacto ? ' ' + p.contacto.split(' ')[0] : ''}, te escribimos de ${nombreNegocio(tienda).toUpperCase()}.`) : undefined} target="_blank" rel="noreferrer"><I n="chat" /><span>WhatsApp</span></a>
           <a className={'cl-act' + (p.correo ? '' : ' off')} href={p.correo ? 'mailto:' + p.correo : undefined}><I n="mail" /><span>Correo</span></a>
         </div>
       </section>

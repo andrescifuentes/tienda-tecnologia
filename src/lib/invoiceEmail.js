@@ -136,7 +136,7 @@ export async function copiarTextoFactura(text, { navigator = globalThis.navigato
 export function puedeCompartirFactura(file, navigator = globalThis.navigator) {
   try { return !!(file && navigator?.share && navigator.canShare?.({ files: [file] })) } catch { return false }
 }
-export async function compartirFacturaPorSistema(file, navigator = globalThis.navigator, { title = file?.name, text = 'Te compartimos tu factura de Angie Tech.' } = {}) {
+export async function compartirFacturaPorSistema(file, navigator = globalThis.navigator, { title = file?.name, text = 'Te compartimos tu factura.' } = {}) {
   if (!puedeCompartirFactura(file, navigator)) return 'unavailable'
   try { await navigator.share({ files: [file], title, text }); return 'shared' }
   catch (error) { return error?.name === 'AbortError' ? 'cancelled' : 'unavailable' }

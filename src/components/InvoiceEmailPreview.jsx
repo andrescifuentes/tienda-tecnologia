@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { I } from './InvIcons'
 import { ErrorBox } from './ui'
 import { createInvoicePdf, invoicePdfFile, saveInvoicePdf, logoListo } from '../lib/invoicePdf'
+import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { esIOSCorreo, crearBorradorCorreoFactura, copiarTextoFactura, puedeCompartirFactura, compartirFacturaPorSistema } from '../lib/invoiceEmail'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
 import { isDemoMode } from '../lib/supabase'
@@ -66,7 +67,7 @@ export default function InvoiceEmailPreview({ invoice, items, tienda, correo, on
     handoff.current = trip
     quitarFocoEntrada(); setError(''); setInfo(''); setSharing(true)
     // File and metadata are ready before this tap, preserving Safari user activation.
-    const result = await compartirFacturaPorSistema(file, navigator, { title: draft.asunto, text: 'Tu factura ' + numFactura(invoice) + ' de Angie Tech. Gracias por tu compra.' })
+    const result = await compartirFacturaPorSistema(file, navigator, { title: draft.asunto, text: 'Tu factura ' + numFactura(invoice) + ' de ' + invoiceBrand(invoice.tienda_snapshot || tienda) + '. Gracias por tu compra.' })
     if (!alive.current || generation !== shareGeneration.current) return
     shareLocked.current = false; setSharing(false)
     if (result !== 'shared' && !trip.left) handoff.current = null

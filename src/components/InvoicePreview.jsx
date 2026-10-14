@@ -1,4 +1,4 @@
-import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
+import { invoiceBrand, isAngieBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { money, numFactura } from '../lib/format'
 import { invoiceBusiness, invoiceIdentity } from '../lib/invoiceSnapshot'
 import logoGold from '../assets/brand/angie-tech-logo-gold.png'
@@ -17,7 +17,7 @@ export default function InvoicePreview({ invoice, items, tienda, demo = false })
   const Dato = ({ k, v }) => v ? <div className="fx-dato"><dt>{k}</dt><dd>{v}</dd></div> : null
   return <article className="print-invoice fx" data-print-invoice>
     <header className="fx-head">
-      <img src={logoGold} alt={marca} className="fx-logo" />
+      {isAngieBrand(tienda) ? <img src={logoGold} alt={marca} className="fx-logo" /> : <span className="fx-logo fx-logo-txt">{marca}</span>}
       <div className="fx-ref">
         <small>FACTURA DE VENTA</small>
         <h2>{numFactura(invoice)}</h2>

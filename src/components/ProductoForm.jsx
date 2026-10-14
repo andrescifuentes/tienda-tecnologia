@@ -26,7 +26,7 @@ function Field({ label, required, hint, children, className = '' }) {
 const MARCAS_BASE = ['Apple', 'Samsung', 'Xiaomi', 'Huawei', 'Motorola', 'Oppo', 'Honor', 'Realme', 'Lenovo', 'HP', 'Dell', 'Asus', 'Acer', 'Sony', 'LG', 'JBL', 'Genérica']
 
 export default function ProductoForm({ inicial, onClose, onSaved }) {
-  const { can } = useAuth()
+  const { can, tienda } = useAuth()
   const editando = !!inicial?.id
   const precios = can('editar_precios') || !editando
   const costos = can('ver_costos')
@@ -123,7 +123,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
       if (isDemoMode) { nuevaRef = imageKey(); await saveImage(nuevaRef, foto.blob); d.image_ref = nuevaRef; d.image_removed = false }
       else {
         const ext = foto.blob.type === 'image/png' ? 'png' : 'jpg'
-        nuevaRuta = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+        nuevaRuta = `negocio-${tienda?.id ?? 1}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
         const up = await supabase.storage.from('productos').upload(nuevaRuta, foto.blob, { contentType: foto.blob.type, upsert: false })
         if (up.error) return setErr('No se pudo subir la foto: ' + mensajeError(up.error) + ' (¿ejecutaste 03_productos_detalle.sql?)')
         d.foto_url = supabase.storage.from('productos').getPublicUrl(nuevaRuta).data.publicUrl

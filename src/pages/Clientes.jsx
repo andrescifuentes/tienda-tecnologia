@@ -15,6 +15,7 @@ import { Empty, Loader, ErrorBox } from '../components/ui'
 import Modal from '../components/Modal'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { nombreNegocio } from '../lib/marca'
 import { money, numFactura, limpiarBusqueda } from '../lib/format'
 import { enlaceWhatsApp } from '../lib/whatsapp'
 
@@ -159,7 +160,7 @@ export default function Clientes() {
 }
 
 function Ficha({ c, st, onClose, onEditar, puedeEditar }) {
-  const { esAdmin, perfil } = useAuth()
+  const { esAdmin, perfil, tienda } = useAuth()
   const [historyError, setHistoryError] = useState('')
   const [fac, setFac] = useState(null)
   const [ver, setVer] = useState(null)
@@ -193,7 +194,7 @@ function Ficha({ c, st, onClose, onEditar, puedeEditar }) {
       <p>{nv ? <em className={'cl-tier ' + nv.key}>{nv.label}</em> : null}{c.activo === false ? <em className="cl-tier off">Inactivo</em> : null}<span>{vigentes.length ? `Cliente desde ${fechaCorta(vigentes[vigentes.length - 1].fecha)}` : 'Aún sin compras'}</span></p>
       <div className="cl-actions">
         <a className={'cl-act' + (tel ? '' : ' off')} href={tel ? 'tel:' + tel : undefined} aria-disabled={!tel}><I n="phone" /><span>Llamar</span></a>
-        <a className={'cl-act' + (tel ? '' : ' off')} href={tel ? enlaceWhatsApp(tel, `Hola ${String(c.nombre).split(' ')[0]}, te saludamos de ANGIE TECH.`) : undefined} target="_blank" rel="noreferrer" aria-disabled={!tel}><I n="chat" /><span>WhatsApp</span></a>
+        <a className={'cl-act' + (tel ? '' : ' off')} href={tel ? enlaceWhatsApp(tel, `Hola ${String(c.nombre).split(' ')[0]}, te saludamos de ${nombreNegocio(tienda).toUpperCase()}.`) : undefined} target="_blank" rel="noreferrer" aria-disabled={!tel}><I n="chat" /><span>WhatsApp</span></a>
         <a className={'cl-act' + (c.correo ? '' : ' off')} href={c.correo ? 'mailto:' + c.correo : undefined} aria-disabled={!c.correo}><I n="mail" /><span>Correo</span></a>
       </div>
     </section>

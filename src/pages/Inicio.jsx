@@ -9,6 +9,7 @@ import { Icon } from '../components/Icons'
 import bannerPhoto from '../assets/photography/banner-phone.jpg'
 import { Loader, ErrorBox, Empty } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
+import { nombreNegocio } from '../lib/marca'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { money, hoyBogota, rangoMes, fechaHora, numFactura, mensajeError } from '../lib/format'
 
@@ -123,7 +124,7 @@ function ActivityRow({ a, onOpen }) {
 }
 
 function DetalleNegocio({ onClose }) {
-  const { can } = useAuth()
+  const { can, tienda } = useAuth()
   const revision = useDemoRevision()
   const [datos, setDatos] = useState(null), [error, setError] = useState('')
   useEffect(() => {
@@ -142,7 +143,7 @@ function DetalleNegocio({ onClose }) {
     }).catch(e => { if (active) setError(mensajeError(e)) })
     return () => { active = false }
   }, [revision])
-  return <Modal title="Detalle del negocio" subtitle="Resumen ejecutivo de ANGIE TECH" className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
+  return <Modal title="Detalle del negocio" subtitle={'Resumen ejecutivo de ' + nombreNegocio(tienda).toUpperCase()} className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
     <ErrorBox text={error} />
     {!datos && !error ? <Loader /> : datos && <BusinessDetail data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} />}
   </Modal>

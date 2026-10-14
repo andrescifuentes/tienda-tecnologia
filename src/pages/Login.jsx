@@ -4,6 +4,7 @@ import { useAction } from '../lib/useAction'
 import { useAuth } from '../context/AuthContext'
 import { mensajeError } from '../lib/format'
 import { Brand } from '../components/TechVisuals'
+import { negocioRecordado } from '../lib/marca'
 import { Icon } from '../components/Icons'
 import Modal from '../components/Modal'
 import photo from '../assets/photography/login.jpg'
@@ -90,11 +91,11 @@ export default function Login() {
   }
   return <main ref={screenRef} className="login-screen login-cinematic"><div className="login-layout">
     <section className="login-hero" aria-labelledby="login-headline">
-      <img className="login-photo" src={photo} alt="Tecnología ANGIE TECH: teléfonos, computador y accesorios" fetchPriority="high" />
+      <img className="login-photo" src={photo} alt="Tecnología: teléfonos, computador y accesorios" fetchPriority="high" />
       <div className="login-ambient" aria-hidden="true"/>
       <div className="login-masthead"><div className="login-brand"><Brand /><p>TU ALIADO TECNOLÓGICO</p></div><button type="button" className="login-theme" aria-label="Cambiar tema" onClick={()=>{const next=getTheme()==='dark'?'light':'dark';setTheme(next);setLocalTheme(next)}}><Icon name={theme==='dark'?'sun':'moon'}/></button></div>
       <div className="login-story"><span className="login-kicker">TECNOLOGÍA QUE TE IMPULSA</span><h1 id="login-headline"><span>Tu negocio.</span><em>Siempre contigo.</em></h1><p>Todo tu equipo. Una sola conexión.</p></div>
-      <span className="login-scene-index" aria-hidden="true">ANGIE / 01</span>
+      <span className="login-scene-index" aria-hidden="true">{(negocioRecordado()?.nombre || 'Angie').split(' ')[0].toUpperCase()} / 01</span>
     </section>
     <form onSubmit={e => { e.preventDefault(); acceder() }} className="login-form">
       <div className="login-role" role="tablist" aria-label="Tipo de acceso">

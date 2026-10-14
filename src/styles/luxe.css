@@ -2251,3 +2251,10 @@ html,body{overflow-x:hidden;max-width:100%}
 .access-done{display:grid;gap:3px;margin:0 0 12px;padding:12px 14px;border-radius:14px;background:rgba(47,210,126,.1);border:1px solid rgba(47,210,126,.35);font-size:12.5px;color:var(--ink)}
 .access-done b{color:#2fd27e;font-size:13px}.access-done code{font-size:13px;font-weight:700;letter-spacing:.02em;user-select:all}.access-done small{color:var(--muted)}
 :root[data-theme="light"] .access-done b{color:#13834c}
+/* Marca de cada negocio: los que no son Angie Tech muestran su nombre (o su logo) */
+.brand-lockup.brand-text-lockup{width:auto!important;height:auto!important;max-width:min(62vw,250px);display:flex;align-items:center;min-height:34px;margin:0}
+.brand-text-lockup .brand-name{font-family:'Playfair Display',Georgia,serif;font-weight:600;font-size:22px;line-height:1.1;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:linear-gradient(135deg,#f3dcae,#c79a52);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand-text-lockup.compact .brand-name{font-size:19px}
+.brand-text-lockup .brand-logo-custom{position:static!important;filter:none!important;width:auto!important;max-width:100%;max-height:44px;object-fit:contain}
+:root[data-theme="light"] .brand-text-lockup .brand-name{background:linear-gradient(135deg,#a27532,#6e4d1d);-webkit-background-clip:text;background-clip:text}
+.fx-logo.fx-logo-txt{width:auto;font-family:'Playfair Display',Georgia,serif;font-size:22px;font-weight:600;color:#f1d6a7;letter-spacing:.03em;line-height:1.1;max-width:60%}
