@@ -22,6 +22,8 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
     const limpio = t => String(t ?? '').replace(/[\u202f\u00a0\u2009]/g, ' ').replace(/[\u2212\u2013]/g, '-')
     doc.text(Array.isArray(value) ? value.map(limpio) : limpio(value), x, y, align ? { align } : undefined)
   }
+  // Mide el texto con la misma fuente y tamaño con que se imprime (evita textos montados)
+  const split = (value, width, size, bold = false) => { doc.setFont('helvetica', bold ? 'bold' : 'normal').setFontSize(size); return doc.splitTextToSize(String(value ?? ''), width) }
   const fecha = new Date(invoice.fecha)
   const fechaTxt = fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' })
   const horaTxt = fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })
@@ -48,25 +50,27 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   // 3. Panel Cliente | Atendido por (rótulo arriba, valor abajo)
   const c = invoice.clientes || {}, v = invoice.perfiles || {}
   const colW = (R - M - 20) / 2, x1 = M + 7, x2 = M + 7 + colW + 6
-  const lado = (x, titulo, nombre, datos, vacio) => {
-    T(titulo, x, y + 8, { size: 7, bold: true, color: GOLD })
-    const nom = doc.splitTextToSize(nombre, colW)
-    T(nom.slice(0, 2), x, y + 15, { size: 12, bold: true })
-    let ly = y + 15 + nom.slice(0, 2).length * 5 + 2
+  const lado = (x, titulo, nombre, datos, vacio, draw = true) => {
+    const P = draw ? T : () => {}
+    P(titulo, x, y + 8, { size: 7, bold: true, color: GOLD })
+    const nom = split(nombre, colW - 2, 12, true).slice(0, 3)
+    P(nom, x, y + 15, { size: 12, bold: true })
+    let ly = y + 15 + nom.length * 5 + 2
     const lista = datos.filter(d => d[1])
-    if (!lista.length && vacio) { T(vacio, x, ly, { size: 8, color: MUTED }); return ly + 4 }
+    if (!lista.length && vacio) { P(split(vacio, colW - 2, 8), x, ly, { size: 8, color: MUTED }); return ly + 4 }
     for (const [k, val] of lista) {
-      T(k.toUpperCase(), x, ly, { size: 6.2, color: [150, 140, 125] })
-      const vl = doc.splitTextToSize(String(val), colW)
-      T(vl.slice(0, 2), x, ly + 4, { size: 8.8 }); ly += 4 + vl.slice(0, 2).length * 4 + 3
+      P(k.toUpperCase(), x, ly, { size: 6.2, color: [150, 140, 125] })
+      const vl = split(val, colW - 2, 8.8).slice(0, 3)
+      P(vl, x, ly + 4, { size: 8.8 }); ly += 4 + vl.length * 4 + 3
     }
     return ly
   }
   // medir alto con una pasada "en seco" usando las mismas reglas
   const datosC = [['Documento', c.documento && `${c.tipo_documento || 'CC'} ${c.documento}`], ['Teléfono', c.telefono], ['Correo', c.correo], ['Dirección', c.direccion]]
   const datosV = [['Correo', v.correo], ['Teléfono', v.telefono], ['Método de pago', invoice.metodo_pago && invoice.metodo_pago.charAt(0).toUpperCase() + invoice.metodo_pago.slice(1)]]
-  const alto = l => 24 + Math.max(1, l.filter(d => d[1]).length) * 11
-  const panelH = Math.max(alto(datosC), alto(datosV), 34)
+  const finC = lado(x1, '', c.nombre || 'Consumidor final', c.nombre ? datosC : [], 'Venta de mostrador · sin datos de contacto', false)
+  const finV = lado(x2, '', v.nombre || 'Vendedor', datosV, undefined, false)
+  const panelH = Math.max(finC - y + 3, finV - y + 3, 34)
   doc.setFillColor(...CREAM).setDrawColor(...LINE).setLineWidth(.25).roundedRect(M, y, R - M, panelH, 3, 3, 'FD')
   doc.setDrawColor(...GOLD).setLineWidth(.35).line(M + 7 + colW + 2, y + 6, M + 7 + colW + 2, y + panelH - 6)
   lado(x1, 'CLIENTE', c.nombre || 'Consumidor final', c.nombre ? datosC : [], 'Venta de mostrador · sin datos de contacto')
@@ -84,7 +88,7 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   const nuevaPagina = () => { doc.addPage(); doc.setFillColor(14, 13, 11).rect(0, 0, W, 14, 'F'); T(marca, M, 9, { size: 9, bold: true, color: GOLD_L }); T(number, R, 9, { size: 9, color: [230, 230, 230], align: 'right' }); y = 26; header() }
   header()
   items.forEach((it, i) => {
-    const lines = doc.splitTextToSize(String(it.nombre || 'Producto') + (it.serial ? ' · Serial/IMEI: ' + it.serial : ''), cols.cant - cols.prod - 18)
+    const lines = split(String(it.nombre || 'Producto') + (it.serial ? ' · Serial/IMEI: ' + it.serial : ''), cols.cant - cols.prod - 18, 9.5, true)
     const rowH = Math.max(10, lines.length * 4.6 + 5.5)
     if (y + rowH > 250) nuevaPagina()
     if (i % 2 === 1) doc.setFillColor(252, 250, 245).rect(M, y - 5.5, R - M, rowH, 'F')
@@ -105,7 +109,7 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   const fila = (k, val, color = INK) => { T(k, tx, y, { size: 9, color: MUTED }); T(val, cols.total, y, { size: 9.5, align: 'right', color }); y += 6.5 }
   const unidades = items.reduce((a, i) => a + Number(i.cantidad || 0), 0)
   T(`${items.length} ${items.length === 1 ? 'producto' : 'productos'} · ${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}`, M, y, { size: 8.5, color: MUTED })
-  if (invoice.notas) T(doc.splitTextToSize('Notas: ' + invoice.notas, 95), M, y + 6, { size: 8.5, color: MUTED })
+  if (invoice.notas) T(split('Notas: ' + invoice.notas, 95, 8.5), M, y + 6, { size: 8.5, color: MUTED })
   fila('Subtotal', money(invoice.subtotal))
   if (Number(invoice.descuento) > 0) fila('Descuento', '-' + money(invoice.descuento), [170, 60, 50])
   y += 1
@@ -120,7 +124,7 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   if (y + 24 > 268) nuevaPagina()
   doc.setDrawColor(...GOLD).setLineWidth(.4).line(W / 2 - 20, y, W / 2 + 20, y)
   T('Gracias por tu compra', W / 2, y + 9, { size: 15, font: 'times', style: 'italic', color: INK, align: 'center' })
-  T(doc.splitTextToSize(tienda.factura_pie || 'Conserva este documento para cambios y soporte.', 150), W / 2, y + 15, { size: 8.5, color: MUTED, align: 'center' })
+  T(split(tienda.factura_pie || 'Conserva este documento para cambios y soporte.', 150, 8.5), W / 2, y + 15, { size: 8.5, color: MUTED, align: 'center' })
 
   // 7. Pie en todas las páginas
   const pages = doc.getNumberOfPages()

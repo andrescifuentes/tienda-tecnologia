@@ -50,9 +50,9 @@ export default function Vender() {
   const [hoyMio, setHoyMio] = useState({ n: 0, total: 0 })
   useEffect(() => {
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-    supabase.from(invoiceTable(supabase, { esAdmin })).select('total,estado,fecha').eq('vendedor_id', perfil.id).gte('fecha', hoy + 'T00:00:00-05:00').then(({ data }) => {
-      const ok = (data || []).filter(f => f.estado !== 'anulada')
-      setHoyMio({ n: ok.length, total: ok.reduce((a, f) => a + Number(f.total || 0), 0) })
+    supabase.from(invoiceTable(supabase, { esAdmin }, true)).select('total_neto,estado,fecha').eq('vendedor_id', perfil.id).gte('fecha', hoy + 'T00:00:00-05:00').then(({ data }) => {
+      const ok = (data || []).filter(f => f.estado === 'emitida')
+      setHoyMio({ n: ok.length, total: ok.reduce((a, f) => a + Number(f.total_neto || 0), 0) })
     })
   }, [refresh]) // eslint-disable-line
   const [ventasTop, setVentasTop] = useState({ propios: true, conteo: {} })
@@ -360,7 +360,7 @@ export default function Vender() {
           {libre > 0 && libre <= p.stock_min && <p className="pos-detail-note warn"><I n="warn" />Quedan pocas unidades de este producto.</p>}
         </Modal>
       })()}
-      {remove && <ConfirmAction title={remove==='all'?'Vaciar carrito':'Quitar producto'} label="Quitar" onClose={()=>setRemove(null)} onConfirm={()=>{if(cartEditable())setCarrito(c=>remove==='all'?[]:c.filter(i=>i.key!==remove.key))}}>Se quitaran {remove==='all'?'todos los productos':remove.producto.nombre} del carrito. No cambia el inventario.</ConfirmAction>}
+      {remove && <ConfirmAction title={remove==='all'?'Vaciar carrito':'Quitar producto'} label="Quitar" onClose={()=>setRemove(null)} onConfirm={()=>{if(cartEditable())setCarrito(c=>remove==='all'?[]:c.filter(i=>i.key!==remove.key))}}>Se quitarán {remove==='all'?'todos los productos':remove.producto.nombre} del carrito. No cambia el inventario.</ConfirmAction>}
       {verCliente === 'nuevo' && <ClienteForm onClose={() => setVerCliente(false)} onSaved={(c) => { setCliente(c); setVerCliente(false) }} />}
       {verCliente && verCliente !== 'nuevo' && <ClientePicker sinConsumidor onClose={() => setVerCliente(false)} onPick={(c) => { setCliente(c); setVerCliente(false) }} />}
       {recoveryInvoiceId && <FacturaDetalle id={recoveryInvoiceId} onClose={() => setRecoveryInvoiceId(null)} />}

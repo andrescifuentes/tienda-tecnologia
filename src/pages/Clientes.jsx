@@ -56,11 +56,11 @@ export default function Clientes() {
     let live = true
     const controller = new AbortController()
     setStatsError('')
-    withDeadline(async signal => requireData(await cancellableQuery(consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, net: isDemoMode }, 'id,estado,cliente_id,fecha,total' + (isDemoMode ? ',total_neto' : '')).eq('estado', 'emitida'), signal)), { signal: controller.signal }).then(data => {
+    withDeadline(async signal => requireData(await cancellableQuery(consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, net: true }, 'id,estado,cliente_id,fecha,total_neto').eq('estado', 'emitida'), signal)), { signal: controller.signal }).then(data => {
       if (!live) return
       const stats = {}
       for (const f of data || []) {
-        if (!f.cliente_id) continue
+        if (!f.cliente_id || Number(f.total_neto ?? f.total) <= 0) continue
         const v = stats[f.cliente_id] ||= { count: 0, total: 0, last: null, mes: false }
         v.count++; v.total += Number(f.total_neto ?? f.total)
         if (!v.last || f.fecha > v.last) v.last = f.fecha
@@ -167,11 +167,14 @@ function Ficha({ c, st, onClose, onEditar, puedeEditar }) {
     setHistoryError('')
     try {
       const rows = await withDeadline(async signal => requireData(await cancellableQuery(consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, net: isDemoMode }, 'id,prefijo,numero,total,estado,fecha' + (isDemoMode ? ',total_neto' : '')).eq('cliente_id', c.id).order('fecha', { ascending: false }), signal)))
-      setFac(rows || [])
+      // Totales netos de devoluciones (una factura devuelta por completo no cuenta como compra)
+      let netos = {}
+      if (!isDemoMode) { try { const n = await consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, net: true }, 'id,total_neto').eq('cliente_id', c.id); netos = Object.fromEntries((n.data || []).map((x) => [x.id, x.total_neto])) } catch { /* se muestran los totales de factura */ } }
+      setFac((rows || []).map((x) => ({ ...x, total_neto: netos[x.id] ?? x.total_neto ?? x.total })))
     } catch (error) { setHistoryError('No se pudo cargar el historial. ' + error.message) }
   }
   useEffect(() => { cargar() }, [c.id]) // eslint-disable-line
-  const vigentes = (fac || []).filter((f) => f.estado === 'emitida')
+  const vigentes = (fac || []).filter((f) => f.estado === 'emitida' && Number(f.total_neto ?? f.total) > 0)
   const total = vigentes.reduce((n, f) => n + Number(f.total_neto ?? f.total), 0)
   const nv = nivel({ count: vigentes.length })
   const tel = String(c.telefono || '').replace(/\D/g, '')

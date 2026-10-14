@@ -8,7 +8,7 @@ import FacturaDetalle from '../components/FacturaDetalle'
 import { Empty, Loader } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { money, numFactura, limpiarBusqueda } from '../lib/format'
-import { MESES, METODOS, SELECT_FACTURA, hoyYm, diaKey, tituloDia, agruparPorDia, FacturaCard, FiltrosFactura } from '../components/FacturaUI'
+import { MESES, METODOS, SELECT_FACTURA, hoyYm, diaKey, tituloDia, agruparPorDia, FacturaCard, FiltrosFactura, neto } from '../components/FacturaUI'
 
 const PASO = 30
 
@@ -57,12 +57,12 @@ export default function FacturasHistorial() {
 
   const lista = useMemo(() => {
     if (!datos) return null
-    const s = limpiarBusqueda(q).toLowerCase(), num = s.replace(/^[a-z]+-0*/, '')
+    const s = limpiarBusqueda(q).toLowerCase(), num = /^\$?\s*[\d.,]+$/.test(s) ? s.replace(/[$\s.,]/g, '') : s.replace(/^[a-z]+-0*/, '')
     return datos.filter((f) => (estado === 'todas' || f.estado === estado) && (metodo === 'todos' || f.metodo_pago === metodo) && (!s ||
       (/^\d+$/.test(num) && (String(f.numero) === num || String(Math.round(f.total)).includes(num))) ||
       (f.clientes?.nombre || 'consumidor final').toLowerCase().includes(s) || numFactura(f).toLowerCase().includes(s)))
   }, [datos, q, estado, metodo])
-  const total = (lista || []).filter((f) => f.estado !== 'anulada').reduce((a, f) => a + Number(f.total || 0), 0)
+  const total = (lista || []).filter((f) => f.estado !== 'anulada').reduce((a, f) => a + neto(f), 0)
   const grupos = useMemo(() => agruparPorDia((lista || []).slice(0, limite)), [lista, limite])
   const activos = (estado !== 'todas') + (metodo !== 'todos')
 

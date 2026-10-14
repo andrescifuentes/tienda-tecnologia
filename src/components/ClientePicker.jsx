@@ -83,7 +83,7 @@ export default function ClientePicker({ onPick, onClose, sinConsumidor = false }
       <ErrorBox text={loadError} />
       {loadError && <button type="button" className="btn sec full" onClick={() => setRetry(n => n + 1)}>Reintentar clientes</button>}
       {loading ? <Loader /> : loadError ? null : lista.length === 0 ? <Empty text="Sin clientes" /> : lista.map((c) => (
-        <div key={c.id} className="row cursor-pointer" onClick={() => onPick(c)}>
+        <div key={c.id} className="row cursor-pointer" role="button" tabIndex={0} onClick={() => onPick(c)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(c) } }}>
           <div className="flex-1"><p className="m-0 text-sm font-semibold">{c.nombre}</p><p className="m-0 text-xs text-muted">{c.tipo_documento} {c.documento}{c.telefono ? ' · ' + c.telefono : ''}</p></div>
         </div>
       ))}

@@ -16,7 +16,7 @@ export function PremiumSwitch({ label, checked, onChange, disabled = false }) {
 export function RoleField({ label, value, onChange }) {
   return <div className="role-field"><Select label={label} value={value} onChange={onChange}><option value="vendedor">Vendedor</option><option value="admin">Administrador</option></Select><p>{value==='admin'?'Acceso administrativo.':'Puede vender y consultar inventario según sus permisos.'}</p></div>
 }
-export function PasswordField({ value, onChange, generate = false }) {
+export function PasswordField({ value, onChange, generate = false, label = 'Contraseña inicial' }) {
   const [visible,setVisible] = useState(false)
   const create = () => {
     const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*?'
@@ -26,7 +26,7 @@ export function PasswordField({ value, onChange, generate = false }) {
     while(password.length<16)for(const byte of crypto.getRandomValues(bytes))if(byte<Math.floor(256/alphabet.length)*alphabet.length&&password.length<16)password+=alphabet[byte%alphabet.length]
     onChange({target:{value:password+'aA7!'}});setVisible(false)
   }
-  return <div className="admin-password-field"><Input label="Contraseña inicial" autoComplete="new-password" type={visible?'text':'password'} value={value} onChange={onChange}/><div className="password-actions"><button type="button" className="btn sec sm" aria-pressed={visible} onClick={()=>setVisible(v=>!v)}>{visible?'Ocultar contraseña':'Mostrar contraseña'}</button>{generate&&globalThis.crypto?.getRandomValues&&<button type="button" className="btn sec sm" onClick={create}>Generar contraseña</button>}</div><p className="admin-hint">Mínimo 8 caracteres. Compártela directamente con el nuevo usuario.</p></div>
+  return <div className="admin-password-field"><Input label={label} autoComplete="new-password" type={visible?'text':'password'} value={value} onChange={onChange}/><div className="password-actions"><button type="button" className="btn sec sm" aria-pressed={visible} onClick={()=>setVisible(v=>!v)}>{visible?'Ocultar contraseña':'Mostrar contraseña'}</button>{generate&&globalThis.crypto?.getRandomValues&&<button type="button" className="btn sec sm" onClick={create}>Generar contraseña</button>}</div><p className="admin-hint">Mínimo 8 caracteres. Compártela directamente con el nuevo usuario.</p></div>
 }
 export function ThemeSegments() {
   const [theme,update]=useState(getTheme)

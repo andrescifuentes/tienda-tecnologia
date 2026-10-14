@@ -7,7 +7,7 @@ import { invoiceIdentity, invoiceBusiness } from '../lib/invoiceSnapshot'
 import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { money, numFactura } from '../lib/format'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
-export default function InvoiceEmailSend({invoice,tienda,onCancel,onManual}) {
+export default function InvoiceEmailSend({invoice,tienda,onCancel,onManual,onSent}) {
  const [meta,setMeta]=useState(null),[email,setEmail]=useState(''),[phase,setPhase]=useState('preparing'),[error,setError]=useState(''),[accepted,setAccepted]=useState(null)
  const generation=useRef(0),lock=useRef(false),controller=useRef(null),heading=useRef(null)
  useEffect(()=>{
@@ -21,7 +21,7 @@ export default function InvoiceEmailSend({invoice,tienda,onCancel,onManual}) {
   quitarFocoEntrada();if(lock.current||isDemoMode||!meta?.configured||accepted)return
   if(!validateInvoiceRecipient(email))return setError('Revisa el correo del destinatario.')
   lock.current=true;const token=generation.current;setPhase('sending');setError('')
-  try{const data=await requestInvoiceEmail(supabase,{action:'send',facturaId:invoice.id,destinatario:email.trim()},controller.current.signal);if(generation.current!==token)return;setAccepted(data);setPhase('accepted')}
+  try{const data=await requestInvoiceEmail(supabase,{action:'send',facturaId:invoice.id,destinatario:email.trim()},controller.current.signal);if(generation.current!==token)return;setAccepted(data);setPhase('accepted');onSent?.()}
   catch(e){if(generation.current===token){setError(e.message);setPhase('error')}}
   finally{if(generation.current===token)lock.current=false}
  }

@@ -9,12 +9,17 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
 let client = null
 let configurationError = ''
 
+// Avisa a la interfaz cuando se pierde o recupera la conexión con el servidor
+let enLinea = true
+const avisarConexion = (ok) => { if (ok !== enLinea) { enLinea = ok; window.dispatchEvent(new CustomEvent('app-conexion', { detail: ok })) } }
+const fetchVigilado = (...args) => fetch(...args).then((r) => { avisarConexion(true); return r }, (e) => { if (e?.name !== 'AbortError') avisarConexion(false); throw e })
+
 if (isDemoMode) {
   client = createDemoClient()
 } else if (!url || !anonKey || url.includes('TU-PROYECTO') || anonKey === 'TU_ANON_KEY_PUBLICA') {
   configurationError = 'Falta configurar la conexión a Supabase.'
 } else {
-  try { client = createClient(url, anonKey) }
+  try { client = createClient(url, anonKey, { global: { fetch: fetchVigilado } }) }
   catch { configurationError = 'La configuración de Supabase no es válida. Revisa la URL y la clave pública.' }
 }
 

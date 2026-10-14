@@ -10,7 +10,7 @@ import FacturaDetalle from '../components/FacturaDetalle'
 import { Empty, Loader } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { money } from '../lib/format'
-import { MESES, METODOS, SELECT_FACTURA, hoyYm, diaKey, rango, Bolsa, FacturaCard } from '../components/FacturaUI'
+import { MESES, METODOS, SELECT_FACTURA, hoyYm, diaKey, rango, Bolsa, FacturaCard, neto } from '../components/FacturaUI'
 
 const ULTIMAS = 5
 
@@ -46,33 +46,33 @@ export default function Facturas() {
     const [ini, fin] = rango(periodo, periodo === 'anio' ? (Number(ym.slice(0, 4)) - 1) + ym.slice(4) : prevYm(ym))
     const c = new Date(); if (periodo === 'anio') c.setFullYear(c.getFullYear() - 1); else c.setMonth(c.getMonth() - 1)
     const corte = c < new Date(fin) ? c : new Date(fin)
-    consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, 'total,estado,fecha').gte('fecha', ini).then(({ data }) => {
-      if (vivo) setPrevio((data || []).filter((f) => f.estado !== 'anulada' && new Date(f.fecha) < corte).reduce((a, f) => a + Number(f.total || 0), 0))
+    consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, 'total,estado,fecha,devoluciones(total_devuelto)').gte('fecha', ini).then(({ data }) => {
+      if (vivo) setPrevio((data || []).filter((f) => f.estado !== 'anulada' && new Date(f.fecha) < corte).reduce((a, f) => a + neto(f), 0))
     })
     return () => { vivo = false }
   }, [periodo, tick, esAdmin, perfil.id]) // eslint-disable-line
 
   const resumen = useMemo(() => {
     const ok = (datos || []).filter((f) => f.estado !== 'anulada')
-    const total = ok.reduce((a, f) => a + Number(f.total || 0), 0)
+    const total = ok.reduce((a, f) => a + neto(f), 0)
     const porMetodo = {}
-    for (const f of ok) porMetodo[f.metodo_pago || 'otro'] = (porMetodo[f.metodo_pago || 'otro'] || 0) + Number(f.total || 0)
+    for (const f of ok) porMetodo[f.metodo_pago || 'otro'] = (porMetodo[f.metodo_pago || 'otro'] || 0) + neto(f)
     let serie = null
     const hoyD = diaKey(new Date())
     if (periodo === 'mes') {
       const [y, m] = ym.split('-').map(Number); const n = new Date(Date.UTC(y, m, 0)).getUTCDate()
-      const porDia = {}; for (const f of ok) { const k = diaKey(f.fecha); porDia[k] = (porDia[k] || 0) + Number(f.total) }
+      const porDia = {}; for (const f of ok) { const k = diaKey(f.fecha); porDia[k] = (porDia[k] || 0) + neto(f) }
       let acc = 0; serie = []
       for (let d = 1; d <= Number(hoyD.slice(8)); d++) { const k = `${ym}-${String(d).padStart(2, '0')}`; const v = porDia[k] || 0; acc += v; serie.push({ k, l: `${d} ${MESES[m - 1].slice(0, 3).toLowerCase()}`, d: v, v }) }
       serie.total = n
     } else if (periodo === 'anio') {
-      const y = ym.slice(0, 4); const pm = Array(12).fill(0); for (const f of ok) pm[Number(diaKey(f.fecha).slice(5, 7)) - 1] += Number(f.total)
+      const y = ym.slice(0, 4); const pm = Array(12).fill(0); for (const f of ok) pm[Number(diaKey(f.fecha).slice(5, 7)) - 1] += neto(f)
       let acc = 0; serie = []
       for (let i = 0; i < Number(ym.slice(5)); i++) { acc += pm[i]; serie.push({ k: `${y}-${i + 1}`, l: `${MESES[i]} ${y}`, d: pm[i], v: pm[i] }) }
       serie.total = 12
     }
     const hoyK = diaKey(new Date())
-    return { hoy: ok.filter((f) => diaKey(f.fecha) === hoyK).length, maxima: ok.reduce((a, f) => Math.max(a, Number(f.total || 0)), 0), total, cantidad: ok.length, promedio: ok.length ? total / ok.length : 0, anuladas: (datos || []).length - ok.length, porMetodo, serie }
+    return { hoy: ok.filter((f) => diaKey(f.fecha) === hoyK).length, maxima: ok.reduce((a, f) => Math.max(a, neto(f)), 0), total, cantidad: ok.length, promedio: ok.length ? total / ok.length : 0, anuladas: (datos || []).length - ok.length, porMetodo, serie }
   }, [datos, periodo, ym])
 
   const etiqueta = periodo === 'anio' ? 'Este año' : periodo === 'todo' ? 'Todo el historial' : `${MESES[Number(ym.slice(5)) - 1]} ${ym.slice(0, 4)}`
@@ -139,7 +139,9 @@ function Cuenta({ valor, dinero = false }) {
     let raf, t0
     const paso = (t) => { t0 ??= t; const k = Math.min(1, (t - t0) / 900); setV(valor * (1 - Math.pow(1 - k, 3))); if (k < 1) raf = requestAnimationFrame(paso) }
     raf = requestAnimationFrame(paso)
-    return () => cancelAnimationFrame(raf)
+    // Si el navegador pausa la animación (pestaña oculta, ahorro de batería), igual muestra el valor real
+    const fin = setTimeout(() => setV(valor), 1100)
+    return () => { cancelAnimationFrame(raf); clearTimeout(fin) }
   }, [valor])
   if (valor == null) return '—'
   return dinero ? money(Math.round(v)) : Math.round(v)

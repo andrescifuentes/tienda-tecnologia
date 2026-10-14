@@ -34,6 +34,17 @@ export function ThemeToggle() {
   return <button onClick={toggle} className="icon-button" aria-label="Cambiar tema"><Icon name={dark ? 'sun' : 'moon'} className="w-5 h-5" /></button>
 }
 
+function AvisoConexion() {
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false)
+  useEffect(() => {
+    const h = (e) => setOffline(!e.detail), on = () => setOffline(false), off = () => setOffline(true)
+    window.addEventListener('app-conexion', h); window.addEventListener('online', on); window.addEventListener('offline', off)
+    return () => { window.removeEventListener('app-conexion', h); window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+  if (!offline) return null
+  return createPortal(<div className="net-alert" role="alert"><span><b>Sin conexión</b>Lo que ves puede estar incompleto. No repitas ventas ni pagos hasta reconectar.</span><button type="button" onClick={() => window.location.reload()}>Reintentar</button></div>, document.body)
+}
+
 export default function AppShell({ title, sub, onBack, right, footer, homeAside, header, className = '', children }) {
   const deviceRef = useRef(null)
   useSearchViewport(deviceRef)
@@ -66,6 +77,7 @@ export default function AppShell({ title, sub, onBack, right, footer, homeAside,
       {notificationsOpen&&<Notifications items={notices} onClose={()=>setNotificationsOpen(false)} />}
       {profileOpen&&<ProfileDialog onClose={()=>setProfileOpen(false)} />}
       <BottomNav />
+      <AvisoConexion />
       <Toaster lifted={!!footer} />
     </div>
   )

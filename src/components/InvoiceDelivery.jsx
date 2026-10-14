@@ -17,7 +17,7 @@ import { mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
 import '../styles/invoice-delivery.css'
 
-export default function InvoiceDelivery({ invoice, items, tienda }) {
+export default function InvoiceDelivery({ invoice, items, tienda, obligatorio = false, onEnviado }) {
   const { perfil } = useAuth()
   const [tel, setTel] = useState(invoice.clientes?.telefono || ''), [correo, setCorreo] = useState(invoice.clientes?.correo || '')
   const [editar, setEditar] = useState(false), [preview, setPreview] = useState(null), [error, setError] = useState(''), [info, setInfo] = useState(''), [busy, setBusy] = useState('')
@@ -86,6 +86,7 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
       })
       const result = abrirCompositorCorreo(draft, chosen, { gmailWeb })
       if (result !== 'requested' && result !== 'attempted') { handoff.current = null; return masOpciones('No se pudo abrir el correo. Elige otra opción para compartir tu factura.') }
+      onEnviado?.('correo')
       if (!keepFallback) setPreview(null)
       setEmailNotice(trip.iosGmail ? 'Intentamos abrir Gmail. Si no aparece el compositor, usa Más opciones. Adjunta el PDF descargado antes de enviar.' : gmailWeb && esIOSCorreo() ? 'Gmail web en iOS puede mostrar la bandeja. Crea el mensaje y adjunta el PDF manualmente.' : 'Adjunta el PDF descargado antes de enviar.')
     } catch { handoff.current = null; masOpciones('No se pudo preparar el correo. Revisa el destinatario o elige otra opción.') }
@@ -110,6 +111,7 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
     if (!alive.current || token !== shareSequence.current) return
     shareLocked.current = false; setSharing(false)
     if (result !== 'shared' && !trip.left) handoff.current = null
+    if (result === 'shared') onEnviado?.('compartir')
     if (result === 'unavailable') return masOpciones('No se pudo compartir desde el dispositivo. Puedes descargar el PDF o copiar el mensaje.')
     setInfo(result === 'cancelled' ? 'Compartir cancelado. La factura sigue disponible.' : 'Confirma el envío en la aplicación que elegiste.')
   }
@@ -146,6 +148,7 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
     try {
       abrirEnvioFactura(preview)
       toast('Mensaje preparado. Confirma el envío en la aplicación.')
+      onEnviado?.(preview.canal)
       if (!isDemoMode) registrar(preview.canal, preview.destino).catch(() => setInfo('Aplicación abierta. No se pudo registrar el intento de envío.'))
     } catch (e) { setError(mensajeError(e)) }
   }
@@ -156,7 +159,7 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
   }
   function verPdf() { quitarFocoEntrada(); ++epoch.current; setBusy(''); setError(''); setInfo(''); setPreview({ canal: 'pdf' }) }
   return <section className="invoice-delivery">
-    <h4 className="fd-sec">{invoice.estado === 'anulada' ? 'Documento' : 'Enviar factura'}<small className="delivery-optional">Opcional</small></h4>
+    <h4 className="fd-sec">{invoice.estado === 'anulada' ? 'Documento' : 'Enviar factura'}<small className={'delivery-optional' + (obligatorio ? ' required' : '')}>{obligatorio ? 'Obligatorio' : 'Opcional'}</small></h4>
     <ErrorBox text={error} />
     {info && <p className="fd-hint" role="status">{info}</p>}
     <div className={'fd-actions' + (shareable ? ' has-share' : '')}>
@@ -169,7 +172,7 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
     {invoice.estado !== 'anulada' && <div className="email-quick-options"><button type="button" className="email-quick-link email-more-options" onClick={() => masOpciones()}><I n="dots" />Más opciones</button><button type="button" className="email-quick-link email-change-provider" onClick={() => { quitarFocoEntrada(); ++epoch.current; setBusy(''); setPreview(null); setProviderChoice('change') }}>Correo: {providerName}<I n="chevDown" /></button></div>}
     {emailNotice && <div className="email-direct-status" role="status"><p>{emailNotice}</p><button type="button" className="btn sec" onClick={() => guardarPdf()}>Descargar PDF</button><button type="button" className="btn sec" onClick={() => masOpciones()}>Más opciones de correo</button></div>}
     {providerChoice && <InvoiceEmailProviderPicker changing={providerChoice === 'change'} preferred={provider} onPick={elegirProveedor} onCancel={() => { quitarFocoEntrada(); setProviderChoice(null) }} />}
-    {preview?.canal === 'correo-directo' && <InvoiceEmailSend key={invoice.id} invoice={invoice} tienda={tienda} onCancel={cerrarPreview} onManual={() => masOpciones()} />}
+    {preview?.canal === 'correo-directo' && <InvoiceEmailSend key={invoice.id} invoice={invoice} tienda={tienda} onCancel={cerrarPreview} onManual={() => masOpciones()} onSent={() => onEnviado?.('correo')} />}
     {preview?.canal === 'correo' && <InvoiceEmailPreview key={invoice.id + ':' + preview.fallbackId} invoice={invoice} items={items} tienda={tienda} correo={correo} onCorreo={setCorreo} detalle={text()} reason={preview.reason} onOpenProvider={p => abrirCorreo(p, true)} onOpenGmailWeb={() => abrirCorreo('gmail', true, true)} onCancel={cerrarPreview} />}
     {preview && !['correo','correo-directo'].includes(preview.canal) && <section ref={previewRef} className={'invoice-preview ' + (preview.canal === 'pdf' ? 'invoice-document-preview' : 'invoice-message-preview')}>
       <b>{preview.canal === 'pdf' ? 'Vista previa de factura' : 'Mensaje de WhatsApp'}</b>

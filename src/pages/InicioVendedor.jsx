@@ -4,6 +4,7 @@ import AppShell, { ThemeToggle } from '../components/AppShell'
 import { Brand } from '../components/TechVisuals'
 import { Icon } from '../components/Icons'
 import ProfileDialog from '../components/ProfileDialog'
+import ModuleBanner from '../components/ModuleBanner'
 import { Empty, ErrorBox, Loader } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -13,7 +14,7 @@ import { money, numFactura, fechaHora, mensajeError } from '../lib/format'
 import '../styles/seller-home.css'
 
 const FacturaDetalle = lazy(() => import('../components/FacturaDetalle'))
-const PERIODOS = [['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes']]
+const PERIODOS = [['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes'], ['anio', 'Este año']]
 const Chevron = () => <Icon name="back" className="seller-chevron" />
 
 export default function InicioVendedor() {
@@ -32,11 +33,14 @@ export default function InicioVendedor() {
     return () => { active = false }
   }, [perfil.id, periodo, revision, tick])
 
+  const hora = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', hour: 'numeric', hourCycle: 'h23' }).format(new Date()))
+  const saludo = hora < 12 ? 'Buenos días' : hora < 18 ? 'Buenas tardes' : 'Buenas noches'
+  const primerNombre = perfil.nombre?.split(' ')[0]
   const header = <div className="seller-header">
     <div className="seller-masthead"><Brand compact /><div className="seller-controls">
       <button type="button" className="profile-avatar" aria-label="Mi perfil" onClick={() => setPerfilAbierto(true)}>{perfil.nombre?.trim().slice(0, 1)}</button><ThemeToggle />
     </div></div>
-    <div className="seller-heading"><h1>Vendedor</h1><p>{perfil.nombre}</p></div>
+    <ModuleBanner modulo="inicio-vendedor" variant="home" eyebrow={saludo + (primerNombre && !/^vendedor$/i.test(primerNombre) ? ', ' + primerNombre : '')} title="Vendedor" tagline="Vende de forma rápida" sub="Encuentra productos y atiende a tus clientes fácilmente" />
   </div>
   const acciones = [
     { to: '/vender', label: 'Nueva venta', icon: 'cart', allowed: can('vender') },

@@ -2222,3 +2222,32 @@ html,body{overflow-x:hidden;max-width:100%}
 .mb-home .mb-eyebrow{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:500;color:#6f5a3a}
 :root:not([data-theme="light"]) .mb-home .mb-eyebrow{color:rgba(246,239,226,.75)}
 .quick-actions{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:8px!important}
+/* QA 320px: totales que no caben en pantallas angostas */
+.fm-sum>div{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fm-sum span{min-width:0}
+.fm-sum b{font-size:clamp(11.5px,3.7vw,13.5px);overflow:hidden;text-overflow:ellipsis}
+.fv-day span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:380px){.fv-day{flex-wrap:wrap;row-gap:6px}.fv-day i{display:none}.fv-day small{margin-left:auto}}
+@media (max-width:380px){.fm-sum>div{grid-template-columns:repeat(2,minmax(0,1fr))}.fm-sum .net{grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:baseline;padding-top:8px;border-top:1px solid var(--inv-line)}.fm-sum b{font-size:13.5px}}
+/* QA: "Administrador" completo en celulares (antes salía "Administrad…") */
+.mb-home .mb-title{font-size:clamp(20px,6.4vw,34px)!important}
+/* Aviso de conexión perdida */
+.net-alert{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 10px);z-index:9999;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:#2a1414;border:1px solid rgba(255,122,126,.45);color:#ffe1e1;box-shadow:0 12px 30px rgba(0,0,0,.35);font-size:12.5px;line-height:1.35}
+.net-alert span{flex:1;min-width:0}.net-alert b{display:block;font-size:13.5px;color:#fff}
+.net-alert button{flex:none;padding:8px 12px;border-radius:12px;background:#ff7a7e;color:#2a1414;font-weight:700;font-size:12.5px;border:0}
+:root[data-theme="light"] .net-alert{background:#fff1f1;border-color:#e9a3a6;color:#7a2226}:root[data-theme="light"] .net-alert b{color:#5c1418}:root[data-theme="light"] .net-alert button{background:#c8323a;color:#fff}
+@media (min-width:640px){.net-alert{left:50%;right:auto;transform:translateX(-50%);width:min(560px,calc(100% - 24px))}}
+/* Venta: cerrar solo después de enviar la factura */
+.post-sale-footer:has(> .fd-finish.locked:only-child){grid-template-columns:1fr}
+.fd-finish.locked{color:var(--muted);background:var(--inv-card,rgba(255,255,255,.04));border:1.5px dashed rgba(212,168,92,.55)}
+.fd-finish.locked .inv-i{color:var(--gold-light,#d4a85c)}
+:root[data-theme="light"] .fd-finish.locked{color:#6f5a3a;border-color:#c79a52;background:#fbf6ec}
+.delivery-optional.required{color:#c8323a;font-weight:700}
+:root:not([data-theme="light"]) .delivery-optional.required{color:#ff8a8e}
+/* Área de toque de 44 px en «Más opciones» sin cambiar el diseño */
+.inv-menu .fp-icon{position:relative}
+.inv-menu .fp-icon::after{content:'';position:absolute;inset:-7px}
+/* Empleados: acceso restablecido */
+.access-done{display:grid;gap:3px;margin:0 0 12px;padding:12px 14px;border-radius:14px;background:rgba(47,210,126,.1);border:1px solid rgba(47,210,126,.35);font-size:12.5px;color:var(--ink)}
+.access-done b{color:#2fd27e;font-size:13px}.access-done code{font-size:13px;font-weight:700;letter-spacing:.02em;user-select:all}.access-done small{color:var(--muted)}
+:root[data-theme="light"] .access-done b{color:#13834c}
