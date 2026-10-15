@@ -1,3 +1,4 @@
+import {validateInvoiceMessages} from '../../../supabase/functions/_shared/invoice-messages.js'
 import { createDemoSeed, DEMO_KEY, demoDate } from './seed.js'
 import { exigirEntornoDemoPermitido } from './environment.js'
 import { hashDemoPassword } from './password.js'
@@ -149,6 +150,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     }
     if(table==='proveedores'&&!data.nombre?.trim())fail('El nombre del proveedor es obligatorio.')
     if(table==='movimientos') { if(!data.categoria?.trim()||!['gasto','ingreso'].includes(data.tipo)||!(amount(data.monto)>0))fail('Categoría, tipo y monto válido son obligatorios.'); if(!/^\d{4}-\d{2}-\d{2}$/.test(data.fecha||''))fail('La fecha es obligatoria.') }
+    if(table==='tienda'&&data.plantillas_factura!=null)data.plantillas_factura=validateInvoiceMessages(data.plantillas_factura)
     if(table==='perfiles'&&data.comision_pct!=null)percentage(data.comision_pct)
   }
   class Query {
@@ -270,6 +272,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     if (name === 'actualizar_perfil_demo') { authenticated(state); const p=user(state); if(!args.nombre?.trim())fail('El nombre es obligatorio.'); p.nombre=args.nombre.trim(); p.telefono=args.telefono?.trim()||null; activity(state,'Perfil actualizado','perfil',p.id); return hydrate(state,'perfiles',p) }
     if (name === 'desactivar_registro_demo') { const table=args.tabla; if(!['productos','clientes','proveedores'].includes(table))fail('Registro inválido.'); permit(state,requiredPermission[table]); const r=find(state,table,args.id); r.activo=!args.desactivar; activity(state,r.activo?'Registro activado':'Registro desactivado',table,r.id); return hydrate(state,table,r) }
     if (name === 'actualizar_garantia_demo') { permit(state,'editar_inventario'); const g=find(state,'garantias',args.id); if(!['vigente','en_reclamo','resuelta','rechazada','vencida'].includes(args.estado))fail('Estado de garantía inválido.'); if(!args.nota?.trim())fail('Escribe una nota para el historial.'); if(g.fin<demoDate(now())&&args.estado==='vigente')fail('La cobertura ya venció.'); g.estado=args.estado; g.descripcion=args.descripcion??g.descripcion; warrantyEvent(state,g,args.estado,args.nota.trim()); activity(state,'Garantía actualizada','garantia',g.id); return g.id }
+    if(name==='guardar_plantillas_factura'){permit(state,'admin');const value=validateInvoiceMessages(args.p_plantillas);state.tables.tienda[0].plantillas_factura=value;activity(state,'Plantillas de mensajes actualizadas','tienda',1);return value}
     if (name === 'guardar_empleado_demo') { permit(state,'admin'); const p=find(state,'perfiles',args.id),value={...p,...args.datos}; validate(state,'perfiles',value,p.id); Object.assign(p,value); state.tables.perfil_permisos=state.tables.perfil_permisos.filter(r=>r.perfil_id!==p.id); for(const permiso of args.permisos||[])add(state,'perfil_permisos',{perfil_id:p.id,permiso}); activity(state,'Empleado actualizado','perfil',p.id); return hydrate(state,'perfiles',p) }
     if (name === 'ajustar_stock_fisico_demo') { permit(state,'editar_inventario'); const p=find(state,'productos',args.id),target=amount(args.stock,'Stock físico'); if(!Number.isInteger(target)||!args.motivo?.trim())fail('Stock entero y motivo son obligatorios.'); if(p.maneja_serial)fail('Para equipos serializados registra cada unidad mediante compras o devoluciones.'); const delta=target-p.stock; if(!delta)fail('El stock físico coincide con el sistema.'); move(state,p,delta,delta>0?'ajuste_entrada':'ajuste_salida','ajuste',p.id,p.precio_compra,args.motivo.trim());activity(state,'Stock físico conciliado','producto',p.id,{stock:target});return p.id }
 

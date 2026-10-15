@@ -1,3 +1,4 @@
+import BrandStrip from '../components/BrandStrip'
 ﻿import { useEffect, useState } from 'react'
 import ModuleBanner from '../components/ModuleBanner'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -112,6 +113,7 @@ export default function Inventario() {
         <label className="inv-search-box"><I n="search" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por nombre o código" autoCapitalize="none" aria-label="Buscar producto" />{q && <button type="button" className="inv-scan" aria-label="Limpiar búsqueda" onClick={() => setQ('')}>✕</button>}</label>
         <button type="button" className={'inv-filter' + (activos ? ' on' : '')} aria-label={activos ? `Filtros (${activos} activos)` : 'Filtros'} onClick={() => setFiltros(true)}><I n="sliders" />{activos > 0 && <span className="inv-filter-count">{activos}</span>}</button>
       </div>
+      {marcasCat.length>1&&<BrandStrip brands={[["Todas",marcasCat.reduce((a,[,n])=>a+n,0)],...marcasCat]} value={marca} onChange={setMarca}/>}
       {activos > 0 && <div className="inv-tags">
         {marca !== 'Todas' && <button type="button" onClick={() => setMarca('Todas')}><I n="tag" />{marca}<span aria-hidden="true">✕</span></button>}
         {categoria !== 'Todos' && <button type="button" onClick={() => setCategoria('Todos')}><CategoryIcon categoria={categoria} />{categoria}<span aria-hidden="true">✕</span></button>}
@@ -143,7 +145,7 @@ export default function Inventario() {
         </div></>
       )}
 
-      {filtros && <Modal title="Filtros" className="flt-sheet" onClose={() => setFiltros(false)} footer={<div className="inv-sheet-foot"><button type="button" className="inv-btn-outline" onClick={() => { setCategoria('Todos'); setFiltro('todos'); setMarca('Todas') }}>Limpiar</button><button type="button" className="inv-btn-gold" onClick={() => setFiltros(false)}>Ver {visible.length} {visible.length === 1 ? 'producto' : 'productos'}</button></div>}>
+      {filtros && <Modal title="Filtros" className="flt-sheet" keyboardAware onClose={() => setFiltros(false)} footer={<div className="inv-sheet-foot"><button type="button" className="inv-btn-outline" onClick={() => { setCategoria('Todos'); setFiltro('todos'); setMarca('Todas') }}>Limpiar</button><button type="button" className="inv-btn-gold" onClick={() => setFiltros(false)}>Ver {visible.length} {visible.length === 1 ? 'producto' : 'productos'}</button></div>}>
         <p className="inv-sheet-label">Estado del stock</p>
         <div className="flt-stats">
           {[['todos', 'Todos', 'box', ''], ['bajo', 'Stock bajo', 'warn', 'warn'], ['agotado', 'Agotados', 'box', 'bad'], ...(isDemoMode && editar ? [['inactivos', 'Inactivos', 'history', '']] : [])].map(([k, l, ic, tone]) => {
@@ -168,9 +170,7 @@ export default function Inventario() {
         {cats.some(c => !conteo[c.nombre]) && <p className="flt-note">Las categorías sin productos no se muestran.</p>}
         {marcasCat.length > 1 && <>
           <p className="inv-sheet-label flt-gap">Marca{categoria !== 'Todos' ? ' · ' + categoria : ''}</p>
-          <div className="pos-brands in-sheet">
-            {[['Todas', marcasCat.reduce((a, [, n]) => a + n, 0)], ...marcasCat].map(([m, n]) => <button key={m} type="button" aria-pressed={marca === m} className={marca === m ? 'on' : ''} onClick={() => setMarca(m)}>{m !== 'Todas' && <span className="pos-brand-mono">{m.charAt(0).toUpperCase()}</span>}{m}<em>{n}</em></button>)}
-          </div>
+          <BrandStrip brands={[["Todas",marcasCat.reduce((a,[,n])=>a+n,0)],...marcasCat]} value={marca} onChange={setMarca}/>
         </>}
       </Modal>}
       {sel && !form && <ProductoDetalle p={sel} editar={editar} costos={costos} puedeVender={can('vender')} onClose={() => { setSel(null); if (productoId) navigate('/inventario', { replace: true }) }} onEditar={() => setForm(sel)} onVender={() => vender(sel)} onAjuste={() => setAjuste(sel)} onMovs={() => setMovs(sel)} onIngreso={(esAdmin && can('registrar_compras')) ? () => setCompra(sel) : null} onCargar={editar || (esAdmin && can('registrar_compras')) ? () => setCargar(sel) : null} onCambio={refrescar} />}

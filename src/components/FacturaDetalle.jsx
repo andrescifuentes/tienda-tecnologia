@@ -37,6 +37,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
       supabase.from(invoiceItemsTable(supabase, esAdmin)).select(invoiceItemFields(esAdmin, isDemoMode)).eq('factura_id', id).order('id'),
       supabase.from('devoluciones').select('id, motivo, total_devuelto, fecha, devolucion_items(factura_item_id, cantidad)').eq('factura_id', id),
     ])
+    if(it.error||dv.error)return setErr('No se pudo consultar el detalle completo de esta factura. Reintenta la conexión.')
     let lineas = it.data || []
     // Código del producto (las líneas guardan nombre y precio; el código se toma del inventario)
     const sinCodigo = [...new Set(lineas.filter(l => !l.codigo).map(l => l.producto_id))]
@@ -46,6 +47,8 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
       const mapa = Object.fromEntries((cods || []).map(r => [r.id, r.codigo]))
       lineas = lineas.map(l => l.codigo ? l : { ...l, codigo: mapa[l.producto_id] || '' })
     }
+    const unitIds=[...new Set(lineas.filter(i=>!i.serial).map(i=>i.unidad_id).filter(Boolean))]
+    if(unitIds.length){const units=await supabase.from('unidades_serializadas').select('id,serial').in('id',unitIds);if(units.error)return setErr('No se pudieron consultar los seriales de esta factura.');lineas=lineas.map(i=>({...i,serial:i.serial||units.data?.find(u=>u.id===i.unidad_id)?.serial}))}
     setF(data); setItems(lineas); setDevs(dv.data || [])
   }
   useEffect(() => { setModo(null); setMotivo(''); setAdminCorreo(''); setAdminClave(''); cargar() }, [id, nueva]) // eslint-disable-line
@@ -114,10 +117,11 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
         {items.map((i) => (
           <div key={i.id} className="fd-item">
             <span className="fd-item-q">{i.cantidad}×</span>
-            <span className="fd-item-txt"><b>{i.nombre}</b><small>{i.codigo ? i.codigo + ' · ' : ''}{money(i.precio_unitario)} c/u</small>{devueltos(i.id) > 0 && <small className="warn">Devueltos: {devueltos(i.id)}</small>}</span>
+            <span className="fd-item-txt"><b>{i.nombre}</b><small>{i.codigo ? i.codigo + ' · ' : ''}{money(i.precio_unitario)} c/u</small>{i.serial&&<small>Serial/IMEI: {i.serial}</small>}{devueltos(i.id) > 0 && <small className="warn">Devueltos: {devueltos(i.id)}</small>}</span>
             <b className="fd-item-total">{money(i.precio_unitario * i.cantidad - i.descuento)}</b>
           </div>
         ))}
+        <div className="fd-line"><span>Subtotal</span><b>{money(f.subtotal)}</b></div>
         {f.descuento > 0 && <div className="fd-line"><span>Descuento</span><b>−{money(f.descuento)}</b></div>}
         <div className="fd-line grand"><span>Total</span><b>{money(f.total)}</b></div>
         {f.comision != null && <div className="fd-line small"><span>Comisión ({f.comision_pct}%)</span><span>{money(f.comision)}</span></div>}

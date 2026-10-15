@@ -1,7 +1,7 @@
 import { useAuth } from '../context/AuthContext'
 import { consultarFacturasVisibles } from '../lib/sellerHome'
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { I } from '../components/InvIcons'
 import FacturaDetalle from '../components/FacturaDetalle'
@@ -26,10 +26,12 @@ function Selector({ label, value, onChange, options }) {
 export default function FacturasHistorial() {
   const navigate = useNavigate()
   const { esAdmin, perfil } = useAuth()
+  const [params]=useSearchParams()
+  const requested=params.get('fecha'),chosen=/^\d{4}-\d{2}-\d{2}$/.test(requested||'')?requested:null
   const hoy = hoyYm()
-  const [anio, setAnio] = useState(hoy.slice(0, 4))
-  const [mes, setMes] = useState(hoy.slice(5)) // '01'..'12' | 'todos'
-  const [dia, setDia] = useState('todos')
+  const [anio, setAnio] = useState(chosen?.slice(0,4)||hoy.slice(0,4))
+  const [mes, setMes] = useState(chosen?.slice(5,7)||hoy.slice(5)) // '01'..'12' | 'todos'
+  const [dia, setDia] = useState(chosen?.slice(8)||'todos')
   const [q, setQ] = useState('')
   const [estado, setEstado] = useState('todas')
   const [metodo, setMetodo] = useState('todos')
@@ -39,7 +41,8 @@ export default function FacturasHistorial() {
   const [ver, setVer] = useState(null)
   const [tick, setTick] = useState(0)
 
-  useEffect(() => { setDia('todos') }, [anio, mes])
+  const previousDates=useRef({anio,mes})
+  useEffect(() => { if(previousDates.current.anio!==anio||previousDates.current.mes!==mes)setDia('todos');previousDates.current={anio,mes} }, [anio, mes])
   useEffect(() => {
     let vivo = true
     setDatos(null); setLimite(PASO)
@@ -75,6 +78,7 @@ export default function FacturasHistorial() {
 
   return (
     <div className="admin-premium admin-invoices"><AppShell title="Historial" sub="Todas tus facturas" onBack={() => navigate('/facturas')}>
+      <button type="button" className="btn sec full mb-3" onClick={()=>navigate('/actividad')}>Ver actividad del negocio</button>
       <section className="fh-dates">
         <Selector label="Año" value={anio} onChange={(v) => { setAnio(v); if (`${v}-${mes}` > hoy) setMes(hoy.slice(5)) }} options={anios} />
         <Selector label="Mes" value={mes} onChange={setMes} options={meses} />

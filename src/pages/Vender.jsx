@@ -1,3 +1,4 @@
+import BrandStrip from '../components/BrandStrip'
 import { createSaleAttempt, readSaleAttempt, saveSaleAttempt, clearSaleAttempt, submitSale, reconcileSale } from '../lib/saleCompletion'
 import { invoiceTable, invoiceItemsTable } from '../lib/invoiceQueries'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
@@ -305,6 +306,7 @@ export default function Vender() {
           {marca !== 'Todas' ? <span className="pos-dd-x" role="button" aria-label="Quitar marca" onClick={(e) => { e.stopPropagation(); setMarca('Todas') }}>✕</span> : <I n="chevDown" className="pos-dd-chev" />}
         </button>
       </div>
+      {marcas.length>1&&<BrandStrip brands={[["Todas",enCategoria.length],...marcas]} value={marca} onChange={setMarca}/>}
       {hojaCat && <Modal title="Categoría" className="flt-sheet" onClose={() => setHojaCat(false)}>
         <div className="pos-cat-grid">
           {catsVisibles.map(([nombre, n]) => <button key={nombre} type="button" className={categoria === nombre ? 'on' : ''} aria-pressed={categoria === nombre} onClick={() => { setCategoria(nombre); setHojaCat(false) }}>

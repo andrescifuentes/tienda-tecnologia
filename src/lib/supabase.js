@@ -23,6 +23,8 @@ if (client) Object.defineProperties(client, {
   idempotentSales: { value: !isDemoMode && import.meta.env.VITE_IDEMPOTENT_SALES === 'true' },
 })
 
+// Enable only after the authenticated mail function and provider are activated.
+export const isInvoiceEmailEnabled = !isDemoMode && import.meta.env.VITE_INVOICE_EMAIL_ENABLED === 'true'
 export const supabase = client
 export const supabaseConfigurationError = configurationError
 

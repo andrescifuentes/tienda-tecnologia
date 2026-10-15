@@ -8,7 +8,7 @@ import { isDemoMode } from '../lib/supabase'
 import { numFactura } from '../lib/format'
 import '../styles/invoice-email.css'
 
-export default function InvoiceEmailPreview({ invoice, items, tienda, correo, onCorreo, detalle, reason, onOpenProvider, onOpenGmailWeb, onCancel }) {
+export default function InvoiceEmailPreview({ invoice, items, tienda, correo, onCorreo, detalle, reason, onOpenProvider, onOpenGmailWeb, onChangeProvider, onCancel }) {
   const [error, setError] = useState(reason || ''), [info, setInfo] = useState(''), [manual, setManual] = useState(null)
   const [copying, setCopying] = useState(''), [sharing, setSharing] = useState(false), [logoReady, setLogoReady] = useState(false)
   const alive = useRef(true), copyGeneration = useRef(0), manualRef = useRef(null), headingRef = useRef(null), handoff = useRef(null), shareGeneration = useRef(0), shareLocked = useRef(false)
@@ -35,7 +35,7 @@ export default function InvoiceEmailPreview({ invoice, items, tienda, correo, on
       document.removeEventListener('visibilitychange', resume)
     }
   }, [])
-  const draft = useMemo(() => crearBorradorCorreoFactura({ invoice, correo, detalle, tienda }), [invoice, correo, detalle, tienda])
+  const draft = useMemo(() => crearBorradorCorreoFactura({ invoice, correo, detalle, tienda, items }), [invoice, correo, detalle, tienda, items])
   const pdf = useMemo(() => { try { return createInvoicePdf(invoice, items, tienda, isDemoMode) } catch { return null } }, [invoice, items, tienda, logoReady])
   const file = useMemo(() => { try { return pdf ? invoicePdfFile(pdf) : null } catch { return null } }, [pdf])
   const shareable = puedeCompartirFactura(file), ios = esIOSCorreo()
@@ -80,6 +80,7 @@ export default function InvoiceEmailPreview({ invoice, items, tienda, correo, on
     <ErrorBox text={error} />
     {info && <p className="email-preview-info" role="status">{info}</p>}
     {manual && <div className="email-manual-copy"><span>{manual.kind === 'correo' ? 'Correo' : manual.kind === 'asunto' ? 'Asunto' : 'Mensaje'} para copiar</span><pre ref={manualRef} tabIndex={0}>{manual.text}</pre></div>}
+      <details className="email-manual-methods"><summary>Correo y datos manuales</summary>
       <div className="email-secondary-actions">
         <button type="button" className="btn sec email-gmail" onClick={() => { quitarFocoEntrada(); onOpenProvider('gmail') }}><I n="mail" />{ios ? 'Intentar app Gmail' : 'Abrir Gmail'}</button>
         {ios && <><button type="button" className="btn sec email-gmail-web" onClick={() => { quitarFocoEntrada(); onOpenGmailWeb() }}><I n="mail" />Abrir Gmail web manualmente</button><p className="email-preview-info">En iOS, Gmail web puede abrir la bandeja. No garantiza un mensaje nuevo preparado.</p></>}
@@ -92,6 +93,8 @@ export default function InvoiceEmailPreview({ invoice, items, tienda, correo, on
         <button type="button" className="btn sec" disabled={!!copying} onClick={() => copy('asunto', draft.asunto)}><I n="copy" />{copying === 'asunto' ? 'Copiando…' : 'Copiar asunto'}</button>
         <button type="button" className="btn sec" disabled={!!copying} onClick={() => copy('mensaje', draft.cuerpo)}><I n="copy" />{copying === 'mensaje' ? 'Copiando…' : 'Copiar mensaje'}</button>
       </div>
+      {onChangeProvider&&<button type="button" className="email-quick-link email-change-provider" onClick={onChangeProvider}>Cambiar correo manual preferido</button>}
+      </details>
       <button type="button" className="email-preview-cancel" onClick={() => { quitarFocoEntrada(); onCancel() }}>Cancelar</button>
     </div>
     <div className="email-preview-recipient"><label htmlFor="invoice-email-recipient">Destinatario</label><input id="invoice-email-recipient" aria-label="Destinatario" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} value={correo} onChange={event => { ++copyGeneration.current; setCopying(''); onCorreo(event.target.value); setError(''); setInfo(''); setManual(null) }} placeholder="cliente@correo.com" />{!correo.trim() && <small>Sin correo registrado. Escribe uno o comparte el PDF.</small>}</div>

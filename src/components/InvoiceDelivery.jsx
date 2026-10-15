@@ -1,3 +1,4 @@
+import {loadInvoiceMessageStore} from '../lib/invoiceMessageTemplates'
 import InvoiceEmailSend from './InvoiceEmailSend'
 import InvoiceEmailProviderPicker from './InvoiceEmailProviderPicker'
 import { EMAIL_PROVIDER_KEY, EMAIL_PROVIDERS, leerProveedorCorreo, guardarProveedorCorreo, validarCorreoFactura, crearBorradorCorreoFactura, abrirCompositorCorreo, esIOSCorreo, vigilarAperturaGmailIOS, puedeCompartirFactura, compartirFacturaPorSistema } from '../lib/invoiceEmail'
@@ -11,7 +12,6 @@ import { useAuth } from '../context/AuthContext'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { textoFactura } from '../lib/factura'
 import { createInvoicePdf, invoicePdfFile, canSharePdf, saveInvoicePdf, logoListo } from '../lib/invoicePdf'
-import { subirFacturaPdf } from '../lib/facturaEnvio'
 import { prepararEnvioFactura, conLimiteEnvio, abrirEnvioFactura, quitarFocoEntrada } from '../lib/invoiceDelivery'
 import { mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
@@ -19,13 +19,14 @@ import '../styles/invoice-delivery.css'
 
 export default function InvoiceDelivery({ invoice, items, tienda }) {
   const { perfil } = useAuth()
+  const [messageStore,setMessageStore]=useState(tienda),[messagesReady,setMessagesReady]=useState(false),[messagesError,setMessagesError]=useState(''),[messageRetry,setMessageRetry]=useState(0)
   const [tel, setTel] = useState(invoice.clientes?.telefono || ''), [correo, setCorreo] = useState(invoice.clientes?.correo || '')
   const [editar, setEditar] = useState(false), [preview, setPreview] = useState(null), [error, setError] = useState(''), [info, setInfo] = useState(''), [busy, setBusy] = useState('')
   const [provider, setProvider] = useState(leerProveedorCorreo), [providerChoice, setProviderChoice] = useState(null), [emailNotice, setEmailNotice] = useState(''), [sharing, setSharing] = useState(false), [logoReady, setLogoReady] = useState(false)
   const alive = useRef(true), gmailWatch = useRef(null), handoff = useRef(null), shareSequence = useRef(0), shareLocked = useRef(false)
-  const epoch = useRef(0), pdfLink = useRef(''), previewRef = useRef(null)
+  const epoch = useRef(0), previewRef = useRef(null)
   useEffect(() => {
-    gmailWatch.current?.(); ++epoch.current; pdfLink.current = ''; setPreview(null); setBusy(''); setError(''); setInfo('')
+    gmailWatch.current?.(); ++epoch.current; setPreview(null); setBusy(''); setError(''); setInfo('')
     setTel(invoice.clientes?.telefono || ''); setCorreo(invoice.clientes?.correo || ''); setProviderChoice(null); setEmailNotice(''); setSharing(false); handoff.current = null; ++shareSequence.current; shareLocked.current = false
     return () => { ++epoch.current }
   }, [invoice.id])
@@ -55,6 +56,15 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
       window.removeEventListener('focus', resume); window.removeEventListener('pageshow', resume); document.removeEventListener('visibilitychange', resume)
     }
   }, [])
+  useEffect(()=>{
+    let live=true;const controller=new AbortController()
+    const refresh=()=>loadInvoiceMessageStore(supabase,controller.signal).then(store=>{if(live){setMessageStore(previous=>JSON.stringify(previous)===JSON.stringify(store)?previous:store);setMessagesReady(true);setMessagesError('')}}).catch(()=>{if(live){setMessagesReady(false);setMessagesError('No se pudieron cargar los mensajes de la tienda. Usa el PDF o reintenta.')}})
+    const resume=()=>{if(document.visibilityState!=='hidden')void refresh()}
+    const stored=event=>{if(!event.key||event.key.startsWith('angie'))void refresh()}
+    setMessagesReady(false);setMessagesError('');void refresh()
+    window.addEventListener('invoice-message-templates-change',refresh);window.addEventListener('storage',stored);window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume)
+    return()=>{live=false;controller.abort();window.removeEventListener('invoice-message-templates-change',refresh);window.removeEventListener('storage',stored);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume)}
+  },[invoice.id,messageRetry])
   const text = () => textoFactura(invoice, items, tienda, invoice.clientes)
   const pdf = useMemo(() => {
     if (preview?.canal !== 'pdf') return null
@@ -74,7 +84,7 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
   function abrirCorreo(chosen, keepFallback = false, gmailWeb = false) {
     gmailWatch.current?.(); quitarFocoEntrada(); setError(''); setInfo(''); setProviderChoice(null); setEmailNotice('')
     try {
-      const draft = crearBorradorCorreoFactura({ invoice, correo, detalle: text(), tienda })
+      const draft = crearBorradorCorreoFactura({ invoice, correo, detalle: text(), tienda:messageStore, items })
       const invalid = validarCorreoFactura(correo)
       if (invalid) return masOpciones(invalid)
       ++epoch.current; setBusy(''); ++shareSequence.current; shareLocked.current = false; setSharing(false)
@@ -100,13 +110,14 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
       else setInfo('Proveedor de correo actualizado. Tu próximo envío usará ' + EMAIL_PROVIDERS.find(p => p.id === chosen).label + '.')
     } catch { masOpciones('Elige un proveedor de correo para continuar.') }
   }
-  async function compartirDirecto() {
+  async function compartirDirecto(message) {
+    if(!shareable){quitarFocoEntrada();setInfo('Este navegador no permite compartir archivos. Guarda el PDF para adjuntarlo desde tu aplicación.');return guardarPdf()}
     if (shareLocked.current) return
     shareLocked.current = true
     const token = ++shareSequence.current, trip = { kind: 'share', left: false }
     handoff.current = trip
     quitarFocoEntrada(); setError(''); setInfo(''); setEmailNotice(''); setSharing(true)
-    const result = await compartirFacturaPorSistema(readyFile, navigator, { title: 'Factura ' + invoice.prefijo + '-' + String(invoice.numero).padStart(4, '0') + ' - Angie Tech', text: 'Tu factura de Angie Tech. Gracias por tu compra.' })
+    const result = await compartirFacturaPorSistema(readyFile, navigator, { title: 'Factura ' + invoice.prefijo + '-' + String(invoice.numero).padStart(4, '0') + ' - Angie Tech', text: typeof message==='string'?message:'Tu factura de Angie Tech. Gracias por tu compra.' })
     if (!alive.current || token !== shareSequence.current) return
     shareLocked.current = false; setSharing(false)
     if (result !== 'shared' && !trip.left) handoff.current = null
@@ -118,27 +129,19 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
     if (result.error) throw result.error
   }
   async function preparar(canal) {
-    quitarFocoEntrada(); setError(''); setInfo('')
-    if (canal === 'correo') return pedirCorreo()
-    let mensaje
-    try { mensaje = prepararEnvioFactura({ canal, invoice, telefono: tel, correo, detalle: text(), tienda }) }
-    catch (e) { setError(mensajeError(e)); return }
-    const task = ++epoch.current
-    setBusy(canal)
-    try {
-      if (!isDemoMode && !pdfLink.current) {
-        try { const link = await conLimiteEnvio(() => subirFacturaPdf(invoice, items, tienda)); if (task !== epoch.current) return; pdfLink.current = link }
-        catch { if (task === epoch.current) setInfo('No se pudo preparar el enlace PDF. Descarga el PDF y adjúntalo manualmente.') }
-      }
-      if (task !== epoch.current) return
-      mensaje = prepararEnvioFactura({ canal, invoice, telefono: tel, correo, pdfUrl: pdfLink.current, detalle: text(), tienda })
+    quitarFocoEntrada();setError('');setInfo('');const task=++epoch.current;setBusy(canal)
+    try{
+      // Read the shared store for every action, even if this invoice has stayed open.
+      const current=await loadInvoiceMessageStore(supabase)
+      if(!alive.current||task!==epoch.current)return
+      setMessageStore(current);setMessagesReady(true);setMessagesError('')
+      if(canal==='correo')return pedirCorreo()
+      if(canal==='manual')return masOpciones()
+      const mensaje=prepararEnvioFactura({canal,invoice,telefono:tel,correo,detalle:text(),tienda:current,items})
       setPreview(mensaje)
-      if (isDemoMode) {
-        try { await registrar(canal, mensaje.destino) }
-        catch { if (task === epoch.current) setInfo('Vista previa disponible. No se pudo registrar el intento de envío.') }
-      }
-    } catch (e) { if (task === epoch.current) setError('No se pudo preparar el mensaje. ' + mensajeError(e)) }
-    finally { if (task === epoch.current) setBusy('') }
+      if(isDemoMode)try{await registrar(canal,mensaje.destino)}catch{if(task===epoch.current)setInfo('Vista previa disponible. No se pudo registrar el intento de envío.')}
+    }catch(e){if(alive.current&&task===epoch.current)setError('No se pudo consultar el mensaje vigente. '+mensajeError(e))}
+    finally{if(alive.current&&task===epoch.current)setBusy('')}
   }
   function cerrarPreview() { gmailWatch.current?.(); handoff.current = null; quitarFocoEntrada(); ++epoch.current; setBusy(''); setProviderChoice(null); setEmailNotice(''); setPreview(null); setError(''); setInfo('') }
   function abrirMensaje(event) {
@@ -157,31 +160,32 @@ export default function InvoiceDelivery({ invoice, items, tienda }) {
   function verPdf() { quitarFocoEntrada(); ++epoch.current; setBusy(''); setError(''); setInfo(''); setPreview({ canal: 'pdf' }) }
   return <section className="invoice-delivery">
     <h4 className="fd-sec">{invoice.estado === 'anulada' ? 'Documento' : 'Enviar factura'}<small className="delivery-optional">Opcional</small></h4>
-    <ErrorBox text={error} />
+    <ErrorBox text={error||messagesError} />{messagesError&&<button type="button" className="btn sec full" onClick={()=>setMessageRetry(n=>n+1)}>Reintentar mensajes</button>}
     {info && <p className="fd-hint" role="status">{info}</p>}
-    <div className={'fd-actions' + (shareable ? ' has-share' : '')}>
-      {invoice.estado !== 'anulada' && <button type="button" className="fd-act wa" aria-label="Enviar por WhatsApp" disabled={!!busy} onClick={() => preparar('whatsapp')}><span className="fd-act-ic"><I n="chat" /></span><b>{busy === 'whatsapp' ? 'Preparando…' : 'WhatsApp'}</b><small>{tel || 'Sin número'}</small></button>}
-      {invoice.estado !== 'anulada' && <button type="button" className="fd-act mail" aria-label="Enviar factura por correo" disabled={!!busy} onClick={() => preparar('correo')}><span className="fd-act-ic"><I n="mail" /></span><b>Correo</b><small>{correo || 'Sin correo'}</small></button>}
-      {shareable && <button type="button" className="fd-act share" aria-label="Compartir factura" disabled={sharing || !!busy} onClick={compartirDirecto}><span className="fd-act-ic"><I n="truckIn" /></span><b>{sharing ? 'Compartiendo…' : 'Compartir factura'}</b><small>PDF real</small></button>}
+    <div className="fd-actions has-share">
+      {invoice.estado !== 'anulada' && <button type="button" className="fd-act wa" aria-label="Enviar por WhatsApp" disabled={!!busy||!messagesReady} onClick={() => preparar('whatsapp')}><span className="fd-act-ic"><I n="chat" /></span><b>{busy === 'whatsapp' ? 'Preparando…' : 'WhatsApp'}</b><small>{tel || 'Sin número'}</small></button>}
+      {invoice.estado !== 'anulada' && <button type="button" className="fd-act mail" aria-label="Enviar factura por correo" disabled={!!busy||!messagesReady} onClick={() => preparar('correo')}><span className="fd-act-ic"><I n="mail" /></span><b>Correo</b><small>{correo || 'Sin correo'}</small></button>}
+      {<button type="button" className="fd-act share" aria-label="Compartir PDF" disabled={sharing || !!busy} onClick={compartirDirecto}><span className="fd-act-ic"><I n="truckIn" /></span><b>{sharing ? 'Compartiendo…' : 'Compartir PDF'}</b><small>PDF real</small></button>}
       <button type="button" className="fd-act pdf" onClick={verPdf}><span className="fd-act-ic"><I n="receipt" /></span><b>Ver PDF</b><small>Imprimir o guardar</small></button>
     </div>
-    {invoice.estado !== 'anulada' && <p className="email-composer-reminder">Envío desde la app con PDF adjunto · confirma el destinatario.</p>}
-    {invoice.estado !== 'anulada' && <div className="email-quick-options"><button type="button" className="email-quick-link email-more-options" onClick={() => masOpciones()}><I n="dots" />Más opciones</button><button type="button" className="email-quick-link email-change-provider" onClick={() => { quitarFocoEntrada(); ++epoch.current; setBusy(''); setPreview(null); setProviderChoice('change') }}>Correo: {providerName}<I n="chevDown" /></button></div>}
+    {invoice.estado !== 'anulada' && <p className="email-composer-reminder">Elige cómo compartir la factura · confirma el destinatario.</p>}
+    {invoice.estado !== 'anulada' && <div className="email-quick-options"><button type="button" className="email-quick-link email-more-options" disabled={!messagesReady} onClick={() => preparar('manual')}><I n="dots" />Métodos manuales</button></div>}
     {emailNotice && <div className="email-direct-status" role="status"><p>{emailNotice}</p><button type="button" className="btn sec" onClick={() => guardarPdf()}>Descargar PDF</button><button type="button" className="btn sec" onClick={() => masOpciones()}>Más opciones de correo</button></div>}
     {providerChoice && <InvoiceEmailProviderPicker changing={providerChoice === 'change'} preferred={provider} onPick={elegirProveedor} onCancel={() => { quitarFocoEntrada(); setProviderChoice(null) }} />}
-    {preview?.canal === 'correo-directo' && <InvoiceEmailSend key={invoice.id} invoice={invoice} tienda={tienda} onCancel={cerrarPreview} onManual={() => masOpciones()} />}
-    {preview?.canal === 'correo' && <InvoiceEmailPreview key={invoice.id + ':' + preview.fallbackId} invoice={invoice} items={items} tienda={tienda} correo={correo} onCorreo={setCorreo} detalle={text()} reason={preview.reason} onOpenProvider={p => abrirCorreo(p, true)} onOpenGmailWeb={() => abrirCorreo('gmail', true, true)} onCancel={cerrarPreview} />}
+    {preview?.canal === 'correo-directo' && <InvoiceEmailSend key={invoice.id} invoice={invoice} items={items} tienda={messageStore} onCancel={cerrarPreview} onShare={compartirDirecto} onManual={() => preparar('manual')} />}
+    {preview?.canal === 'correo' && <InvoiceEmailPreview key={invoice.id + ':' + preview.fallbackId} invoice={invoice} items={items} tienda={messageStore} correo={correo} onCorreo={setCorreo} detalle={text()} reason={preview.reason} onOpenProvider={p => abrirCorreo(p, true)} onOpenGmailWeb={() => abrirCorreo('gmail', true, true)} onChangeProvider={() => {quitarFocoEntrada();setPreview(null);setProviderChoice('change')}} onCancel={cerrarPreview} />}
     {preview && !['correo','correo-directo'].includes(preview.canal) && <section ref={previewRef} className={'invoice-preview ' + (preview.canal === 'pdf' ? 'invoice-document-preview' : 'invoice-message-preview')}>
       <b>{preview.canal === 'pdf' ? 'Vista previa de factura' : 'Mensaje de WhatsApp'}</b>
       {preview.canal === 'pdf' ? <InvoicePreview invoice={invoice} items={items} tienda={tienda} demo={isDemoMode} /> : <>
         <p><b>Destinatario:</b> {preview.destino}</p>
         <pre>{preview.cuerpo}</pre>
-        <p className="delivery-attachment">{preview.adjuntoManual ? 'Descarga el PDF y adjúntalo manualmente en la aplicación.' : 'El mensaje incluye un enlace al PDF; no lleva un archivo adjunto automático.'}</p>
+        <p className="delivery-attachment">El mensaje de texto no lleva un archivo adjunto. Comparte el PDF real desde el dispositivo o descárgalo para adjuntarlo.</p>
+        {shareable&&<button type="button" className="btn full whatsapp-share-pdf" onClick={()=>compartirDirecto(preview.cuerpo)}>Compartir PDF y mensaje</button>}
         {preview.adjuntoManual && <button type="button" className="btn sec full" onClick={() => guardarPdf()}>Descargar PDF para adjuntar</button>}
       </>}
       <button type="button" className="btn sec full" onClick={cerrarPreview}>Cerrar vista previa</button>
       {preview.canal === 'pdf' && <div className="invoice-pdf-actions"><button type="button" className="btn" onClick={() => guardarPdf()}>Guardar PDF</button><button type="button" className="btn sec" onClick={() => { quitarFocoEntrada(); window.print() }}>Imprimir</button>{pdf && canSharePdf(invoicePdfFile(pdf)) && <button type="button" className="btn sec" onClick={() => guardarPdf(true)}>Compartir PDF</button>}</div>}
-      {preview.canal === 'whatsapp' && <button type="button" className="btn full mt-2" onClick={abrirMensaje}>Abrir WhatsApp</button>}
+      {preview.canal === 'whatsapp' && <button type="button" className="btn full mt-2" onClick={abrirMensaje}>Abrir WhatsApp con texto</button>}
     </section>}
     {invoice.estado !== 'anulada' && (editar ? <div className="fd-contact">
       <Input label="WhatsApp del cliente" value={tel} onChange={e => setTel(e.target.value)} inputMode="tel" placeholder="300 123 4567" />

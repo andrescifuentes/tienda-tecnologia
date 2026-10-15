@@ -1,3 +1,9 @@
+import {readFinancialRows} from '../lib/financeQueries'
+import '../styles/invoice-message-settings.css'
+import FacturaDetalle from '../components/FacturaDetalle'
+import EmployeeSales from '../components/EmployeeSales'
+import FitAmount from '../components/FitAmount'
+import '../styles/team-observations.css'
 import InicioVendedor from './InicioVendedor'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -123,10 +129,13 @@ function ActivityRow({ a, onOpen }) {
 }
 
 function DetalleNegocio({ onClose }) {
-  const { can } = useAuth()
+  const { can, esAdmin } = useAuth()
+  const navigate=useNavigate()
+  const [invoice,setInvoice]=useState(null),[employee,setEmployee]=useState(null),[tick,setTick]=useState(0)
   const revision = useDemoRevision()
   const [datos, setDatos] = useState(null), [error, setError] = useState('')
   useEffect(() => {
+    if(!esAdmin)return
     let active = true
     setError('')
     const mes = rangoMes()
@@ -141,11 +150,13 @@ function DetalleNegocio({ onClose }) {
       if (active) setDatos({ summary: summary.data[0], team: team.data || [], products: products.data || [], invoices: invoices.data || [] })
     }).catch(e => { if (active) setError(mensajeError(e)) })
     return () => { active = false }
-  }, [revision])
-  return <Modal title="Detalle del negocio" subtitle="Resumen ejecutivo de ANGIE TECH" className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
+  }, [revision,tick,esAdmin])
+  if(!esAdmin)return null
+  const openMetric=(key,id)=>{onClose();navigate(key==='producto'?'/inventario?producto='+id:key==='stock_bajo'?'/inventario?filtro=bajo':key==='agotados'?'/inventario?filtro=agotado':key==='valor_inventario'?'/inventario':key==='ingresos_mes'?'/finanzas?detalle=ingreso':key==='gastos_mes'?'/finanzas?detalle=gasto':key==='utilidad_mes'?'/finanzas':key==='ventas_hoy'||key==='facturas_hoy'?'/facturas/historial?fecha='+hoyBogota():'/facturas/historial')}
+  return <><Modal title="Detalle del negocio" subtitle="Resumen ejecutivo de ANGIE TECH" className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
     <ErrorBox text={error} />
-    {!datos && !error ? <Loader /> : datos && <BusinessDetail data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} />}
-  </Modal>
+    {!datos && !error ? <Loader /> : datos && <BusinessDetail data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} onInvoice={setInvoice} onEmployee={setEmployee} onMetric={openMetric} />}
+  </Modal>{employee&&<EmployeeSales employee={employee} onClose={()=>setEmployee(null)}/>} {invoice&&<FacturaDetalle id={invoice} onClose={()=>setInvoice(null)} onCambio={()=>setTick(n=>n+1)}/>}</>
 }
 
 function DashboardAdmin() {
@@ -159,17 +170,18 @@ function DashboardAdmin() {
   useEffect(() => {
     ;(async () => {
       const [netas, movs, fac, cli, com, prov, aj, prods, compTot] = await Promise.all([
-        supabase.from('facturas_netas').select('id,fecha,estado,total_neto'),
-        supabase.from('movimientos').select('tipo,monto,fecha'),
+        readFinancialRows(()=>supabase.from('facturas_netas').select('id,fecha,estado,total_neto').order('id')).then(data=>({data}),error=>({error})),
+        readFinancialRows(()=>supabase.from('movimientos').select('id,tipo,monto,fecha').order('id')).then(data=>({data}),error=>({error})),
         supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,cliente_id,anulada_en').order('fecha', { ascending:false }).limit(30),
         supabase.from('clientes').select('id,nombre'),
         supabase.from('compras').select('id,proveedor_id,total,estado,creado_en,numero_documento').order('creado_en', { ascending:false }).limit(15),
         supabase.from('proveedores').select('id,nombre'),
         supabase.from('movimientos_inventario').select('id,producto_id,tipo,cantidad,fecha,motivo').in('tipo', ['ajuste_entrada','ajuste_salida','devolucion_proveedor']).order('fecha', { ascending:false }).limit(15),
         supabase.from('productos_venta').select('id,nombre,stock,stock_min'),
-        supabase.from('compras').select('fecha,total,estado').eq('estado','recibida'),
+        readFinancialRows(()=>supabase.from('compras').select('id,fecha,total,estado').eq('estado','recibida').order('id')).then(data=>({data}),error=>({error})),
       ])
-      if (netas.error) return setErr(mensajeError(netas.error))
+      const financialError=[netas,movs,compTot].find(result=>result.error)?.error
+      if (financialError) return setErr(mensajeError(financialError))
       const nCli = Object.fromEntries((cli.data || []).map(x => [x.id, x.nombre]))
       const nProv = Object.fromEntries((prov.data || []).map(x => [x.id, x.nombre]))
       const nProd = Object.fromEntries((prods.data || []).map(x => [x.id, x.nombre]))
@@ -201,20 +213,20 @@ function DashboardAdmin() {
           </div>
         </div>
         <div className="ah-sales-row">
-          <div><p className="ah-amount">{money(p.ventas)}</p><p className="ah-count">{p.facturas} {p.facturas === 1 ? 'factura' : 'facturas'} · <MonthPicker value={ym} onChange={setYm} period={period} /></p></div>
+          <div><FitAmount className="ah-amount" minSize={18}>{money(p.ventas)}</FitAmount><p className="ah-count">{p.facturas} {p.facturas === 1 ? 'factura' : 'facturas'} · <MonthPicker value={ym} onChange={setYm} period={period} /></p></div>
           <Delta value={p.dVentas} label={p.vsLabel} />
         </div>
         <SalesChart values={p.values} labels={p.labels} current={p.current} />
       </section>
 
       <div className="ah-duo">
-        <button type="button" className="ah-mini" onClick={() => navigate('/finanzas')}>
+        <button type="button" className="ah-mini" onClick={() => navigate('/finanzas?detalle=ingreso&mes='+ym)}>
           <span className="ah-mini-icon gold"><Coins /></span>
-          <span className="ah-mini-body"><span className="ah-mini-top"><span>Ingresos</span><Chevron /></span><b>{money(p.ingresos)}</b><Delta value={p.dIngresos} label={p.vsLabel} /></span>
+          <span className="ah-mini-body"><span className="ah-mini-top"><span>Ingresos</span><Chevron /></span><b><FitAmount>{money(p.ingresos)}</FitAmount></b><Delta value={p.dIngresos} label={p.vsLabel} /></span>
         </button>
-        <button type="button" className="ah-mini" onClick={() => navigate('/finanzas')}>
+        <button type="button" className="ah-mini" onClick={() => navigate('/finanzas?detalle=gasto&mes='+ym)}>
           <span className="ah-mini-icon red"><Wallet /></span>
-          <span className="ah-mini-body"><span className="ah-mini-top"><span>Gastos</span><Chevron /></span><b>{money(p.gastos)}</b><Delta value={p.dGastos} label={p.vsLabel} inverse /></span>
+          <span className="ah-mini-body"><span className="ah-mini-top"><span>Gastos</span><Chevron /></span><b><FitAmount>{money(p.gastos)}</FitAmount></b><Delta value={p.dGastos} label={p.vsLabel} inverse /></span>
         </button>
       </div>
 

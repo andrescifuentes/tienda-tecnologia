@@ -74,7 +74,7 @@ begin
  select coalesce(jsonb_agg(jsonb_build_object('id',i.id,'nombre',i.nombre,'cantidad',i.cantidad,'precio_unitario',i.precio_unitario,'descuento',i.descuento,'codigo',coalesce(i.codigo,p.codigo),'serial',coalesce(i.serial,u.serial)) order by i.id),'[]'::jsonb) into its from factura_items i left join productos p on p.id=i.producto_id left join unidades_serializadas u on u.id=i.unidad_id where i.factura_id=f.id;
  -- Older invoices have historical line amounts but no original identity snapshot.
  -- Prefer snapshots; fallback identity is explicitly flagged, never invented.
- return jsonb_build_object('invoice',(to_jsonb(f)-'costo_total'-'comision'-'comision_pct')||jsonb_build_object('cliente_snapshot',coalesce(f.cliente_snapshot,c),'vendedor_snapshot',coalesce(f.vendedor_snapshot,v),'tienda_snapshot',coalesce(f.tienda_snapshot,t),'clientes',coalesce(f.cliente_snapshot,c),'perfiles',coalesce(f.vendedor_snapshot,v)), 'items',its,'tienda',coalesce(f.tienda_snapshot,t),'identidad_historica',f.tienda_snapshot is not null);
+ return jsonb_build_object('invoice',(to_jsonb(f)-'costo_total'-'comision'-'comision_pct')||jsonb_build_object('cliente_snapshot',coalesce(f.cliente_snapshot,c),'vendedor_snapshot',coalesce(f.vendedor_snapshot,v),'tienda_snapshot',coalesce(f.tienda_snapshot,t),'clientes',coalesce(f.cliente_snapshot,c),'perfiles',coalesce(f.vendedor_snapshot,v)), 'items',its,'tienda',coalesce(f.tienda_snapshot,t),'identidad_historica',f.tienda_snapshot is not null,'plantillas',t->'plantillas_factura');
 end $$;
 
 create or replace function public.correo_factura_reservar(p_actor uuid,p_factura bigint,p_destino text) returns jsonb

@@ -1,3 +1,5 @@
+import {preserveNativeShareContext} from './nativeShareContext.js'
+import {renderInvoiceMessages} from '../../supabase/functions/_shared/invoice-messages.js'
 import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { money, numFactura } from './format.js'
 
@@ -8,8 +10,9 @@ export function validarCorreoFactura(value) {
   return ''
 }
 
-export function crearBorradorCorreoFactura({ invoice, correo = '', detalle = '', tienda } ) {
+export function crearBorradorCorreoFactura({ invoice, correo = '', detalle = '', tienda, items=[] } ) {
   const destino = String(correo || '').trim()
+  if(tienda?.plantillas_factura){const message=renderInvoiceMessages({invoice,items,tienda,templates:tienda.plantillas_factura}),asunto=message.asunto,cuerpo=message.correo;return{canal:'correo',destino,asunto,cuerpo,adjuntoManual:true,url:validarCorreoFactura(destino)?'':'mailto:'+encodeURIComponent(destino)+'?subject='+encodeURIComponent(asunto)+'&body='+encodeURIComponent(cuerpo)}}
   const number = numFactura(invoice)
   const nombre = invoice.clientes?.nombre?.trim().split(/\s+/)[0]
   const brand = invoiceBrand(invoice.tienda_snapshot || tienda)
@@ -138,6 +141,8 @@ export function puedeCompartirFactura(file, navigator = globalThis.navigator) {
 }
 export async function compartirFacturaPorSistema(file, navigator = globalThis.navigator, { title = file?.name, text = 'Te compartimos tu factura de Angie Tech.' } = {}) {
   if (!puedeCompartirFactura(file, navigator)) return 'unavailable'
+  const restore=preserveNativeShareContext()
   try { await navigator.share({ files: [file], title, text }); return 'shared' }
   catch (error) { return error?.name === 'AbortError' ? 'cancelled' : 'unavailable' }
+  finally { restore() }
 }

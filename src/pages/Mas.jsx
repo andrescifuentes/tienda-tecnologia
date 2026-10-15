@@ -17,6 +17,7 @@ export default function Mas() {
     can('ver_finanzas') && { to: '/finanzas', icon: 'cash', t: 'Finanzas', s: 'Ingresos y gastos' },
     { to: '/clientes', icon: 'users', t: 'Clientes', s: 'Buscar y registrar' },
     { to: '/facturas', icon: 'doc', t: esAdmin ? 'Facturas' : 'Mis facturas', s: 'Buscar, enviar, reimprimir' },
+    { to: '/actividad', icon: 'chart', t: 'Actividad', s: esAdmin ? 'Auditoría y seguimiento del negocio' : 'Mis movimientos registrados' },
     { to: '/configuracion', icon: 'shield', t: 'Configuración', s: 'Preferencias y datos locales' },
   ].filter(Boolean)
   return (
@@ -25,7 +26,7 @@ export default function Mas() {
         <span className="profile-avatar">{perfil.nombre.slice(0, 1).toUpperCase()}</span>
         <span className="admin-profile-copy"><strong>{perfil.nombre}</strong><small className="admin-role">{esAdmin ? 'Administrador' : 'Vendedor'}</small><small>{perfil.correo}</small></span><span className="admin-chevron" aria-hidden="true">›</span>
       </button>
-      {[{title:'Gestión del negocio',routes:['/empleados','/proveedores','/finanzas']},{title:'Operación',routes:['/garantias','/clientes','/facturas']},{title:'Sistema',routes:['/configuracion']}].map(group=>items.some(i=>group.routes.includes(i.to))&&<section key={group.title}><h2 className="admin-group-title">{group.title}</h2><div className="card menu-list mb-3">
+      {[{title:'Gestión del negocio',routes:['/empleados','/proveedores','/finanzas']},{title:'Operación',routes:['/garantias','/clientes','/facturas']},{title:'Sistema',routes:['/actividad','/configuracion']}].map(group=>items.some(i=>group.routes.includes(i.to))&&<section key={group.title}><h2 className="admin-group-title">{group.title}</h2><div className="card menu-list mb-3">
         {items.filter(i=>group.routes.includes(i.to)).map((i, index) => (
           <AnimatedCard as="button" type="button" key={i.to} index={index} className="row menu-row" onClick={() => navigate(i.to)}>
             <span className="menu-symbol"><Icon name={i.icon} /></span>
