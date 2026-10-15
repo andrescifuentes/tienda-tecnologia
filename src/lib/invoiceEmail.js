@@ -1,4 +1,5 @@
 import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
+import { armarMensajeFactura, plantillaFactura } from './mensajeFactura.js'
 import { money, numFactura } from './format.js'
 
 export function validarCorreoFactura(value) {
@@ -14,15 +15,9 @@ export function crearBorradorCorreoFactura({ invoice, correo = '', detalle = '',
   const nombre = invoice.clientes?.nombre?.trim().split(/\s+/)[0]
   const brand = invoiceBrand(invoice.tienda_snapshot || tienda)
   const asunto = 'Factura ' + number + ' - ' + brand
-  const cuerpo = [
-    nombre ? 'Hola ' + nombre + ',' : 'Hola,', '',
-    'Gracias por tu compra en ' + brand + '.',
-    'Te compartimos la factura ' + number + ' correspondiente a tu compra por ' + money(invoice.total) + '.', '',
-    pdfUrl ? 'Descarga tu factura en PDF:\n' + pdfUrl + '\n' : '',
-    detalle ? detalle.replace(/\*/g, '') + '\n' : '',
-    'Si tienes alguna pregunta sobre tu compra, estaremos encantados de ayudarte.', '',
-    'Saludos,', brand,
-  ].join('\n')
+  // Texto del administrador (Configuración › Mensaje al cliente). Sin enlace, se agrega el detalle de la compra.
+  const base = armarMensajeFactura(plantillaFactura(invoice.tienda_snapshot || tienda), { cliente: nombre, negocio: brand, factura: number, total: money(invoice.total), enlace: pdfUrl })
+  const cuerpo = (base.replace(/\*/g, '') + (!pdfUrl && detalle ? '\n\n' + detalle.replace(/\*/g, '') : '')).trim()
   const url = validarCorreoFactura(destino) ? '' : 'mailto:' + encodeURIComponent(destino) + '?subject=' + encodeURIComponent(asunto) + '&body=' + encodeURIComponent(cuerpo)
   return { canal: 'correo', destino, asunto, cuerpo, adjuntoManual: !pdfUrl, url }
 }

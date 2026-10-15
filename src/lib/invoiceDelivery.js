@@ -1,6 +1,7 @@
 import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { crearBorradorCorreoFactura, validarCorreoFactura, abrirCorreoFactura } from './invoiceEmail.js'
 import { money, numFactura } from './format.js'
+import { armarMensajeFactura, plantillaFactura } from './mensajeFactura.js'
 import { enlaceWhatsApp, soloDigitos } from './whatsapp.js'
 
 export function quitarFocoEntrada() {
@@ -16,7 +17,7 @@ export function prepararEnvioFactura({ canal, invoice, telefono, correo, pdfUrl 
   const asunto = 'Factura ' + number + ' de ' + brand
   // Con enlace: mensaje corto (el detalle lo ve el cliente en la página de la factura)
   const cuerpo = pdfUrl
-    ? ['Hola ' + nombre + ',', '', 'Gracias por tu compra en ' + invoiceBrand(invoice.tienda_snapshot || tienda) + '.', 'Aquí puedes ver y descargar tu factura ' + number + ' por ' + money(invoice.total) + ':', '', pdfUrl].join('\n')
+    ? armarMensajeFactura(plantillaFactura(invoice.tienda_snapshot || tienda), { cliente: nombre, negocio: invoiceBrand(invoice.tienda_snapshot || tienda), factura: number, total: money(invoice.total), enlace: pdfUrl }).replace(/\*/g, '')
     : ['Hola ' + nombre + ',', '', 'Te compartimos tu factura ' + number + ' de ' + brand + ' por ' + money(invoice.total) + '.', '', 'El PDF debe adjuntarse manualmente.', detalle ? '\n' + detalle.replace(/\*/g, '') : ''].filter(Boolean).join('\n')
   if (canal === 'whatsapp') {
     const destino = String(telefono || '').trim(), digits = soloDigitos(destino)

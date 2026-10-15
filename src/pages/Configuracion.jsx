@@ -11,6 +11,9 @@ import { useAuth } from '../context/AuthContext'
 import { useAction } from '../lib/useAction'
 import { mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
+import { useRef } from 'react'
+import { MENSAJE_FACTURA_BASE, CAMPOS_MENSAJE, plantillaFactura, armarMensajeFactura } from '../lib/mensajeFactura'
+import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 
 export default function Configuracion() {
   const [confirm,setConfirm]=useState(false),[error,setError]=useState('')
@@ -23,6 +26,15 @@ export default function Configuracion() {
     const result=await supabase.from('tienda').update({...business,nombre:business.nombre.trim()}).eq('id',tienda?.id??1)
     if(result.error)return setError(mensajeError(result.error))
     setError('');await recargarPerfil();toast('Datos del negocio guardados');setEditing(null)
+  })
+  const [mensaje,setMensaje]=useState(null),textoRef=useRef(null)
+  const insertar=campo=>{const el=textoRef.current,t=mensaje.texto,a=el?.selectionStart??t.length,b=el?.selectionEnd??t.length;setMensaje({...mensaje,texto:t.slice(0,a)+campo+t.slice(b),error:''});requestAnimationFrame(()=>{try{el.focus();el.setSelectionRange(a+campo.length,a+campo.length)}catch{}})}
+  const [guardarMensaje,guardandoMensaje]=useAction(async()=>{
+    const texto=mensaje.texto.trim()
+    if(texto.length>1500)return setMensaje({...mensaje,error:'El mensaje es muy largo (máximo 1.500 caracteres).'})
+    const {error:e}=await supabase.from('tienda').update({mensaje_factura:texto&&texto!==MENSAJE_FACTURA_BASE?texto:null}).eq('id',tienda?.id??1)
+    if(e)return setMensaje({...mensaje,error:/mensaje_factura/.test(e.message||'')?'Falta activar esta opción: ejecuta el script 12 en Supabase.':mensajeError(e)})
+    await recargarPerfil();setMensaje(null);toast('Mensaje al cliente guardado')
   })
   const [codigo,setCodigo]=useState(null)
   const [guardarCodigo,guardandoCodigo]=useAction(async()=>{
@@ -43,12 +55,22 @@ export default function Configuracion() {
   const open=key=>{setBusiness({nombre:tienda?.nombre||'',nit:tienda?.nit||'',telefono:tienda?.telefono||'',direccion:tienda?.direccion||'',factura_pie:tienda?.factura_pie||''});setError('');setEditing(key)}
   return <div className="admin-premium admin-settings"><AppShell title="Configuración" sub="Tu espacio de trabajo">
     <section className="settings-group"><h2 className="admin-group-title">Apariencia</h2><ThemeSegments/></section>
-    {esAdmin&&<><section className="settings-group"><h2 className="admin-group-title">Datos del negocio</h2><div className="settings-panel">{['nombre','nit','telefono','direccion'].map(key=><SettingsRow key={key} data-setting={key} label={fields[key].row} value={tienda?.[key]} onClick={()=>open(key)}/>)}</div></section><section className="settings-group"><h2 className="admin-group-title">Facturación</h2><div className="settings-panel"><SettingsRow data-setting="factura_pie" label="Pie de factura" value={tienda?.factura_pie} onClick={()=>open('factura_pie')}/></div><p className="admin-hint">Moneda COP · America/Bogota. El consecutivo se conserva automáticamente.</p></section></>}
+    {esAdmin&&<><section className="settings-group"><h2 className="admin-group-title">Datos del negocio</h2><div className="settings-panel">{['nombre','nit','telefono','direccion'].map(key=><SettingsRow key={key} data-setting={key} label={fields[key].row} value={tienda?.[key]} onClick={()=>open(key)}/>)}</div></section><section className="settings-group"><h2 className="admin-group-title">Facturación</h2><div className="settings-panel"><SettingsRow data-setting="factura_pie" label="Pie de factura" value={tienda?.factura_pie} onClick={()=>open('factura_pie')}/></div><p className="admin-hint">Moneda COP · America/Bogota. El consecutivo se conserva automáticamente.</p></section><section className="settings-group"><h2 className="admin-group-title">Mensaje al cliente</h2><div className="settings-panel"><SettingsRow label="Mensaje de la factura" value={tienda?.mensaje_factura?'Personalizado':'Por defecto'} icon="mail" onClick={()=>setMensaje({texto:plantillaFactura(tienda),error:''})}/></div><p className="admin-hint">Es el texto que reciben tus clientes con la factura por WhatsApp y correo. Los vendedores lo usan tal cual, sin poder cambiarlo.</p></section></>}
     {!isDemoMode&&esAdmin&&<section className="settings-group"><h2 className="admin-group-title">Registro de administradores</h2><div className="settings-panel"><SettingsRow label="Código de registro" value="Cambiar" icon="shield" onClick={()=>setCodigo({nuevo:'',repetir:'',error:''})}/></div><p className="admin-hint">Quien quiera ser administrador de este negocio debe escribir este código al crear su cuenta («Unirme a uno»). Compártelo solo con personas de confianza. Los vendedores los creas tú desde Empleados.</p></section>}
     <section className="settings-group"><h2 className="admin-group-title">Preferencias</h2><div className="settings-panel"><SettingsRow label="Cerrar sesión" value="Salir" icon="out" onClick={salir}/></div></section>
     <section className="settings-group"><h2 className="admin-group-title">{isDemoMode?'Demo / datos locales':'Conexión real'}</h2>{isDemoMode?<><details className="admin-local-details"><summary>Demo local · información y acceso</summary><p>Datos ficticios guardados en este navegador. WhatsApp y correo se abren solo si tú lo solicitas.</p><p>Administrador: <b>admin@angietech.demo</b><br/>Contraseña demo: <b>{DEMO_PASSWORD}</b></p></details><p className="admin-hint">Restablecer elimina cambios y fotos subidas, recupera los ejemplos y cierra la sesión. Conserva tu tema.</p>{esAdmin&&<button className="admin-reset" onClick={()=>setConfirm(true)}>Restablecer datos demo</button>}</>:<p className="admin-hint">Estás usando la conexión configurada para tu tienda.</p>}</section>
     {editing&&<Modal title={fields[editing].title} subtitle="Datos del negocio" className="admin-sheet settings-edit-sheet" keyboardAware onClose={()=>setEditing(null)} footer={<button className="btn full" disabled={busy} onClick={save}>{busy?'Guardando…':'Guardar negocio'}</button>}><ErrorBox text={error}/><Input autoFocus label={fields[editing].title} type={fields[editing].type||'text'} required={editing==='nombre'} value={business[editing]} onChange={set(editing)}/><p className="admin-hint">El cambio se aplica al guardar.</p></Modal>}
     {codigo&&<Modal title="Código de registro" subtitle="Registro de administradores" className="admin-sheet settings-edit-sheet" keyboardAware onClose={()=>setCodigo(null)} footer={<button className="btn full" disabled={guardandoCodigo} onClick={guardarCodigo}>{guardandoCodigo?'Guardando…':'Guardar código'}</button>}><ErrorBox text={codigo.error}/><Input autoFocus label="Nuevo código (mínimo 6 caracteres)" autoComplete="off" value={codigo.nuevo} onChange={e=>setCodigo({...codigo,nuevo:e.target.value,error:''})}/><Input label="Repite el código" autoComplete="off" value={codigo.repetir} onChange={e=>setCodigo({...codigo,repetir:e.target.value,error:''})}/><p className="admin-hint">El código anterior deja de funcionar al guardar. Se guarda cifrado: ni siquiera desde la base de datos se puede leer.</p></Modal>}
+    {mensaje&&<Modal title="Mensaje al cliente" subtitle="WhatsApp y correo de la factura" className="admin-sheet settings-edit-sheet msg-sheet" keyboardAware onClose={()=>setMensaje(null)} footer={<button className="btn full" disabled={guardandoMensaje} onClick={guardarMensaje}>{guardandoMensaje?'Guardando…':'Guardar mensaje'}</button>}>
+      <ErrorBox text={mensaje.error}/>
+      <label className="msg-label" htmlFor="msg-factura">Tu mensaje</label>
+      <textarea id="msg-factura" ref={textoRef} className="inp msg-text" rows={8} maxLength={1500} value={mensaje.texto} onChange={e=>setMensaje({...mensaje,texto:e.target.value,error:''})}/>
+      <p className="msg-label">Toca para agregar al mensaje</p>
+      <div className="msg-chips">{CAMPOS_MENSAJE.map(([campo,nombre])=><button key={campo} type="button" onClick={()=>insertar(campo)}>{nombre}</button>)}</div>
+      <p className="msg-label">Así lo verá el cliente</p>
+      <pre className="msg-preview">{armarMensajeFactura(mensaje.texto,{cliente:'Andrés',negocio:invoiceBrand(tienda||{}),factura:'FV-0029',total:'$2.500.000',enlace:window.location.origin+'/f/Kq7mZ2xP9wRt'})}</pre>
+      {mensaje.texto.trim()!==MENSAJE_FACTURA_BASE&&<button type="button" className="msg-reset" onClick={()=>setMensaje({texto:MENSAJE_FACTURA_BASE,error:''})}>Volver al mensaje original</button>}
+    </Modal>}
     {confirm&&<ConfirmAction title="Restablecer demo" label="Restablecer y cerrar sesión" onClose={()=>setConfirm(false)} onConfirm={reset}>Se eliminarán los cambios ficticios y fotos locales de este navegador. No afecta datos remotos.</ConfirmAction>}
   </AppShell></div>
 }

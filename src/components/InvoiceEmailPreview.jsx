@@ -9,7 +9,7 @@ import { isDemoMode } from '../lib/supabase'
 import { numFactura } from '../lib/format'
 import '../styles/invoice-email.css'
 
-export default function InvoiceEmailPreview({ invoice, items, tienda, correo, onCorreo, detalle, reason, onOpenProvider, onOpenGmailWeb, onCancel }) {
+export default function InvoiceEmailPreview({ pdfUrl = '', invoice, items, tienda, correo, onCorreo, detalle, reason, onOpenProvider, onOpenGmailWeb, onCancel }) {
   const [error, setError] = useState(reason || ''), [info, setInfo] = useState(''), [manual, setManual] = useState(null)
   const [copying, setCopying] = useState(''), [sharing, setSharing] = useState(false), [logoReady, setLogoReady] = useState(false)
   const alive = useRef(true), copyGeneration = useRef(0), manualRef = useRef(null), headingRef = useRef(null), handoff = useRef(null), shareGeneration = useRef(0), shareLocked = useRef(false)
@@ -36,7 +36,7 @@ export default function InvoiceEmailPreview({ invoice, items, tienda, correo, on
       document.removeEventListener('visibilitychange', resume)
     }
   }, [])
-  const draft = useMemo(() => crearBorradorCorreoFactura({ invoice, correo, detalle, tienda }), [invoice, correo, detalle, tienda])
+  const draft = useMemo(() => crearBorradorCorreoFactura({ invoice, correo, detalle, tienda, pdfUrl }), [invoice, correo, detalle, tienda, pdfUrl])
   const pdf = useMemo(() => { try { return createInvoicePdf(invoice, items, tienda, isDemoMode) } catch { return null } }, [invoice, items, tienda, logoReady])
   const file = useMemo(() => { try { return pdf ? invoicePdfFile(pdf) : null } catch { return null } }, [pdf])
   const shareable = puedeCompartirFactura(file)

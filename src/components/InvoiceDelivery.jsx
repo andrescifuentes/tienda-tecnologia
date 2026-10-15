@@ -19,11 +19,14 @@ import { mensajeError } from '../lib/format'
 // El envío desde el servidor (con PDF adjunto) se activa con VITE_CORREO_SERVIDOR=true cuando el servicio de correo esté configurado.
 // Mientras tanto, «Correo» abre el correo del celular con el enlace al PDF de la factura.
 const CORREO_SERVIDOR = import.meta.env.VITE_CORREO_SERVIDOR === 'true'
+// El envío por correo está en pausa hasta definir el correo del negocio. Se activa con VITE_CORREO_ACTIVO=true.
+const CORREO_ACTIVO = isDemoMode || import.meta.env.VITE_CORREO_ACTIVO === 'true'
 import { toast } from '../lib/toast'
 import '../styles/invoice-delivery.css'
 
 export default function InvoiceDelivery({ invoice, items, tienda, obligatorio = false, onEnviado }) {
   const { perfil } = useAuth()
+  const [enlace, setEnlace] = useState('')
   const [tel, setTel] = useState(invoice.clientes?.telefono || ''), [correo, setCorreo] = useState(invoice.clientes?.correo || '')
   const [editar, setEditar] = useState(false), [preview, setPreview] = useState(null), [error, setError] = useState(''), [info, setInfo] = useState(''), [busy, setBusy] = useState('')
   const [provider, setProvider] = useState(leerProveedorCorreo), [providerChoice, setProviderChoice] = useState(null), [emailNotice, setEmailNotice] = useState(''), [sharing, setSharing] = useState(false), [logoReady, setLogoReady] = useState(false)
@@ -73,7 +76,7 @@ export default function InvoiceDelivery({ invoice, items, tienda, obligatorio = 
     gmailWatch.current?.(); quitarFocoEntrada(); ++epoch.current; setBusy(''); setProviderChoice(null); setEditar(false)
     setError(''); setPreview({ canal: 'correo', reason, fallbackId: epoch.current })
     // Deja listo el enlace a la factura para que Gmail/Correo lo incluyan
-    if (!isDemoMode && !pdfLink.current) enlaceFactura(invoice, items, tienda).then(link => { pdfLink.current = link }).catch(() => {})
+    if (!isDemoMode && !pdfLink.current) enlaceFactura(invoice, items, tienda).then(link => { pdfLink.current = link; if (alive.current) setEnlace(link) }).catch(() => {})
   }
   function pedirCorreo() {
     gmailWatch.current?.(); handoff.current = null; quitarFocoEntrada(); ++epoch.current; setBusy(''); setError(''); setInfo(''); setEmailNotice(''); setProviderChoice(null); setEditar(false); setPreview({canal:'correo-directo'})
@@ -129,7 +132,7 @@ export default function InvoiceDelivery({ invoice, items, tienda, obligatorio = 
   }
   async function preparar(canal) {
     quitarFocoEntrada(); setError(''); setInfo('')
-    if (canal === 'correo') return CORREO_SERVIDOR || isDemoMode ? pedirCorreo() : prepararCorreo()
+    if (canal === 'correo') { if (!CORREO_ACTIVO) return; return CORREO_SERVIDOR || isDemoMode ? pedirCorreo() : prepararCorreo() }
     let mensaje
     try { mensaje = prepararEnvioFactura({ canal, invoice, telefono: tel, correo, detalle: text(), tienda }) }
     catch (e) { setError(mensajeError(e)); return }
@@ -187,16 +190,16 @@ export default function InvoiceDelivery({ invoice, items, tienda, obligatorio = 
     {info && <p className="fd-hint" role="status">{info}</p>}
     <div className={'fd-actions' + (shareable ? ' has-share' : '')}>
       {invoice.estado !== 'anulada' && <button type="button" className="fd-act wa" aria-label="Enviar por WhatsApp" disabled={!!busy} onClick={() => preparar('whatsapp')}><span className="fd-act-ic"><I n="chat" /></span><b>{busy === 'whatsapp' ? 'Preparando…' : 'WhatsApp'}</b><small>{tel || 'Sin número'}</small></button>}
-      {invoice.estado !== 'anulada' && <button type="button" className="fd-act mail" aria-label="Enviar factura por correo" disabled={!!busy} onClick={() => preparar('correo')}><span className="fd-act-ic"><I n="mail" /></span><b>{busy === 'correo' ? 'Preparando…' : 'Correo'}</b><small>{correo || 'Sin correo'}</small></button>}
+      {invoice.estado !== 'anulada' && <button type="button" className={'fd-act mail' + (CORREO_ACTIVO ? '' : ' is-off')} aria-label={CORREO_ACTIVO ? 'Enviar factura por correo' : 'Correo: próximamente'} disabled={!!busy || !CORREO_ACTIVO} onClick={() => preparar('correo')}><span className="fd-act-ic"><I n="mail" /></span><b>{busy === 'correo' ? 'Preparando…' : 'Correo'}</b><small>{CORREO_ACTIVO ? (correo || 'Sin correo') : 'Próximamente'}</small></button>}
       {shareable && <button type="button" className="fd-act share" aria-label="Compartir el PDF de la factura por cualquier aplicación" disabled={sharing || !!busy} onClick={compartirDirecto}><span className="fd-act-ic"><I n="truckIn" /></span><b>{sharing ? 'Compartiendo…' : 'Compartir PDF'}</b><small>Archivo · eliges la app</small></button>}
       <button type="button" className="fd-act pdf" onClick={verPdf}><span className="fd-act-ic"><I n="receipt" /></span><b>Ver PDF</b><small>Imprimir o guardar</small></button>
     </div>
-    {invoice.estado !== 'anulada' && <p className="email-composer-reminder">{CORREO_SERVIDOR ? 'Envío desde la app con PDF adjunto · confirma el destinatario.' : 'El correo lleva el enlace a la factura en PDF · confirma el destinatario.'}</p>}
-    {invoice.estado !== 'anulada' && <div className="email-quick-options"><button type="button" className="email-quick-link email-more-options" onClick={() => masOpciones()}><I n="dots" />Más opciones</button><button type="button" className="email-quick-link email-change-provider" onClick={() => { quitarFocoEntrada(); ++epoch.current; setBusy(''); setPreview(null); setProviderChoice('change') }}>Correo: {providerName}<I n="chevDown" /></button></div>}
+    {invoice.estado !== 'anulada' && CORREO_ACTIVO && <p className="email-composer-reminder">{CORREO_SERVIDOR ? 'Envío desde la app con PDF adjunto · confirma el destinatario.' : 'El correo lleva el enlace a la factura en PDF · confirma el destinatario.'}</p>}
+    {invoice.estado !== 'anulada' && CORREO_ACTIVO && <div className="email-quick-options"><button type="button" className="email-quick-link email-more-options" onClick={() => masOpciones()}><I n="dots" />Más opciones</button><button type="button" className="email-quick-link email-change-provider" onClick={() => { quitarFocoEntrada(); ++epoch.current; setBusy(''); setPreview(null); setProviderChoice('change') }}>Correo: {providerName}<I n="chevDown" /></button></div>}
     {emailNotice && <div className="email-direct-status" role="status"><p>{emailNotice}</p><button type="button" className="btn sec" onClick={() => guardarPdf()}>Descargar PDF</button><button type="button" className="btn sec" onClick={() => masOpciones()}>Más opciones de correo</button></div>}
     {providerChoice && <InvoiceEmailProviderPicker changing={providerChoice === 'change'} preferred={provider} onPick={elegirProveedor} onCancel={() => { quitarFocoEntrada(); setProviderChoice(null) }} />}
     {preview?.canal === 'correo-directo' && <InvoiceEmailSend key={invoice.id} invoice={invoice} tienda={tienda} onCancel={cerrarPreview} onManual={() => masOpciones()} onSent={() => onEnviado?.('correo')} />}
-    {preview?.canal === 'correo' && <InvoiceEmailPreview key={invoice.id + ':' + preview.fallbackId} invoice={invoice} items={items} tienda={tienda} correo={correo} onCorreo={setCorreo} detalle={text()} reason={preview.reason} onOpenProvider={p => abrirCorreo(p, true)} onOpenGmailWeb={() => abrirCorreo('gmail', true, true)} onCancel={cerrarPreview} />}
+    {preview?.canal === 'correo' && <InvoiceEmailPreview key={invoice.id + ':' + preview.fallbackId} pdfUrl={enlace || pdfLink.current || ''} invoice={invoice} items={items} tienda={tienda} correo={correo} onCorreo={setCorreo} detalle={text()} reason={preview.reason} onOpenProvider={p => abrirCorreo(p, true)} onOpenGmailWeb={() => abrirCorreo('gmail', true, true)} onCancel={cerrarPreview} />}
     {preview && !['correo','correo-directo'].includes(preview.canal) && <section ref={previewRef} className={'invoice-preview ' + (preview.canal === 'pdf' ? 'invoice-document-preview' : 'invoice-message-preview')}>
       <b>{preview.canal === 'pdf' ? 'Vista previa de factura' : preview.canal === 'correo-listo' ? 'Correo para el cliente' : 'Mensaje de WhatsApp'}</b>
       {preview.canal === 'pdf' ? <InvoicePreview invoice={invoice} items={items} tienda={tienda} demo={isDemoMode} /> : <>
