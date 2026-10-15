@@ -2281,3 +2281,24 @@ html,body{overflow-x:hidden;max-width:100%}
 .emp-act-main b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
 .emp-act-main small{display:block;margin-top:2px;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .emp-act-time{flex:none;max-width:34%;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.35}
+/* Inicio › Ingresos y Gastos: ícono pequeño junto al título (más liviano) */
+.ah-duo .ah-mini{padding:13px 13px 12px!important;gap:0!important}
+.ah-duo .ah-mini-label{display:inline-flex;align-items:center;gap:7px;min-width:0}
+.ah-duo .ah-mini-icon{width:24px!important;height:24px!important;border-radius:7px!important;box-shadow:none!important}
+.ah-duo .ah-mini-icon svg{width:14px!important;height:14px!important}
+.ah-duo .ah-mini-top{font-size:12.5px}
+.ah-duo .ah-mini b{font-size:clamp(17px,5vw,21px)!important;margin:8px 0 4px!important}
+/* Barra inferior más compacta: menos espacio vacío bajo los íconos en iPhone */
+.nav{padding:2px 4px max(6px,calc(env(safe-area-inset-bottom) - 14px))!important}
+.nav button{min-height:52px!important;padding:6px 0 4px!important;gap:4px!important}
+/* Configuración › Mensaje al cliente */
+.msg-sheet .msg-label{margin:14px 2px 6px;font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--muted)}
+.msg-sheet .msg-text{width:100%;min-height:170px;resize:vertical;line-height:1.5;font-size:15px;padding:12px 14px;box-sizing:border-box}
+.msg-chips{display:flex;flex-wrap:wrap;gap:8px}
+.msg-chips button{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--gold,#c79a52) 45%,transparent);background:color-mix(in srgb,var(--gold,#c79a52) 10%,transparent);color:var(--gold,#c79a52);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.msg-preview{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:14px;line-height:1.5;padding:14px;border-radius:16px;background:#075e54;color:#f2f2f2;border:0}
+:root[data-theme="light"] .msg-preview{background:#dcf8c6;color:#1b1b1b}
+.msg-reset{display:block;margin:12px auto 0;min-height:44px;background:none;border:0;color:var(--gold,#c79a52);font:inherit;font-weight:600;cursor:pointer}
+/* Correo en pausa: botón visible pero bloqueado */
+.fd-act.mail.is-off{opacity:.45;cursor:not-allowed;filter:grayscale(.6)}
+.fd-act.mail.is-off small{color:var(--gold,#c79a52)}

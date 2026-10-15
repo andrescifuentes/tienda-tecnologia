@@ -234,12 +234,10 @@ function DashboardAdmin() {
 
       <div className="ah-duo">
         <button type="button" className="ah-mini" onClick={() => navigate('/finanzas')}>
-          <span className="ah-mini-icon gold"><Coins /></span>
-          <span className="ah-mini-body"><span className="ah-mini-top"><span>Ingresos</span><Chevron /></span><b>{money(p.ingresos)}</b><Delta value={p.dIngresos} label={p.vsLabel} /></span>
+          <span className="ah-mini-body"><span className="ah-mini-top"><span className="ah-mini-label"><span className="ah-mini-icon gold"><Coins /></span>Ingresos</span><Chevron /></span><b>{money(p.ingresos)}</b><Delta value={p.dIngresos} label={p.vsLabel} /></span>
         </button>
         <button type="button" className="ah-mini" onClick={() => navigate('/finanzas')}>
-          <span className="ah-mini-icon red"><Wallet /></span>
-          <span className="ah-mini-body"><span className="ah-mini-top"><span>Gastos</span><Chevron /></span><b>{money(p.gastos)}</b><Delta value={p.dGastos} label={p.vsLabel} inverse /></span>
+          <span className="ah-mini-body"><span className="ah-mini-top"><span className="ah-mini-label"><span className="ah-mini-icon red"><Wallet /></span>Gastos</span><Chevron /></span><b>{money(p.gastos)}</b><Delta value={p.dGastos} label={p.vsLabel} inverse /></span>
         </button>
       </div>
 
