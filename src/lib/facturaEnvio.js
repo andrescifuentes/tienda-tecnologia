@@ -3,11 +3,23 @@ import { createInvoicePdf, logoListo } from './invoicePdf'
 import { money, numFactura } from './format'
 import { nombreNegocio } from './marca'
 
+// Dirección pública de la app para los enlaces que recibe el cliente. Si se está probando en el
+// computador (localhost o 192.168…), el enlace igual apunta a la app publicada, que es la que el
+// cliente puede abrir y la que WhatsApp usa para mostrar la vista previa.
+const PUBLICA = 'https://angie-tech.vercel.app'
+export function urlPublica(loc = globalThis.location) {
+  const env = import.meta.env?.VITE_PUBLIC_URL
+  if (env) return String(env).replace(/\/+$/, '')
+  const host = loc?.hostname || ''
+  const local = !host || host === 'localhost' || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || host.endsWith('.local')
+  return local ? PUBLICA : loc.origin
+}
+
 // Enlace corto y bonito para el cliente (script 11): https://<app>/f/<código>
 // Si el script 11 aún no se ejecutó, se usa el enlace del PDF de antes.
 export async function enlaceFactura(f, items, tienda) {
   const { data, error } = await supabase.rpc('crear_enlace_factura', { p_factura: f.id })
-  if (!error && data) return `${window.location.origin}/f/${data}`
+  if (!error && data) return `${urlPublica()}/f/${data}`
   if (error && error.code !== 'PGRST202' && !/Could not find the function/i.test(error.message || '')) throw error
   return subirFacturaPdf(f, items, tienda)
 }

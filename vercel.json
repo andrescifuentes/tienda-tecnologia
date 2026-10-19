@@ -1,1 +1,6 @@
-{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+{
+  "rewrites": [
+    { "source": "/f/:token", "destination": "/api/factura?token=:token" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}

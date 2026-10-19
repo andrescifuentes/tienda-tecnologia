@@ -1,4 +1,4 @@
-import { invoiceBrand, isAngieBrand } from '../../supabase/functions/_shared/invoice-brand.js'
+import { invoiceBrand, isAngieBrand, camposEmpresa } from '../../supabase/functions/_shared/invoice-brand.js'
 import { money, numFactura } from '../lib/format'
 import { invoiceBusiness, invoiceIdentity } from '../lib/invoiceSnapshot'
 import logoGold from '../assets/brand/angie-tech-logo-gold.png'
@@ -12,7 +12,7 @@ export default function InvoicePreview({ invoice, items, tienda, demo = false })
   const f = new Date(invoice.fecha)
   const fecha = f.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' })
   const hora = f.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })
-  const datosTienda = [tienda.nit && `NIT ${tienda.nit}`, tienda.direccion, tienda.telefono && `Tel. ${tienda.telefono}`, tienda.correo].filter(Boolean)
+  const datosTienda = camposEmpresa(tienda)
   const unidades = items.reduce((a, i) => a + Number(i.cantidad || 0), 0)
   const Dato = ({ k, v }) => v ? <div className="fx-dato"><dt>{k}</dt><dd>{v}</dd></div> : null
   return <article className="print-invoice fx" data-print-invoice>
@@ -25,7 +25,7 @@ export default function InvoicePreview({ invoice, items, tienda, demo = false })
         <span className={'fx-state' + (invoice.estado === 'anulada' ? ' bad' : '')}>{invoice.estado === 'anulada' ? 'Anulada' : 'Emitida'}</span>
       </div>
     </header>
-    <div className="fx-store"><b>{marca}</b><span>{datosTienda.length ? datosTienda.join(' · ') : 'Tecnología, celulares y accesorios'}</span></div>
+    <div className="fx-store"><div className="fx-store-head"><span className="fx-store-eyebrow">EMPRESA</span><b>{marca}</b></div>{datosTienda.length ? <dl className="fx-store-grid">{datosTienda.map(([k, v]) => <div key={k + v} className={k === 'Dirección' ? 'wide' : ''}><dt>{k}</dt><dd>{v}</dd></div>)}</dl> : <span className="fx-store-empty">Tecnología, celulares y accesorios</span>}</div>
     <div className="fx-parties">
       <section>
         <small className="fx-tag">CLIENTE</small>
@@ -39,7 +39,7 @@ export default function InvoicePreview({ invoice, items, tienda, demo = false })
         <small className="fx-tag">ATENDIDO POR</small>
         <h3>{v.nombre || 'Vendedor'}</h3>
         <dl>
-          <Dato k="Correo" v={v.correo} /><Dato k="Teléfono" v={v.telefono} /><Dato k="Método de pago" v={invoice.metodo_pago && invoice.metodo_pago.charAt(0).toUpperCase() + invoice.metodo_pago.slice(1)} />
+          {/* Siempre el correo del negocio, nunca el personal del vendedor */}<Dato k="Correo" v={tienda.correo} /><Dato k="Teléfono" v={v.telefono} /><Dato k="Método de pago" v={invoice.metodo_pago && invoice.metodo_pago.charAt(0).toUpperCase() + invoice.metodo_pago.slice(1)} />
         </dl>
       </section>
     </div>
