@@ -88,14 +88,14 @@ test('infraestructura ausente se distingue de permiso denegado',()=>{assert.ok(c
 async function sqlFixture(){
  const db=new PGlite();await db.exec(`create role anon;create role authenticated;create schema auth;grant usage on schema auth to authenticated;
  create function auth.uid()returns uuid language sql stable as $$select nullif(current_setting('app.uid',true),'')::uuid$$;
- create table perfiles(id uuid primary key,nombre text,rol text,activo boolean default true);
- insert into perfiles values('${admin}','Admin','admin',true),('${seller}','Ana','vendedor',true),('${other}','Carlos','vendedor',true);
+ create table tienda(id int primary key,nombre text,activo boolean default true);insert into tienda values(1,'Angie',true),(2,'Negocio B',true);create table perfiles(id uuid primary key,nombre text,rol text,activo boolean default true,negocio_id int default 1);create function mi_negocio()returns int language sql stable security definer as $$select negocio_id from perfiles where id=auth.uid()$$;
+ insert into perfiles(id,nombre,rol,activo)values('${admin}','Admin','admin',true),('${seller}','Ana','vendedor',true),('${other}','Carlos','vendedor',true);
  create function es_activo()returns boolean language sql stable security definer as $$select coalesce((select activo from perfiles where id=auth.uid()),false)$$;
  create function es_admin()returns boolean language sql stable security definer as $$select coalesce((select activo and rol='admin'from perfiles where id=auth.uid()),false)$$;
  create function tiene_permiso(p text)returns boolean language sql stable security definer as $$select es_activo()and(p='vender'or es_admin())$$;
  create table actividad(id bigserial primary key,accion text);
  create function registrar_actividad(p_a text,p_e text,p_id text,p_d jsonb)returns void language sql as $$insert into actividad(accion)values(p_a)$$;
- create table facturas(id bigint primary key,vendedor_id uuid references perfiles,metodo_pago text,total numeric,estado text,fecha timestamptz default now(),prefijo text default 'FV',numero int);
+ create table facturas(id bigint primary key,vendedor_id uuid references perfiles,metodo_pago text,total numeric,estado text,fecha timestamptz default now(),prefijo text default 'FV',numero int,negocio_id int default coalesce(mi_negocio(),1));
  create table devoluciones(id bigint primary key,factura_id bigint references facturas,total_devuelto numeric default 0,creado_por uuid,fecha timestamptz default now());grant usage on schema public to authenticated;`)
  await db.exec(readFileSync('supabase/14_caja.sql','utf8'));return db
 }
@@ -134,3 +134,5 @@ test('SQL RLS y RPC cajero ajeno/admin/inactivo; helpers y escritura no publicos
  await db.exec('reset role');await db.exec(`update perfiles set activo=false where id='${admin}'`);await assert.rejects(()=>sqlRpc(db,'caja_estado',[id]),/permiso/)
  }finally{await db.close()}
 })
+
+test('SQL caja separa negocios incluso para administradores',async()=>{const db=await sqlFixture(),adminB='00000000-0000-0000-0000-000000000004';try{await setActor(db,seller);const id=await sqlRpc(db,'caja_abrir',[100,req('scope-a')]);await db.query("insert into perfiles(id,nombre,rol,activo,negocio_id)values($1,'Admin B','admin',true,2)",[adminB]);await setActor(db,adminB);await db.exec('set role authenticated');assert.equal((await sqlRpc(db,'caja_estado',[null])).history.length,0);await assert.rejects(sqlRpc(db,'caja_estado',[id]),/permiso/);await assert.rejects(sqlRpc(db,'caja_cerrar',[id,req('scope-close'),0,100,'']),/permiso/);const otherId=await sqlRpc(db,'caja_abrir',[200,req('scope-b')]);assert.equal((await sqlRpc(db,'caja_estado',[otherId])).session.negocio_id,2);assert.equal((await db.query('select * from caja_sesiones')).rows.length,1)}finally{await db.close()}})

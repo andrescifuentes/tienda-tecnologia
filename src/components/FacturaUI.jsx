@@ -13,7 +13,9 @@ export const fechaCorta = (iso) => new Date(iso).toLocaleDateString('es-CO', { t
 export const shiftYm = (ym, n) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7) }
 export const iniciales = (n) => String(n || '').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase()
 export const METODOS = [['efectivo', 'Efectivo', 'cash'], ['tarjeta', 'Tarjeta', 'card'], ['transferencia', 'Transferencia', 'bank']]
-export const SELECT_FACTURA = 'id,prefijo,numero,total,estado,fecha,metodo_pago,clientes(nombre),'
+export const SELECT_FACTURA = 'id,prefijo,numero,total,estado,fecha,metodo_pago,clientes(nombre),devoluciones(total_devuelto),'
+// Total de la factura menos lo devuelto (así coincide con Inicio y Finanzas)
+export const neto = (f) => Number(f?.total || 0) - (f?.devoluciones || []).reduce((a, d) => a + Number(d.total_devuelto || 0), 0)
 
 export function rango(periodo, ym) {
   if (periodo === 'todo') return [null, null]
@@ -32,7 +34,7 @@ export function tituloDia(key) {
 
 export function agruparPorDia(lista) {
   const g = []
-  for (const f of lista || []) { const k = diaKey(f.fecha); const last = g[g.length - 1]; const v = f.estado === 'anulada' ? 0 : Number(f.total); if (last?.key === k) { last.items.push(f); last.total += v } else g.push({ key: k, items: [f], total: v }) }
+  for (const f of lista || []) { const k = diaKey(f.fecha); const last = g[g.length - 1]; const v = f.estado === 'anulada' ? 0 : neto(f); if (last?.key === k) { last.items.push(f); last.total += v } else g.push({ key: k, items: [f], total: v }) }
   return g
 }
 
@@ -72,7 +74,7 @@ export function FiltrosFactura({ datos, estado, setEstado, metodo, setMetodo, to
         const n = (datos || []).filter((f) => (estado === 'todas' || f.estado === estado) && (k === 'todos' || f.metodo_pago === k)).length
         return <button key={k} type="button" className={'m-' + k + (metodo === k ? ' on' : '')} aria-pressed={metodo === k} onClick={() => setMetodo(k)}>
           <span className="flt-row-ic"><I n={ic} /></span>
-          <span className="flt-row-name">{l}<small className="flt-row-sub">{money(ok.reduce((a, f) => a + Number(f.total || 0), 0))}</small></span>
+          <span className="flt-row-name">{l}<small className="flt-row-sub">{money(ok.reduce((a, f) => a + neto(f), 0))}</small></span>
           <span className="flt-row-n">{n}</span>
           <span className="flt-row-check">{metodo === k && <I n="check" />}</span>
         </button>

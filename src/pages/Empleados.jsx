@@ -1,8 +1,3 @@
-import EmployeeSales from '../components/EmployeeSales'
-import FitAmount from '../components/FitAmount'
-import { withDeadline, requireData, cancellableQuery } from '../lib/asyncResult'
-import ActivityTimeline from '../components/ActivityTimeline'
-import { loadActivity } from '../lib/activityPresentation'
 import { useEffect, useRef, useState } from 'react'
 import ConfirmAction from '../components/ConfirmAction'
 import { useAction } from '../lib/useAction'
@@ -12,6 +7,21 @@ import { FormSection, PremiumSwitch, RoleField, PasswordField } from '../compone
 import { Empty, Loader, Badge, Input, ErrorBox, SearchBar, Select } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { fechaHora, mensajeError, money, hoyBogota, rangoMes } from '../lib/format'
+import { describirActividad } from '../lib/actividadTexto'
+import { Icon } from '../components/Icons'
+import { useNavigate } from 'react-router-dom'
+
+// Una línea del historial, escrita para personas (no códigos internos)
+function ActividadFila({ a }) {
+  const navigate = useNavigate()
+  const x = describirActividad(a)
+  const Tag = x.to ? 'button' : 'div'
+  return <Tag {...(x.to ? { type: 'button', onClick: () => navigate(x.to) } : {})} className={'emp-act' + (x.to ? ' is-link' : '')}>
+    <span className={'emp-act-ic ' + x.tono}><Icon name={x.icono} /></span>
+    <span className="emp-act-main"><b>{x.titulo}</b>{x.detalle && <small>{x.detalle}</small>}</span>
+    <span className="emp-act-time">{fechaHora(a.fecha)}</span>
+  </Tag>
+}
 import { toast } from '../lib/toast'
 import { createEmployee, loadEmployees, normalizeEmployeeInput } from '../lib/employeeCreation'
 
@@ -29,10 +39,8 @@ export default function Empleados() {
   const [nuevo, setNuevo] = useState(false)
   const [sel, setSel] = useState(null)
   const [tick, setTick] = useState(0)
-  const [sales,setSales]=useState(null),[salesError,setSalesError]=useState('')
-  useEffect(()=>{let live=true;const controller=new AbortController();setSalesError('');setSales(null);const today=hoyBogota(),m=rangoMes()
-    withDeadline(async signal=>{const results=await Promise.all([cancellableQuery(supabase.rpc('ventas_por_empleado',{p_desde:today,p_hasta:today}),signal),cancellableQuery(supabase.rpc('ventas_por_empleado',{p_desde:m.ini,p_hasta:m.fin}),signal)]);return{day:requireData(results[0])||[],month:requireData(results[1])||[]}}, {signal:controller.signal}).then(data=>{if(live)setSales(data)}).catch(()=>{if(live)setSalesError('No se pudo consultar el rendimiento del equipo. Actualiza la lista para reintentar.')});return()=>{live=false;controller.abort()}
-  },[tick])
+  const [sales, setSales] = useState({day:[],month:[]})
+  useEffect(()=>{if(!isDemoMode)return;const today=hoyBogota(),m=rangoMes();Promise.all([supabase.rpc('ventas_por_empleado',{p_desde:today,p_hasta:today}),supabase.rpc('ventas_por_empleado',{p_desde:m.ini,p_hasta:m.fin})]).then(([day,month])=>setSales({day:day.data||[],month:month.data||[]}))},[tick])
   useEffect(() => {
     let current = true
     setListError('')
@@ -53,22 +61,22 @@ export default function Empleados() {
   }
 
   return (
-    <div className="admin-premium admin-employees"><AppShell title="Empleados" sub="Equipo, acceso y comisiones" right={<button className="btn sm" onClick={() => setNuevo(true)}>+ Vendedor</button>}>
-      <ErrorBox text={listError||salesError} />
-      {(listError||salesError) && <button className="btn sec sm" onClick={refrescar}>Actualizar lista</button>}
+    <div className="admin-premium admin-employees"><AppShell title="Empleados" sub="Equipo, acceso y permisos" right={<button className="btn sm" onClick={() => setNuevo(true)}>+ Vendedor</button>}>
+      <ErrorBox text={listError} />
+      {listError && <button className="btn sec sm" onClick={refrescar}>Actualizar lista</button>}
       <SearchBar value={q} onChange={setQ} placeholder="Buscar empleado o correo" />
       {!lista ? <Loader /> : visible.length === 0 ? <Empty /> : (
         <div className="admin-list entity-list">
           {visible.map((p) => (
             <button type="button" key={p.id} className="row card admin-list-card employee-card" onClick={() => setSel(p)}>
               <div className="employee-card-heading"><span className="entity-avatar">{p.nombre.slice(0,1)}</span><div className="employee-card-copy"><p className="admin-card-title">{p.nombre}</p><p className="admin-card-secondary">{p.rol==='admin'?'Administrador':'Vendedor'}</p></div><Badge tone={p.activo?'good':'bad'}>{p.activo?'Activo':'Inactivo'}</Badge></div>
-              <p className="admin-card-secondary mt-2">{p.correo}</p>{sales&&<div className="employee-summary"><div className="employee-summary-grid"><span><small>Ventas mes</small><b><FitAmount>{money(sales.month.find(s=>s.vendedor_id===p.id)?.total_vendido||0)}</FitAmount></b></span><span><small>Comisión {p.comision_pct!=null?`(${p.comision_pct}%)`:''}</small><b><FitAmount>{money(sales.month.find(s=>s.vendedor_id===p.id)?.comision||0)}</FitAmount></b></span></div><div className="employee-aux"><span>Hoy {money(sales.day.find(s=>s.vendedor_id===p.id)?.total_vendido||0)} · {sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0} facturas mes</span><span className="admin-chevron" aria-hidden="true">›</span></div></div>}
+              <p className="admin-card-secondary mt-2">{p.correo}</p>{isDemoMode&&<div className="employee-summary"><div className="employee-summary-grid"><span><small>Ventas mes</small><b>{money(sales.month.find(s=>s.vendedor_id===p.id)?.total_vendido||0)}</b></span><span><small>Facturas mes</small><b>{sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0}</b></span></div><div className="employee-aux"><span>Hoy {money(sales.day.find(s=>s.vendedor_id===p.id)?.total_vendido||0)} · {sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0} facturas mes</span><span className="admin-chevron" aria-hidden="true">›</span></div></div>}
             </button>
           ))}
         </div>
       )}
       {nuevo && <Nuevo onClose={() => setNuevo(false)} onSaved={creado} />}
-      {sel && <Detalle p={sel} onSalesChange={refrescar} onClose={() => setSel(null)} onCambio={() => { refrescar(); setSel(null) }} />}
+      {sel && <Detalle p={sel} onClose={() => setSel(null)} onCambio={() => { refrescar(); setSel(null) }} />}
     </AppShell></div>
   )
 }
@@ -80,7 +88,7 @@ function Permisos({ value, onChange }) {
 }
 
 function Nuevo({ onClose, onSaved }) {
-  const [f, setF] = useState({ nombre: '', correo: '', password: '', telefono: '', comision_pct: '' })
+  const [f, setF] = useState({ nombre: '', correo: '', password: '', telefono: '' })
   const [permisos, setPermisos] = useState(BASE)
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -114,32 +122,46 @@ function Nuevo({ onClose, onSaved }) {
       <ErrorBox text={err} />
       <FormSection number="01" title="Identidad"><div className="admin-form-grid"><div className="admin-span"><Input required label="Nombre completo" value={f.nombre} onChange={set('nombre')}/></div>{isDemoMode&&<Input label="Documento empleado" value={f.documento||''} onChange={set('documento')}/>}<Input label="Teléfono" value={f.telefono} onChange={set('telefono')} inputMode="tel"/></div></FormSection>
       <FormSection number="02" title="Acceso"><Input label="Correo (con él inicia sesión)" type="email" value={f.correo} onChange={set('correo')}/>{isDemoMode&&<RoleField label="Rol" value={f.rol||'vendedor'} onChange={set('rol')}/>}<PasswordField value={f.password} onChange={set('password')} generate={isDemoMode}/></FormSection>
-      <FormSection number="03" title="Comisiones"><div className="commission-field"><Input label="Comisión % (opcional)" type="number" min="0" max="100" step="0.01" value={f.comision_pct} onChange={set('comision_pct')}/></div></FormSection>
-      <FormSection number="04" title="Permisos" collapsible detail={`${permisos.length} activos`}><Permisos value={permisos} onChange={setPermisos}/></FormSection>
+      <FormSection number="03" title="Permisos" collapsible detail={`${permisos.length} activos`}><Permisos value={permisos} onChange={setPermisos}/></FormSection>
     </Modal>
   )
 }
 
-function Detalle({ p, onClose, onCambio, onSalesChange }) {
+function Detalle({ p, onClose, onCambio }) {
   const [permisos, setPermisos] = useState(null)
-  const [act, setAct] = useState(null),[actError,setActError]=useState(''),[auditTick,setAuditTick]=useState(0),[salesExpanded,setSalesExpanded]=useState(false)
-  const [name,setName] = useState(p.nombre), [documento,setDocumento] = useState(p.documento||''), [rol,setRol] = useState(p.rol), [confirm,setConfirm] = useState(false)
+  const [act, setAct] = useState(null)
+  const [name,setName] = useState(p.nombre), [documento,setDocumento] = useState(p.documento||''), [rol,setRol] = useState(p.rol), [confirm,setConfirm] = useState(false), [sales,setSales] = useState([])
   const [tel, setTel] = useState(p.telefono || '')
-  const [com, setCom] = useState(p.comision_pct ?? '')
   const [err, setErr] = useState('')
   const esAdmin = p.rol === 'admin'
+  // Restablecer acceso del vendedor (correo y/o contraseña nuevos)
+  const [acceso, setAcceso] = useState({ correo: p.correo || '', clave: '' }), [accesoErr, setAccesoErr] = useState(''), [confirmAcceso, setConfirmAcceso] = useState(false), [listo, setListo] = useState(null)
+  const correoNuevo = acceso.correo.trim().toLowerCase() !== String(p.correo || '').toLowerCase()
+  function pedirAcceso() {
+    setAccesoErr('')
+    if (!correoNuevo && !acceso.clave) return setAccesoErr('Escribe un correo nuevo o una contraseña nueva.')
+    if (correoNuevo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acceso.correo.trim())) return setAccesoErr('Escribe un correo válido.')
+    if (acceso.clave && acceso.clave.length < 8) return setAccesoErr('La contraseña debe tener al menos 8 caracteres.')
+    setConfirmAcceso(true)
+  }
+  async function restablecerAcceso() {
+    const { error } = await supabase.rpc('admin_actualizar_acceso', { p_perfil: p.id, p_correo: correoNuevo ? acceso.correo.trim() : null, p_clave: acceso.clave || null })
+    if (error) { const m = error.code === 'PGRST202' ? 'Falta activar esta opción: ejecuta el script 09 en Supabase.' : mensajeError(error); setAccesoErr(m); throw new Error(m) }
+    setListo({ correo: correoNuevo ? acceso.correo.trim().toLowerCase() : p.correo, clave: acceso.clave }); setAcceso({ correo: correoNuevo ? acceso.correo.trim().toLowerCase() : p.correo, clave: '' })
+    toast('Acceso restablecido')
+  }
 
   useEffect(() => {
+    if(isDemoMode) supabase.from('facturas_netas').select('*').eq('vendedor_id',p.id).order('fecha',{ascending:false}).then(({data})=>setSales(data||[]))
     supabase.from('perfil_permisos').select('permiso').eq('perfil_id', p.id).then(({ data }) => setPermisos((data || []).map((r) => r.permiso)))
+    supabase.from('actividad').select('*').eq('perfil_id', p.id).order('fecha', { ascending: false }).limit(25).then(({ data }) => setAct(data || []))
   }, [p.id])
-
-  useEffect(()=>{let live=true;const controller=new AbortController();setAct(null);setActError('');loadActivity(supabase,{perfilId:p.id,esAdmin:false,limit:25,signal:controller.signal}).then(rows=>{if(live)setAct(rows)}).catch(()=>{if(live)setActError('No se pudo cargar la actividad del empleado.')});return()=>{live=false;controller.abort()}},[p.id,auditTick])
 
   const [guardar, pendingSave] = useAction(guardarImpl)
   async function guardarImpl() {
     setErr('')
-    if(isDemoMode){ const {error}=await supabase.rpc('guardar_empleado_demo',{id:p.id,datos:{nombre:name.trim(),documento:documento.trim()||null,telefono:tel.trim()||null,rol,comision_pct:com===''?null:Number(com)},permisos:permisos||[]});if(error)return setErr(mensajeError(error));toast('Cambios guardados');onCambio();return }
-    const { error } = await supabase.from('perfiles').update({ telefono: tel.trim() || null, comision_pct: com === '' ? null : Number(com) }).eq('id', p.id)
+    if(isDemoMode){ const {error}=await supabase.rpc('guardar_empleado_demo',{id:p.id,datos:{nombre:name.trim(),documento:documento.trim()||null,telefono:tel.trim()||null,rol,comision_pct:null},permisos:permisos||[]});if(error)return setErr(mensajeError(error));toast('Cambios guardados');onCambio();return }
+    const { error } = await supabase.from('perfiles').update({ telefono: tel.trim() || null, comision_pct: null }).eq('id', p.id)
     if (error) return setErr(mensajeError(error))
     if (!esAdmin) {
       const d = await supabase.from('perfil_permisos').delete().eq('perfil_id', p.id)
@@ -162,7 +184,16 @@ function Detalle({ p, onClose, onCambio, onSalesChange }) {
       <ErrorBox text={err} />
       <div className="employee-detail-identity"><span className="entity-avatar">{p.nombre.slice(0,1)}</span><div className="flex-1 min-w-0"><b>{p.nombre}</b><p>{p.rol==='admin'?'Administrador':'Vendedor'}</p><p>{p.correo}</p></div><Badge tone={p.activo?'good':'bad'}>{p.activo?'Activo':'Inactivo'}</Badge></div>
       <FormSection title="Datos personales"><div className="admin-form-grid">{isDemoMode&&<><div className="admin-span"><Input required label="Nombre empleado" value={name} onChange={e=>setName(e.target.value)}/></div><Input label="Documento empleado" value={documento} onChange={e=>setDocumento(e.target.value)}/></>}<Input label="Teléfono" value={tel} onChange={e=>setTel(e.target.value)}/></div></FormSection>
-      <FormSection title="Rol y comisiones">{isDemoMode&&<RoleField label="Rol empleado" value={rol} onChange={e=>setRol(e.target.value)}/>}<div className="commission-field"><Input label="Comisión % (vacío = sin comisión)" type="number" min="0" max="100" step="0.01" value={com} onChange={e=>setCom(e.target.value)}/></div></FormSection>
+      {isDemoMode&&<FormSection title="Rol"><RoleField label="Rol empleado" value={rol} onChange={e=>setRol(e.target.value)}/></FormSection>}
+      {!esAdmin && !isDemoMode && <FormSection title="Acceso del vendedor">
+        <p className="admin-hint">Si el vendedor olvidó su correo o contraseña, asígnale unos nuevos aquí. Sus sesiones abiertas se cerrarán.</p>
+        <ErrorBox text={accesoErr} />
+        {listo && <div className="access-done" role="status"><b>Acceso actualizado</b><span>Correo: {listo.correo}</span>{listo.clave && <span>Contraseña: <code>{listo.clave}</code></span>}<small>Compártelos con el vendedor por un medio privado.</small></div>}
+        <Input label="Correo para iniciar sesión" type="email" autoComplete="off" value={acceso.correo} onChange={e => { setListo(null); setAcceso({ ...acceso, correo: e.target.value }) }} />
+        <PasswordField label="Nueva contraseña (opcional)" value={acceso.clave} onChange={e => { setListo(null); setAcceso({ ...acceso, clave: e.target.value }) }} generate />
+        <button type="button" className="btn sec full" onClick={pedirAcceso}>Restablecer acceso</button>
+      </FormSection>}
+      {confirmAcceso && <ConfirmAction title="Restablecer acceso" label="Restablecer" onClose={() => setConfirmAcceso(false)} onConfirm={restablecerAcceso}>{p.nombre} {correoNuevo ? `entrará con el correo ${acceso.correo.trim().toLowerCase()}` : 'conservará su correo'}{acceso.clave ? ' y con la nueva contraseña' : ''}. Sus sesiones abiertas se cerrarán.</ConfirmAction>}
       {!esAdmin && (
         <>
           <FormSection title="Permisos" collapsible detail={permisos?`${permisos.length} activos`:'Cargando…'}>{permisos ? <Permisos value={permisos} onChange={setPermisos} /> : <Loader />}</FormSection>
@@ -170,8 +201,12 @@ function Detalle({ p, onClose, onCambio, onSalesChange }) {
         </>
       )}
       {confirm&&<ConfirmAction title={p.activo?'Desactivar empleado':'Activar empleado'} label="Confirmar estado" onClose={()=>setConfirm(false)} onConfirm={alternar}>Se conserva el historial. El empleado desactivado no podra iniciar sesion.</ConfirmAction>}
-      <details className="admin-history employee-sales-history" onToggle={e=>setSalesExpanded(e.currentTarget.open)}><summary>Ventas y comisiones</summary>{salesExpanded&&<EmployeeSales embedded employee={{vendedor_id:p.id,nombre:p.nombre}} onChange={()=>{setAuditTick(n=>n+1);onSalesChange?.()}}/>}</details>
-      <details className="admin-history"><summary>Historial de actividad</summary>{actError?<><ErrorBox text={actError}/><button type="button" className="btn sec full" onClick={()=>setAuditTick(n=>n+1)}>Reintentar actividad</button></>:act?<ActivityTimeline items={act}/>:<Loader/>}</details>
+      {isDemoMode&&<details className="admin-history"><summary>Ventas</summary><p className="text-sm">Mes actual: {money(sales.filter(f=>f.estado==='emitida'&&f.fecha.slice(0,7)===hoyBogota().slice(0,7)).reduce((n,f)=>n+(f.total_neto||0),0))}</p>{sales.map(f=><div className="row" key={f.id}><span className="flex-1 text-sm">{f.prefijo}-{f.numero} - {f.estado}</span><span className="text-xs">{money(f.total_neto)}</span></div>)}</details>}
+      <details className="admin-history"><summary>Historial de actividad</summary>
+      {!act ? <Loader /> : act.length === 0 ? <Empty text="Sin actividad" /> : act.map((a) => (
+        <ActividadFila key={a.id} a={a} />
+      ))}
+      </details>
     </Modal>
   )
 }

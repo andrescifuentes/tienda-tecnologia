@@ -23,7 +23,7 @@ export function createAuthSession(client, onState, { timeoutMs = AUTH_TIMEOUT } 
         const responses = await Promise.all([
           cancellableQuery(client.from('perfiles').select('*').eq('id', session.user.id).maybeSingle(), signal),
           cancellableQuery(client.from('perfil_permisos').select('permiso').eq('perfil_id', session.user.id), signal),
-          cancellableQuery(client.from('tienda').select('*').eq('id', 1).maybeSingle(), signal),
+          cancellableQuery(client.from('tienda').select('*').order('id').limit(1).maybeSingle(), signal),
         ])
         return responses.map(requireData)
       }, { timeoutMs, signal: op.signal })

@@ -12,8 +12,12 @@ export function periodoVendedor(periodo = 'hoy', now = new Date()) {
     const desde = shiftDay(hasta, -((weekday + 6) % 7))
     return { desde, hasta, anteriorDesde: shiftDay(desde, -7), anteriorHasta: shiftDay(hasta, -7), comparacion: 'vs. semana anterior', nota: 'Mismos días de la semana' }
   }
-  if (periodo !== 'mes') throw new Error('Período no válido.')
   const [year, month, day] = hasta.split('-').map(Number)
+  if (periodo === 'anio') {
+    const prevLast = new Date(Date.UTC(year - 1, month, 0)).getUTCDate()
+    return { desde: year + '-01-01', hasta, anteriorDesde: (year - 1) + '-01-01', anteriorHasta: (year - 1) + hasta.slice(4, 8) + String(Math.min(day, prevLast)).padStart(2, '0'), comparacion: 'vs. año anterior', nota: 'Hasta el mismo día del año' }
+  }
+  if (periodo !== 'mes') throw new Error('Período no válido.')
   const previous = new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7)
   const previousLastDay = new Date(Date.UTC(year, month - 1, 0)).getUTCDate()
   return { desde: hasta.slice(0, 7) + '-01', hasta, anteriorDesde: previous + '-01', anteriorHasta: previous + '-' + String(Math.min(day, previousLastDay)).padStart(2, '0'), comparacion: 'vs. mes anterior', nota: 'Hasta el mismo día del mes' }

@@ -61,3 +61,15 @@
 .invoice-delivery .fd-actions.has-share .fd-act.pdf .fd-act-ic { margin-bottom:6px; }
 .invoice-delivery .fd-act.share { --c:var(--gold); }
 .email-quick-link:focus-visible { outline:2px solid var(--gold); outline-offset:3px; }
+/* Correo simplificado: correo del cliente, Compartir PDF, Gmail/Correo y enlaces pequeños */
+.email-simple .email-preview-recipient{margin:4px 0 12px}
+.email-simple .email-two{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;margin-top:10px}
+.email-simple .email-two .btn{min-height:50px;display:flex;align-items:center;justify-content:center;gap:8px}
+.email-simple .email-two .btn:disabled{opacity:.45}
+.email-simple-note{margin:8px 2px 0;font-size:12px;color:var(--muted);text-align:center}
+.email-simple-links{display:flex;justify-content:center;gap:22px;margin-top:12px}
+.email-simple-links button{display:inline-flex;align-items:center;gap:6px;min-height:44px;background:none;border:0;color:var(--gold,#c79a52);font:inherit;font-weight:600;font-size:13.5px;cursor:pointer}
+.email-simple-links svg{width:16px;height:16px}
+.email-simple-preview{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.email-simple-preview summary{cursor:pointer;min-height:40px;display:flex;align-items:center;color:var(--muted);font-size:13px}
+.email-simple .email-preview-cancel{display:block;margin:10px auto 0}

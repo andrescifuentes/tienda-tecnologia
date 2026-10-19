@@ -34,6 +34,17 @@ export function ThemeToggle() {
   return <button onClick={toggle} className="icon-button" aria-label="Cambiar tema"><Icon name={dark ? 'sun' : 'moon'} className="w-5 h-5" /></button>
 }
 
+function AvisoConexion() {
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false)
+  useEffect(() => {
+    const h = (e) => setOffline(!e.detail), on = () => setOffline(false), off = () => setOffline(true)
+    window.addEventListener('app-conexion', h); window.addEventListener('online', on); window.addEventListener('offline', off)
+    return () => { window.removeEventListener('app-conexion', h); window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+  if (!offline) return null
+  return createPortal(<div className="net-alert" role="alert"><span><b>Sin conexión</b>Lo que ves puede estar incompleto. No repitas ventas ni pagos hasta reconectar.</span><button type="button" onClick={() => window.location.reload()}>Reintentar</button></div>, document.body)
+}
+
 export default function AppShell({ title, sub, onBack, right, footer, homeAside, header, className = '', children }) {
   const deviceRef = useRef(null)
   useSearchViewport(deviceRef)
@@ -42,7 +53,7 @@ export default function AppShell({ title, sub, onBack, right, footer, homeAside,
   const navigate = useNavigate()
   const { perfil } = useAuth()
   const [notificationsOpen,setNotificationsOpen] = useState(false), [profileOpen,setProfileOpen] = useState(false)
-  const notifications = useNotifications(), notices = notifications.items
+  const notifications=useNotifications(pathname === '/'),notices=notifications.items
   const hour = Number(new Intl.DateTimeFormat('en-GB',{timeZone:'America/Bogota',hour:'numeric',hourCycle:'h23'}).format(new Date()))
   const greeting = hour < 12 ? 'Buenos días,' : hour < 18 ? 'Buenas tardes,' : 'Buenas noches,'
   const volver = onBack || (pathname !== '/' ? () => navigate(-1) : null)
@@ -61,11 +72,12 @@ export default function AppShell({ title, sub, onBack, right, footer, homeAside,
         </div>)}
       </header>}
       {isDemoMode && <div className="demo-banner" role="status"><span>{pathname === '/' ? 'DEMO LOCAL' : 'DEMO LOCAL · Datos ficticios'}</span><span>{pathname === '/' ? 'Guardado aquí' : 'Guardado en este dispositivo'}</span></div>}
-      <main className={'view'+(['/inventario','/vender'].includes(pathname)?' brand-catalog-scroll':'')}><div className={'page-content ' + (navType === 'POP' ? 'page-back' : 'page-fwd')} key={pathname}>{children}</div></main>
+      <main className="view"><div className={'page-content ' + (navType === 'POP' ? 'page-back' : 'page-fwd')} key={pathname}>{children}</div></main>
       {footer && <div className="app-footer">{footer}</div>}
       {notificationsOpen&&<Notifications items={notices} error={notifications.error} loading={notifications.loading} markRead={notifications.markRead} onRetry={notifications.retry} onClose={()=>setNotificationsOpen(false)} />}
       {profileOpen&&<ProfileDialog onClose={()=>setProfileOpen(false)} />}
       <BottomNav />
+      <AvisoConexion />
       <Toaster lifted={!!footer} />
     </div>
   )

@@ -1,8 +1,7 @@
+import { nombreNegocio } from '../lib/marca'
 import SalesPeriodDetail from '../components/SalesPeriodDetail'
 import {readFinancialRows} from '../lib/financeQueries'
 import '../styles/invoice-message-settings.css'
-import FacturaDetalle from '../components/FacturaDetalle'
-import EmployeeSales from '../components/EmployeeSales'
 import FitAmount from '../components/FitAmount'
 import '../styles/team-observations.css'
 import InicioVendedor from './InicioVendedor'
@@ -129,14 +128,35 @@ function ActivityRow({ a, onOpen }) {
   </button>
 }
 
+// Ventas del mes de un empleado (desde «Detalle del negocio»)
+function VentasEmpleado({ e, onVolver, onFactura }) {
+  const [facturas, setFacturas] = useState(null), [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    const mes = rangoMes()
+    supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,clientes(nombre)').eq('vendedor_id', e.vendedor_id)
+      .gte('fecha', mes.ini + 'T00:00:00-05:00').lte('fecha', mes.fin + 'T23:59:59-05:00').order('fecha', { ascending: false })
+      .then(r => { if (!active) return; if (r.error) setError(mensajeError(r.error)); else setFacturas(r.data || []) })
+    return () => { active = false }
+  }, [e.vendedor_id])
+  const anuladas = (facturas || []).filter(f => f.estado === 'anulada').length
+  return <div className="executive-seller">
+    <button type="button" className="executive-back" onClick={onVolver}><span aria-hidden="true">‹</span> Volver al resumen</button>
+    <div className="executive-seller-head"><span className="executive-avatar" aria-hidden="true">{e.nombre?.trim().slice(0, 1)}</span><div><b>{e.nombre}</b><small>Ventas de {rangoMes().label}</small></div></div>
+    <div className="executive-seller-kpis"><div><span>Vendido</span><strong>{money(e.total_vendido)}</strong></div><div><span>Facturas</span><strong>{e.facturas}</strong></div><div><span>Anuladas</span><strong>{facturas ? anuladas : '—'}</strong></div></div>
+    <ErrorBox text={error} />
+    {!facturas && !error ? <Loader /> : facturas && (facturas.length ? <div className="executive-invoices">{facturas.map(f => <button type="button" className="executive-invoice" key={f.id} aria-label={'Ver factura ' + numFactura(f)} onClick={() => onFactura(f.id)}><span className="executive-invoice-icon"><Icon name="doc" /></span><div><b>{numFactura(f)}</b><small>{fechaHora(f.fecha)}</small><small>{f.clientes?.nombre || 'Consumidor final'}</small></div><div><strong>{money(f.total)}</strong>{f.estado === 'anulada' && <span className="badge bad">Anulada</span>}</div><span className="executive-invoice-go" aria-hidden="true">›</span></button>)}</div> : <Empty text="Sin facturas este mes" />)}
+  </div>
+}
+
 function DetalleNegocio({ onClose }) {
-  const { can, esAdmin } = useAuth()
-  const navigate=useNavigate()
-  const [invoice,setInvoice]=useState(null),[employee,setEmployee]=useState(null),[tick,setTick]=useState(0)
+  const { can, tienda } = useAuth()
+  const navigate = useNavigate()
+  const irA = to => { onClose(); navigate(to) }
+  const [empleado, setEmpleado] = useState(null)
   const revision = useDemoRevision()
   const [datos, setDatos] = useState(null), [error, setError] = useState('')
   useEffect(() => {
-    if(!esAdmin)return
     let active = true
     setError('')
     const mes = rangoMes()
@@ -151,13 +171,11 @@ function DetalleNegocio({ onClose }) {
       if (active) setDatos({ summary: summary.data[0], team: team.data || [], products: products.data || [], invoices: invoices.data || [] })
     }).catch(e => { if (active) setError(mensajeError(e)) })
     return () => { active = false }
-  }, [revision,tick,esAdmin])
-  if(!esAdmin)return null
-  const openMetric=(key,id)=>{onClose();navigate(key==='producto'?'/inventario?producto='+id:key==='stock_bajo'?'/inventario?filtro=bajo':key==='agotados'?'/inventario?filtro=agotado':key==='valor_inventario'?'/inventario':key==='ingresos_mes'?'/finanzas?detalle=ingreso':key==='gastos_mes'?'/finanzas?detalle=gasto':key==='utilidad_mes'?'/finanzas':key==='ventas_hoy'||key==='facturas_hoy'?'/facturas/historial?fecha='+hoyBogota():'/facturas/historial')}
-  return <><Modal title="Detalle del negocio" subtitle="Resumen ejecutivo de ANGIE TECH" className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
+  }, [revision])
+  return <Modal title="Detalle del negocio" subtitle={'Resumen ejecutivo de ' + nombreNegocio(tienda).toUpperCase()} className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
     <ErrorBox text={error} />
-    {!datos && !error ? <Loader /> : datos && <BusinessDetail data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} onInvoice={setInvoice} onEmployee={setEmployee} onMetric={openMetric} />}
-  </Modal>{employee&&<EmployeeSales employee={employee} onClose={()=>setEmployee(null)}/>} {invoice&&<FacturaDetalle id={invoice} onClose={()=>setInvoice(null)} onCambio={()=>setTick(n=>n+1)}/>}</>
+    {empleado ? <VentasEmpleado e={empleado} onVolver={() => setEmpleado(null)} onFactura={id => irA('/facturas?factura=' + id)} /> : !datos && !error ? <Loader /> : datos && <BusinessDetail onEmpleado={setEmpleado} onIr={irA} data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} onFactura={id => irA('/facturas?factura=' + id)} onVerFacturas={() => irA('/facturas')} />}
+  </Modal>
 }
 
 function DashboardAdmin() {
@@ -223,12 +241,10 @@ function DashboardAdmin() {
 
       <div className="ah-duo">
         <button type="button" className="ah-mini" onClick={() => navigate('/finanzas?detalle=ingreso&mes='+ym)}>
-          <span className="ah-mini-icon gold"><Coins /></span>
-          <span className="ah-mini-body"><span className="ah-mini-top"><span>Ingresos</span><Chevron /></span><b><FitAmount>{money(p.ingresos)}</FitAmount></b><Delta value={p.dIngresos} label={p.vsLabel} /></span>
+          <span className="ah-mini-body"><span className="ah-mini-top"><span className="ah-mini-label"><span className="ah-mini-icon gold"><Coins /></span>Ingresos</span><Chevron /></span><b><FitAmount>{money(p.ingresos)}</FitAmount></b><Delta value={p.dIngresos} label={p.vsLabel} /></span>
         </button>
         <button type="button" className="ah-mini" onClick={() => navigate('/finanzas?detalle=gasto&mes='+ym)}>
-          <span className="ah-mini-icon red"><Wallet /></span>
-          <span className="ah-mini-body"><span className="ah-mini-top"><span>Gastos</span><Chevron /></span><b><FitAmount>{money(p.gastos)}</FitAmount></b><Delta value={p.dGastos} label={p.vsLabel} inverse /></span>
+          <span className="ah-mini-body"><span className="ah-mini-top"><span className="ah-mini-label"><span className="ah-mini-icon red"><Wallet /></span>Gastos</span><Chevron /></span><b><FitAmount>{money(p.gastos)}</FitAmount></b><Delta value={p.dGastos} label={p.vsLabel} inverse /></span>
         </button>
       </div>
 

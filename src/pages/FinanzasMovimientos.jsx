@@ -47,7 +47,13 @@ export default function FinanzasMovimientos() {
       if (!vivo) return
       const manuales = (m.data || []).filter((x) => !x.origen)
       const compras = (c.data || []).map((x) => ({ id: 'c' + x.id, compraId: x.id, tipo: 'gasto', categoria: 'Compra de mercancía', descripcion: [x.proveedores?.nombre, x.numero_documento, x.forma_pago === 'credito' ? 'a crédito' : null].filter(Boolean).join(' · '), monto: x.total, fecha: x.fecha, origen: 'compra' }))
-      const ventas = (f.data || []).map((x) => ({ id: 'f' + x.id, tipo: 'ingreso', categoria: 'Venta ' + numFactura(x), descripcion: x.clientes?.nombre || 'Consumidor final', monto: x.total, fecha: new Date(x.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), origen: 'venta' }))
+      // Ventas netas: se descuenta lo devuelto para que coincida con Inicio y Finanzas
+      const ids = (f.data || []).map((x) => x.id)
+      const dv = ids.length ? await supabase.from('devoluciones').select('factura_id,total_devuelto').in('factura_id', ids) : { data: [] }
+      if (!vivo) return
+      const devuelto = {}
+      for (const d of dv.data || []) devuelto[d.factura_id] = (devuelto[d.factura_id] || 0) + Number(d.total_devuelto || 0)
+      const ventas = (f.data || []).filter((x) => Number(x.total) - (devuelto[x.id] || 0) > 0).map((x) => ({ id: 'f' + x.id, tipo: 'ingreso', categoria: 'Venta ' + numFactura(x) + (devuelto[x.id] ? ' · con devolución' : ''), descripcion: x.clientes?.nombre || 'Consumidor final', monto: Number(x.total) - (devuelto[x.id] || 0), fecha: new Date(x.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }), origen: 'venta' }))
       setDatos([...manuales, ...compras, ...ventas].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))))
     })()
     return () => { vivo = false }

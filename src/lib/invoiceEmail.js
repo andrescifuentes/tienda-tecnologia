@@ -1,6 +1,7 @@
 import {preserveNativeShareContext} from './nativeShareContext.js'
 import {renderInvoiceMessages} from '../../supabase/functions/_shared/invoice-messages.js'
 import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
+import { armarMensajeFactura, plantillaFactura } from './mensajeFactura.js'
 import { money, numFactura } from './format.js'
 
 export function validarCorreoFactura(value) {
@@ -10,23 +11,23 @@ export function validarCorreoFactura(value) {
   return ''
 }
 
-export function crearBorradorCorreoFactura({ invoice, correo = '', detalle = '', tienda, items=[] } ) {
-  const destino = String(correo || '').trim()
-  if(tienda?.plantillas_factura){const message=renderInvoiceMessages({invoice,items,tienda,templates:tienda.plantillas_factura}),asunto=message.asunto,cuerpo=message.correo;return{canal:'correo',destino,asunto,cuerpo,adjuntoManual:true,url:validarCorreoFactura(destino)?'':'mailto:'+encodeURIComponent(destino)+'?subject='+encodeURIComponent(asunto)+'&body='+encodeURIComponent(cuerpo)}}
-  const number = numFactura(invoice)
-  const nombre = invoice.clientes?.nombre?.trim().split(/\s+/)[0]
-  const brand = invoiceBrand(invoice.tienda_snapshot || tienda)
-  const asunto = 'Factura ' + number + ' - ' + brand
-  const cuerpo = [
-    nombre ? 'Hola ' + nombre + ',' : 'Hola,', '',
-    'Gracias por tu compra en ' + brand + '.',
-    'Te compartimos la factura ' + number + ' correspondiente a tu compra por ' + money(invoice.total) + '.', '',
-    detalle ? detalle.replace(/\*/g, '') + '\n' : '',
-    'Si tienes alguna pregunta sobre tu compra, estaremos encantados de ayudarte.', '',
-    'Saludos,', brand,
-  ].join('\n')
-  const url = validarCorreoFactura(destino) ? '' : 'mailto:' + encodeURIComponent(destino) + '?subject=' + encodeURIComponent(asunto) + '&body=' + encodeURIComponent(cuerpo)
-  return { canal: 'correo', destino, asunto, cuerpo, adjuntoManual: true, url }
+// The current shared message has priority; invoice snapshots keep business identity only.
+export function invoiceMessageBody({invoice,tienda,items=[],pdfUrl='',canal='correo'}){
+ const store=tienda||{},brand=invoiceBrand(invoice.tienda_snapshot||store),customer=invoice.cliente_snapshot?.nombre?invoice.cliente_snapshot:invoice.clientes
+ const nombre=customer?.nombre?.trim().split(/\s+/)[0]||'cliente',number=numFactura(invoice)
+ let link='';if(pdfUrl){const url=new URL(pdfUrl);if(url.protocol!=='https:'||url.username||url.password)throw Error('El enlace de la factura no es válido.');if(/^\/f\/[A-Za-z0-9_-]{3,128}\/?$/.test(url.pathname)&&!url.search&&!url.hash)link=url.href}
+ const configured=String(store.mensaje_factura||'').trim()
+ if(!Object.hasOwn(store,'mensaje_factura')&&!configured&&store.plantillas_factura&&store.invoiceMessageSource!=='default'){
+  const rendered=renderInvoiceMessages({invoice:{...invoice,cliente_snapshot:customer},items,tienda:store,templates:store.plantillas_factura}),body=canal==='whatsapp'?rendered.whatsapp:rendered.correo
+  return{body:body+(link&&!body.includes(link)?'\n\n'+link:''),subject:rendered.asunto,link}
+ }
+ return{body:armarMensajeFactura(plantillaFactura(store),{cliente:nombre,negocio:brand,factura:number,total:money(invoice.total)+' COP',enlace:link}).replace(/\*/g,''),subject:'Factura '+number+' - '+brand,link}
+}
+export function crearBorradorCorreoFactura({ invoice, correo = '', detalle = '', tienda, pdfUrl = '', items=[] }) {
+ const destino=String(correo||'').trim(),message=invoiceMessageBody({invoice,tienda,items,pdfUrl}),asunto=message.subject
+ const cuerpo=(message.body+(!message.link&&detalle?'\n\n'+detalle.replace(/\*/g,''):'')).trim()
+ const url=validarCorreoFactura(destino)?'':'mailto:'+encodeURIComponent(destino)+'?subject='+encodeURIComponent(asunto)+'&body='+encodeURIComponent(cuerpo)
+ return{canal:'correo',destino,asunto,cuerpo,adjuntoManual:!message.link,url}
 }
 
 // An OS protocol hand-off does not acknowledge opening an app or sending mail.
@@ -139,7 +140,7 @@ export async function copiarTextoFactura(text, { navigator = globalThis.navigato
 export function puedeCompartirFactura(file, navigator = globalThis.navigator) {
   try { return !!(file && navigator?.share && navigator.canShare?.({ files: [file] })) } catch { return false }
 }
-export async function compartirFacturaPorSistema(file, navigator = globalThis.navigator, { title = file?.name, text = 'Te compartimos tu factura de Angie Tech.' } = {}) {
+export async function compartirFacturaPorSistema(file, navigator = globalThis.navigator, { title = file?.name, text = 'Te compartimos tu factura.' } = {}) {
   if (!puedeCompartirFactura(file, navigator)) return 'unavailable'
   const restore=preserveNativeShareContext()
   try { await navigator.share({ files: [file], title, text }); return 'shared' }

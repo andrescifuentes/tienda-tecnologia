@@ -23,7 +23,7 @@ check('AT-01: authorized frozen checkout keeps displayed price and discount',()=
 check('AT-01: invoice, stock, ledger, commission and PDF agree',()=>{
   assert.equal(tables().productos.find(x=>x.id===p.id).stock,p.stock-2)
   assert.equal(tables().movimientos.find(m=>m.factura_id===id&&m.origen==='venta').monto,args.p_total_confirmado)
-  assert.equal(invoice.comision,Math.round(args.p_total_confirmado*.03))
+  assert.ok(!invoice.comision) // los vendedores no reciben comisión
 })
 const items=await ok(client.from('factura_items').select('*').eq('factura_id',id))
 let pdf=createInvoicePdf(invoice,items,tables().tienda[0],true)

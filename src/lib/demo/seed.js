@@ -39,7 +39,7 @@ export function createDemoSeed(now = new Date()) {
   ]
   const t = Object.fromEntries(['perfiles','perfil_permisos','actividad','categorias','proveedores','productos','unidades_serializadas','movimientos_inventario','compras','compra_items','pagos_proveedor','clientes','facturas','factura_items','factura_envios','devoluciones','devolucion_items','garantias','reclamos_garantia','movimientos','tienda','caja_sesiones','caja_eventos'].map((name) => [name, []]))
   const add = (table, data) => { const row = { id: t[table].length + 1, ...data }; t[table].push(row); return row }
-  t.perfiles = DEMO_ACCOUNTS.map(([id, nombre, correo, rol, comision_pct], i) => ({ id, nombre, correo, rol, comision_pct, activo: true, telefono: `300000010${i}`, password_hash: PASSWORD_HASH }))
+  t.perfiles = DEMO_ACCOUNTS.map(([id, nombre, correo, rol, comision_pct], i) => ({ id, nombre, correo, rol, comision_pct: null, activo: true, telefono: `300000010${i}`, password_hash: PASSWORD_HASH }))
   for (const p of t.perfiles.filter((p) => p.rol !== 'admin')) for (const permiso of ['vender','ver_inventario','crear_clientes']) add('perfil_permisos', { perfil_id: p.id, permiso })
   for (const nombre of ['Smartphones','Audio','Wearables','Computadores','Tablets','Accesorios']) add('categorias', { nombre, activa: true })
   for (const [i, nombre] of ['Distribuciones Mobile SAS','Tech Import Colombia','Smart Supply Colombia','Accesorios Premium SAS','Digital World Mayoristas'].entries()) add('proveedores', { nombre, nit: `90000010${i}-0`, contacto: ['Diana Mejía','Andrés Rojas','Camila Vega','Santiago Gil','Laura Jiménez'][i], telefono: `300000020${i}`, correo: `compras${i}@mayorista.example.test`, ciudad: ['Bogotá','Medellín','Cali','Bogotá','Barranquilla'][i], direccion: 'Dirección ficticia · Colombia', activo: true })
@@ -77,5 +77,6 @@ export function createDemoSeed(now = new Date()) {
   add('actividad',{perfil_id:'demo-admin',accion:'Ingreso de mercancía',entidad:'compra',entidad_id:1,detalle:{proveedor:t.proveedores[0].nombre},fecha:when(0)})
   add('actividad',{perfil_id:'demo-admin',accion:'Producto actualizado',entidad:'producto',entidad_id:1,detalle:{nombre:t.productos[0].nombre},fecha:when(1)})
   add('tienda',{nombre:'ANGIE TECH',nit:'900000999-0',moneda:'COP',zona_horaria:'America/Bogota',factura_prefijo:'FV',ultimo_numero_factura:1258,factura_pie:'Gracias por elegir Angie Tech · demostración local'})
+  for(const table of ['perfiles','productos','clientes','proveedores','categorias','movimientos','garantias','compras','facturas','unidades_serializadas','movimientos_inventario','actividad'])for(const row of t[table])row.negocio_id=1
   return { version:1,session:null,tables:t }
 }

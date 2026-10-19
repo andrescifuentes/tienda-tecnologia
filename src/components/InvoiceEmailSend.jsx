@@ -8,7 +8,7 @@ import { invoiceIdentity, invoiceBusiness } from '../lib/invoiceSnapshot'
 import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { money, numFactura } from '../lib/format'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
-export default function InvoiceEmailSend({invoice,items=[],tienda,onCancel,onShare,onManual}) {
+export default function InvoiceEmailSend({invoice,items=[],tienda,onCancel,onShare,onManual,onSent}) {
  const [meta,setMeta]=useState(null),[email,setEmail]=useState(''),[phase,setPhase]=useState('preparing'),[error,setError]=useState(''),[accepted,setAccepted]=useState(null)
  const draft=crearBorradorCorreoFactura({invoice:invoiceIdentity(invoice),correo:email,tienda,items})
  const generation=useRef(0),lock=useRef(false),controller=useRef(null),heading=useRef(null)
@@ -23,13 +23,13 @@ export default function InvoiceEmailSend({invoice,items=[],tienda,onCancel,onSha
   quitarFocoEntrada();if(lock.current||isDemoMode||!isInvoiceEmailEnabled||!meta?.configured||accepted)return
   if(!validateInvoiceRecipient(email))return setError('Revisa el correo del destinatario.')
   lock.current=true;const token=generation.current;setPhase('sending');setError('')
-  try{const data=await requestInvoiceEmail(supabase,{action:'send',facturaId:invoice.id,destinatario:email.trim(),version:meta.version},controller.current.signal);if(generation.current!==token)return;setAccepted(data);setPhase('accepted')}
+  try{const data=await requestInvoiceEmail(supabase,{action:'send',facturaId:invoice.id,destinatario:email.trim(),version:meta.version},controller.current.signal);if(generation.current!==token)return;setAccepted(data);setPhase('accepted');onSent?.()}
   catch(e){if(generation.current===token){setError(e.message);if(e.code==='PREVIEW_CHANGED'&&e.preview){setMeta(m=>({...m,...e.preview}));setPhase('ready')}else setPhase('error')}}
   finally{if(generation.current===token)lock.current=false}
  }
  return <section className="invoice-preview invoice-email-preview invoice-email-send" aria-label="Enviar factura por correo">
-  <header ref={heading} className="email-preview-head"><span className="email-preview-icon"><I n="mail" /></span><div><span className="email-preview-eyebrow">{meta?.nombreComercial||'Angie Tech'}</span><h4>Enviar factura por correo</h4><p>{meta?.numero||numFactura(invoice)} · {money(meta?.total??invoice.total)} COP</p></div></header>
-  <p className="email-preview-status"><I n="receipt" />{phase==='pending'?'PDF disponible para compartir':'PDF adjunto automáticamente'}</p>
+  <header ref={heading} className="email-preview-head"><span className="email-preview-icon"><I n="mail" /></span><div><span className="email-preview-eyebrow">{meta?.nombreComercial||invoiceBrand(tienda)}</span><h4>Enviar factura por correo</h4><p>{meta?.numero||numFactura(invoice)} · {money(meta?.total??invoice.total)} COP</p></div></header>
+  <p className="email-preview-status"><I n="receipt" />{meta?.configured&&isInvoiceEmailEnabled?'PDF preparado para adjuntar al confirmar':'PDF disponible para compartir'}</p>
   <ErrorBox text={error}/>
   {phase==='preparing'&&<p className="email-preview-info" role="status">Preparando factura…</p>}
   {phase==='sending'&&<p className="email-preview-info" role="status">Enviando correo… Puedes cerrar; al reintentar se comprueba el mismo envío.</p>}
@@ -39,6 +39,6 @@ export default function InvoiceEmailSend({invoice,items=[],tienda,onCancel,onSha
   {phase==='pending'&&<p className="email-preview-info" role="status">Correo automático pendiente de activación. Comparte el PDF real desde tu dispositivo.</p>}
   {isDemoMode&&<p className="email-preview-info">Modo demo local: no se envían correos reales.</p>}
   {meta?.identidadHistorica===false&&<p className="email-preview-info">Factura anterior al historial de identidad: importes y productos conservados; los datos de contacto y negocio disponibles son los actuales.</p>}
-  <div className="email-preview-actions">{phase==='pending'&&<button type="button" className="btn" onClick={()=>{quitarFocoEntrada();onShare()}}>Compartir PDF</button>}<button type="button" className="btn email-confirm-send" disabled={phase==='preparing'||phase==='sending'||phase==='accepted'||!meta?.configured||isDemoMode} onClick={send}>{phase==='sending'?'Enviando…':phase==='error'?'Reintentar envío':'Confirmar envío'}</button><button type="button" className="btn sec" onClick={()=>{quitarFocoEntrada();onManual()}}>Métodos manuales</button><button type="button" className="email-preview-cancel" onClick={()=>{quitarFocoEntrada();onCancel()}}>{phase==='accepted'?'Cerrar':'Cancelar'}</button></div>
+  <div className="email-preview-actions">{phase==='pending'&&onShare&&<button type="button" className="btn" onClick={()=>{quitarFocoEntrada();onShare()}}>Compartir PDF</button>}<button type="button" className="btn email-confirm-send" disabled={phase==='preparing'||phase==='sending'||phase==='accepted'||!meta?.configured||isDemoMode} onClick={send}>{phase==='sending'?'Enviando…':phase==='error'?'Reintentar envío':'Confirmar envío'}</button><button type="button" className="btn sec" onClick={()=>{quitarFocoEntrada();onManual()}}>Métodos manuales</button><button type="button" className="email-preview-cancel" onClick={()=>{quitarFocoEntrada();onCancel()}}>{phase==='accepted'?'Cerrar':'Cancelar'}</button></div>
  </section>
 }

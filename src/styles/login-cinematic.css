@@ -77,3 +77,23 @@
 @keyframes login-scene-reveal { from { opacity:0; transform:scale(1.035); } to { opacity:.9; transform:scale(1); } }
 @keyframes login-sweep { from { transform:translateX(0) skewX(-20deg); } to { transform:translateX(400%) skewX(-20deg); } }
 @media(prefers-reduced-motion:reduce) { .login-cinematic *,.login-cinematic *:before,.login-cinematic *:after { animation:none !important; transition:none !important; } }
+/* Acceso por rol: Administrador / Vendedor */
+.login-cinematic .login-role { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; margin:0 0 16px; border-radius:16px; background:var(--login-field); border:1px solid var(--login-border); }
+.login-cinematic .login-role button { all:unset; box-sizing:border-box; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:7px; min-height:42px; border-radius:12px; font-size:13px; font-weight:600; color:#a79e8d; transition:background .25s,color .25s,box-shadow .25s; }
+.login-cinematic .login-role button svg { width:16px; height:16px; }
+.login-cinematic .login-role button.on { color:#1b150b; background:linear-gradient(135deg,#e9cf98,#c79a52); box-shadow:0 8px 18px -10px #c79a52; }
+.login-cinematic .login-role button:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+.login-cinematic .login-register { all:unset; box-sizing:border-box; cursor:pointer; display:block; width:100%; text-align:center; margin:12px 0 0; padding:10px; border-radius:14px; border:1px dashed #c79a5266; font-size:12px; color:#bdb3a2; }
+.login-cinematic .login-register b { color:var(--gold); font-weight:700; }
+:root[data-theme="light"] .login-cinematic .login-role button { color:#7c6a4c; }
+:root[data-theme="light"] .login-cinematic .login-role button.on { color:#20180b; }
+:root[data-theme="light"] .login-cinematic .login-register { color:#6f5d42; border-color:#c79a5280; }
+.login-cinematic.login-keyboard .login-role { margin-bottom:10px; }
+/* Registro de administradores */
+.login-cinematic.register-screen .login-layout { padding-top:max(16px,env(safe-area-inset-top)); }
+.login-cinematic .register-top { display:flex; align-items:center; gap:12px; padding:8px 20px 18px; }
+.login-cinematic .register-top .login-theme { position:static; }
+.login-cinematic .register-note { font-size:12.5px; line-height:1.45; color:#bdb3a2; margin:0 0 14px; }
+.login-cinematic .register-note b { color:var(--gold); }
+:root[data-theme="light"] .login-cinematic .register-note { color:#6f5d42; }
+.login-cinematic.register-screen .login-form { margin-top:0; }

@@ -1,5 +1,5 @@
-import { invoiceBrand } from './invoice-brand.js'
-import { businessContactLines, validateBusinessLogo } from './business-settings.js'
+import { invoiceBrand, isAngieBrand, brandSlug, camposEmpresa } from './invoice-brand.js'
+import { businessNit, validateBusinessLogo } from './business-settings.js'
 const money = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO')
 const numFactura = f => f.prefijo + '-' + String(f.numero).padStart(4, '0')
 const invoiceBusiness = (f, store) => f?.tienda_snapshot || store
@@ -8,13 +8,14 @@ const invoiceIdentity = f => ({ ...f, clientes: Object.hasOwn(f,'cliente_snapsho
 /** @param {{jsPDF: any, logo?: string|null, demo?: boolean}} options */
 export function renderInvoicePdf(invoice, items, tienda, options) {
   const { jsPDF, logo = null, demo = false } = options
+  let LOGO = logo
   invoice = invoiceIdentity(invoice)
   tienda = invoiceBusiness(invoice, tienda) || {}
-  let LOGO = logo
-  if(tienda.logo_data_url){try{LOGO=validateBusinessLogo(tienda.logo_data_url)}catch{ /* invalid historical logo falls back to brand */ }}
+  if (!isAngieBrand(tienda)) LOGO = null
+  if (tienda.logo_data_url) { try { LOGO = validateBusinessLogo(tienda.logo_data_url) } catch { /* Keep this business' own branding if a historical image is invalid. */ } }
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const number = numFactura(invoice)
-  const filename = `ANGIE-TECH-${number.replace(/[^a-zA-Z0-9-]/g, '')}.pdf`
+  const filename = `${brandSlug(tienda)}-${number.replace(/[^a-zA-Z0-9-]/g, '')}.pdf`
   const marca = invoiceBrand(tienda).toUpperCase()
   doc.setProperties({ title: `${marca} · ${number}`, subject: 'Factura de venta', creator: marca })
   const W = 210, M = 16, R = W - M
@@ -24,6 +25,8 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
     const limpio = t => String(t ?? '').replace(/[\u202f\u00a0\u2009]/g, ' ').replace(/[\u2212\u2013]/g, '-')
     doc.text(Array.isArray(value) ? value.map(limpio) : limpio(value), x, y, align ? { align } : undefined)
   }
+  // Mide el texto con la misma fuente y tamaño con que se imprime (evita textos montados)
+  const split = (value, width, size, bold = false) => { doc.setFont('helvetica', bold ? 'bold' : 'normal').setFontSize(size); return doc.splitTextToSize(String(value ?? ''), width) }
   const fecha = new Date(invoice.fecha)
   const fechaTxt = fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' })
   const horaTxt = fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })
@@ -32,7 +35,7 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   doc.setFillColor(14, 13, 11).rect(0, 0, W, 50, 'F')
   doc.setFillColor(...GOLD).rect(0, 50, W, 1.1, 'F')
   let logoDrawn = false
-  if (LOGO) { try { const image=doc.getImageProperties(LOGO),scale=Math.min(42/image.width,29.1/image.height),width=image.width*scale,height=image.height*scale; doc.addImage(LOGO, LOGO.startsWith('data:image/jpeg;')?'JPEG':'PNG', M+(42-width)/2, 10.5+(29.1-height)/2, width, height); logoDrawn=true } catch { /* invalid image keeps visible business name */ } }
+  if (LOGO) { try { const image=doc.getImageProperties(LOGO),scale=Math.min(42/image.width,29.1/image.height),width=image.width*scale,height=image.height*scale; doc.addImage(LOGO, LOGO.startsWith('data:image/jpeg;')?'JPEG':'PNG', M+(42-width)/2, 10.5+(29.1-height)/2, width, height); logoDrawn=true } catch { /* Invalid images keep the business name visible. */ } }
   if (!logoDrawn) T(marca, M, 28, { size: 22, bold: true, color: GOLD_L })
   T('FACTURA DE VENTA', R, 16, { size: 8, bold: true, color: GOLD, align: 'right' })
   doc.setDrawColor(...GOLD).setLineWidth(.3).line(R - 34, 18.5, R, 18.5)
@@ -44,33 +47,58 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
 
   // 2. Datos de la tienda
   let y = 60
-  const tiendaDatos = businessContactLines(tienda)
-  const contactLines = doc.splitTextToSize(tiendaDatos.length ? tiendaDatos.join('   ·   ') : 'Tecnología, celulares y accesorios', R - M)
-  T(marca, M, y, { size: 10, bold: true }); T(contactLines, M, y + 5, { size: 8, color: MUTED })
-  y += 9 + contactLines.length * 4
+  const tiendaDatos = [
+    ...(tienda.razon_social ? [['Razón social', tienda.razon_social]] : []),
+    ...camposEmpresa({ ...tienda, nit:businessNit(tienda), direccion:[tienda.direccion,tienda.ciudad].filter(Boolean).join(', ') }),
+    ...(tienda.whatsapp ? [['WhatsApp', tienda.whatsapp]] : []),
+  ]
+  T('EMPRESA', M, y - 1, { size: 6.5, bold: true, color: GOLD })
+  T(marca, M, y + 4, { size: 11, bold: true })
+  y += 9
+  if (!tiendaDatos.length) { T('Tecnología, celulares y accesorios', M, y, { size: 8, color: MUTED }); y += 7 }
+  else {
+    // Rótulo dorado arriba y valor abajo, en 3 columnas (la dirección ocupa dos)
+    const colE = (R - M) / 3
+    let col = 0, fila = y, alto = 0
+    for (const [k, val] of tiendaDatos) {
+      const ancho = k === 'Dirección' ? 2 : 1
+      if (col + ancho > 3) { col = 0; fila += alto + 3; alto = 0 }
+      const x = M + col * colE, lines = split(val, colE * ancho - 4, 8.5).slice(0, 2)
+      T(k.toUpperCase(), x, fila + 3, { size: 6.5, bold: true, color: MUTED })
+      T(lines, x, fila + 7.5, { size: 8.5 })
+      alto = Math.max(alto, 7.5 + lines.length * 3.8)
+      col += ancho
+    }
+    y = fila + alto + 3
+  }
+  doc.setDrawColor(...LINE).setLineWidth(.2).line(M, y - 1, R, y - 1)
+  y += 3
 
   // 3. Panel Cliente | Atendido por (rótulo arriba, valor abajo)
   const c = invoice.clientes || {}, v = invoice.perfiles || {}
   const colW = (R - M - 20) / 2, x1 = M + 7, x2 = M + 7 + colW + 6
-  const lado = (x, titulo, nombre, datos, vacio) => {
-    T(titulo, x, y + 8, { size: 7, bold: true, color: GOLD })
-    const nom = doc.splitTextToSize(nombre, colW)
-    T(nom.slice(0, 2), x, y + 15, { size: 12, bold: true })
-    let ly = y + 15 + nom.slice(0, 2).length * 5 + 2
+  const lado = (x, titulo, nombre, datos, vacio, draw = true) => {
+    const P = draw ? T : () => {}
+    P(titulo, x, y + 8, { size: 7, bold: true, color: GOLD })
+    const nom = split(nombre, colW - 2, 12, true).slice(0, 3)
+    P(nom, x, y + 15, { size: 12, bold: true })
+    let ly = y + 15 + nom.length * 5 + 2
     const lista = datos.filter(d => d[1])
-    if (!lista.length && vacio) { T(vacio, x, ly, { size: 8, color: MUTED }); return ly + 4 }
+    if (!lista.length && vacio) { P(split(vacio, colW - 2, 8), x, ly, { size: 8, color: MUTED }); return ly + 4 }
     for (const [k, val] of lista) {
-      T(k.toUpperCase(), x, ly, { size: 6.2, color: [150, 140, 125] })
-      const vl = doc.splitTextToSize(String(val), colW)
-      T(vl.slice(0, 2), x, ly + 4, { size: 8.8 }); ly += 4 + vl.slice(0, 2).length * 4 + 3
+      P(k.toUpperCase(), x, ly, { size: 6.2, color: [150, 140, 125] })
+      const vl = split(val, colW - 2, 8.8).slice(0, 3)
+      P(vl, x, ly + 4, { size: 8.8 }); ly += 4 + vl.length * 4 + 3
     }
     return ly
   }
   // medir alto con una pasada "en seco" usando las mismas reglas
   const datosC = [['Documento', c.documento && `${c.tipo_documento || 'CC'} ${c.documento}`], ['Teléfono', c.telefono], ['Correo', c.correo], ['Dirección', c.direccion]]
-  const datosV = [['Correo', v.correo], ['Teléfono', v.telefono], ['Método de pago', invoice.metodo_pago && invoice.metodo_pago.charAt(0).toUpperCase() + invoice.metodo_pago.slice(1)]]
-  const alto = l => 24 + Math.max(1, l.filter(d => d[1]).length) * 11
-  const panelH = Math.max(alto(datosC), alto(datosV), 34)
+  const datosV = [['Correo', tienda.correo], // correo del negocio, no el del vendedor
+    ['Teléfono', v.telefono], ['Método de pago', invoice.metodo_pago && invoice.metodo_pago.charAt(0).toUpperCase() + invoice.metodo_pago.slice(1)]]
+  const finC = lado(x1, '', c.nombre || 'Consumidor final', c.nombre ? datosC : [], 'Venta de mostrador · sin datos de contacto', false)
+  const finV = lado(x2, '', v.nombre || 'Vendedor', datosV, undefined, false)
+  const panelH = Math.max(finC - y + 3, finV - y + 3, 34)
   doc.setFillColor(...CREAM).setDrawColor(...LINE).setLineWidth(.25).roundedRect(M, y, R - M, panelH, 3, 3, 'FD')
   doc.setDrawColor(...GOLD).setLineWidth(.35).line(M + 7 + colW + 2, y + 6, M + 7 + colW + 2, y + panelH - 6)
   lado(x1, 'CLIENTE', c.nombre || 'Consumidor final', c.nombre ? datosC : [], 'Venta de mostrador · sin datos de contacto')
@@ -88,7 +116,7 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   const nuevaPagina = () => { doc.addPage(); doc.setFillColor(14, 13, 11).rect(0, 0, W, 14, 'F'); T(marca, M, 9, { size: 9, bold: true, color: GOLD_L }); T(number, R, 9, { size: 9, color: [230, 230, 230], align: 'right' }); y = 26; header() }
   header()
   items.forEach((it, i) => {
-    const lines = doc.splitTextToSize(String(it.nombre || 'Producto') + (it.serial ? ' · Serial/IMEI: ' + it.serial : ''), cols.cant - cols.prod - 18)
+    const lines = split(String(it.nombre || 'Producto') + (it.serial ? ' · Serial/IMEI: ' + it.serial : ''), cols.cant - cols.prod - 18, 9.5, true)
     const rowH = Math.max(10, lines.length * 4.6 + 5.5)
     if (y + rowH > 250) nuevaPagina()
     if (i % 2 === 1) doc.setFillColor(252, 250, 245).rect(M, y - 5.5, R - M, rowH, 'F')
@@ -109,7 +137,7 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   const fila = (k, val, color = INK) => { T(k, tx, y, { size: 9, color: MUTED }); T(val, cols.total, y, { size: 9.5, align: 'right', color }); y += 6.5 }
   const unidades = items.reduce((a, i) => a + Number(i.cantidad || 0), 0)
   T(`${items.length} ${items.length === 1 ? 'producto' : 'productos'} · ${unidades} ${unidades === 1 ? 'unidad' : 'unidades'}`, M, y, { size: 8.5, color: MUTED })
-  if (invoice.notas) T(doc.splitTextToSize('Notas: ' + invoice.notas, 95), M, y + 6, { size: 8.5, color: MUTED })
+  if (invoice.notas) T(split('Notas: ' + invoice.notas, 95, 8.5), M, y + 6, { size: 8.5, color: MUTED })
   fila('Subtotal', money(invoice.subtotal))
   if (Number(invoice.descuento) > 0) fila('Descuento', '-' + money(invoice.descuento), [170, 60, 50])
   y += 1
@@ -124,7 +152,7 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   if (y + 24 > 268) nuevaPagina()
   doc.setDrawColor(...GOLD).setLineWidth(.4).line(W / 2 - 20, y, W / 2 + 20, y)
   T('Gracias por tu compra', W / 2, y + 9, { size: 15, font: 'times', style: 'italic', color: INK, align: 'center' })
-  T(doc.splitTextToSize(tienda.factura_pie || 'Conserva este documento para cambios y soporte.', 150), W / 2, y + 15, { size: 8.5, color: MUTED, align: 'center' })
+  T(split(tienda.factura_pie || 'Conserva este documento para cambios y soporte.', 150, 8.5), W / 2, y + 15, { size: 8.5, color: MUTED, align: 'center' })
 
   // 7. Pie en todas las páginas
   const pages = doc.getNumberOfPages()

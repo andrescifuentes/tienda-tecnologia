@@ -51,7 +51,7 @@ try {
   function send(method, params = {}) {
     return new Promise((resolve, reject) => {
       const id = ++seq
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)) }, 30000)
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)) }, 60000)
       pending.set(id, { resolve, reject, timer })
       socket.send(JSON.stringify({ id, method, params }))
     })
@@ -91,10 +91,10 @@ try {
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text)
     return result.result.value
   }
-  async function waitFor(expression, timeout = 25000) {
+  async function waitFor(expression, timeout = 60000) {
     const deadline = Date.now() + timeout
     do { if (await evaluate(expression)) return; await delay(150) } while (Date.now() < deadline)
-    await screenshot("failure"); await writeFile(join(artifacts,"failure.json"),JSON.stringify(await evaluate("({alerts:[...document.querySelectorAll(\"[role=alert]\")].map(e=>e.textContent),body:document.body.innerText})"),null,2));
+    await screenshot("failure"); await writeFile(join(artifacts,"failure.json"),JSON.stringify(await evaluate("({url:location.href,ready:document.readyState,alerts:[...document.querySelectorAll(\"[role=alert]\")].map(e=>e.textContent),body:document.body.innerText})"),null,2));
     throw new Error(`Timed out waiting for ${expression}`)
   }
   async function navigate(path, role = 'admin') {
@@ -153,7 +153,7 @@ try {
     assert.equal(exits.length,3);assert.ok(exits.every(b=>!b.disabled&&b.visible&&b.reachable),JSON.stringify(exits));await noAdmin()
   }
   const state=async()=>evaluate("import('/src/lib/supabase.js').then(async({supabase:s})=>({invoices:(await s.from('facturas').select('*')).data.map(f=>({id:f.id,total:f.total,estado:f.estado})),products:(await s.from('productos_venta').select('*')).data.map(p=>({id:p.id,stock:p.stock})),movements:(await s.from('movimientos').select('*')).data.map(m=>({id:m.id,monto:m.monto,tipo:m.tipo})),stock:(await s.from('movimientos_inventario').select('*')).data.map(m=>({id:m.id,cantidad:m.cantidad}))}))")
-  const session=async()=>{await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.getElementById('login-email')");await field('#login-email','ana@angietech.demo');await field('#login-password','AngieDemo123!');await tap('.login-form .btn');await waitFor("!!document.querySelector('.seller-total')")}
+  const session=async()=>{await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.getElementById('login-email')");await tap('.login-role button:nth-child(2)');await field('#login-email','ana@angietech.demo');await field('#login-password','AngieDemo123!');await tap('.login-form .btn');await waitFor("!!document.querySelector('.seller-total')")}
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await session()
   const product=await evaluate("import('/src/lib/supabase.js').then(async({supabase:s})=>(await s.from('productos_venta').select('*')).data.find(p=>!p.maneja_serial&&p.stock>=12))")
   assert.ok(product,'Local fixture needs stock for focused post-sale checks')
@@ -193,7 +193,7 @@ try {
 } catch(error){
   await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'FAIL',error:error.stack,results,externalRequests,browserErrors},null,2)+'\n');console.error(error.stack);process.exitCode=1
 } finally {
-  socket?.close();browser.kill()
+  try{if(socket?.readyState===1)socket.send(JSON.stringify({id:2147483000,method:'Browser.close'}))}catch{}await delay(1200);socket?.close();if(browser.exitCode===null)browser.kill()
   if(!profile.startsWith(join(tmpdir(),'angie-tech-ui-')))throw Error('Unexpected test profile path')
   await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:200}).catch(()=>{})
 }

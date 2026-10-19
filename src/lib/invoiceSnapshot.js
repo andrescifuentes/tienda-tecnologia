@@ -6,7 +6,7 @@ export function freezeInvoiceIdentity(state, invoice) {
   const t = state.tables
   if (!Object.hasOwn(invoice, 'cliente_snapshot')) invoice.cliente_snapshot = pick(t.clientes.find(c => c.id === invoice.cliente_id), ['nombre','tipo_documento','documento','telefono','correo','direccion','ciudad'])
   invoice.vendedor_snapshot ??= pick(t.perfiles.find(p => p.id === invoice.vendedor_id), ['nombre'])
-  invoice.tienda_snapshot ??= pick(t.tienda[0], ['nombre','nombre_personalizado','razon_social','nit','nit_dv','telefono','whatsapp','correo','direccion','ciudad','logo_data_url','factura_pie','factura_prefijo'])
+  invoice.tienda_snapshot ??= pick(t.tienda.find(store=>store.id===(invoice.negocio_id??1)), ['id','local','datos_extra','logo_url','nombre','nombre_personalizado','razon_social','nit','nit_dv','telefono','whatsapp','correo','direccion','ciudad','logo_data_url','factura_pie','factura_prefijo'])
   for (const item of t.factura_items.filter(i => i.factura_id === invoice.id)) item.codigo ??= t.productos.find(p => p.id === item.producto_id)?.codigo || ''
 }
 

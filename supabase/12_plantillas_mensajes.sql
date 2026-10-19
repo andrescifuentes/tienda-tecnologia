@@ -32,11 +32,12 @@ do $$ begin
 end $$;
 create or replace function public.guardar_plantillas_factura(p_plantillas jsonb) returns jsonb
 language plpgsql security definer set search_path=public,pg_temp as $$
-declare saved jsonb;
+declare saved jsonb; business_id bigint:=1;
 begin
  if public.es_admin() is not true or public.es_activo() is not true then raise exception 'FORBIDDEN'; end if;
+ if to_regprocedure('public.mi_negocio()') is not null then execute 'select public.mi_negocio()' into business_id; if business_id is null then raise exception 'FORBIDDEN'; end if; end if;
  if not public.plantillas_factura_validas(p_plantillas) then raise exception 'INVALID_TEMPLATE'; end if;
- update public.tienda set plantillas_factura=p_plantillas where id=1 returning plantillas_factura into saved;
+ update public.tienda set plantillas_factura=p_plantillas where id=business_id returning plantillas_factura into saved;
  if not found then raise exception 'STORE_NOT_FOUND'; end if;
  return saved;
 end $$;
@@ -54,11 +55,13 @@ begin
  if not found or not pf.activo then raise exception 'FORBIDDEN'; end if;
  select * into f from facturas where id=p_factura;
  if not found then raise exception 'INVOICE_NOT_FOUND'; end if;
+ if (to_jsonb(pf)->>'negocio_id') is distinct from (to_jsonb(f)->>'negocio_id') then raise exception 'FORBIDDEN'; end if;
  if pf.rol<>'admin' and (f.vendedor_id<>p_actor or not exists(select 1 from perfil_permisos where perfil_id=p_actor and permiso='vender')) then raise exception 'FORBIDDEN'; end if;
  if f.estado<>'emitida' then raise exception 'INVOICE_NOT_ISSUED'; end if;
  select to_jsonb(cl) into c from clientes cl where cl.id=f.cliente_id;
  select jsonb_build_object('nombre',p.nombre) into v from perfiles p where p.id=f.vendedor_id;
- select to_jsonb(s)-'ultimo_numero_factura' into t from tienda s where s.id=1;
+ select to_jsonb(s)-'ultimo_numero_factura' into t from tienda s where s.id=coalesce((to_jsonb(f)->>'negocio_id')::bigint,1) and coalesce((to_jsonb(s)->>'activo')::boolean,true);
+ if not found then raise exception 'FORBIDDEN'; end if;
  select coalesce(jsonb_agg(jsonb_build_object('id',i.id,'nombre',i.nombre,'cantidad',i.cantidad,'precio_unitario',i.precio_unitario,'descuento',i.descuento,'codigo',coalesce(i.codigo,p.codigo),'serial',coalesce(i.serial,u.serial)) order by i.id),'[]'::jsonb) into its from factura_items i left join productos p on p.id=i.producto_id left join unidades_serializadas u on u.id=i.unidad_id where i.factura_id=f.id;
  -- Older invoices have historical line amounts but no original identity snapshot.
  -- Prefer snapshots; fallback identity is explicitly flagged, never invented.

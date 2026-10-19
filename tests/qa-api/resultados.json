@@ -1,0 +1,537 @@
+{
+ "AUT-001": {
+  "estado": "Aprobado",
+  "obtenido": "UI: entra al Inicio administrativo «Administrador · Controla tu negocio» con módulos Inventario, Facturación, Clientes, Ventas, Ingresos, Gastos.",
+  "evid": "Navegador localhost:5173"
+ },
+ "AUT-002": {
+  "estado": "Aprobado",
+  "obtenido": "UI: entra a Inicio de vendedor «Vende de forma rápida»; sin ingresos globales, gastos, utilidad ni comisiones.",
+  "evid": "Navegador"
+ },
+ "AUT-003": {
+  "estado": "Aprobado",
+  "obtenido": "HTTP 400: Invalid login credentials; UI traduce a «Correo o contraseña incorrectos.»",
+  "evid": "mensajeError() en format.js"
+ },
+ "AUT-006": {
+  "estado": "Aprobado",
+  "obtenido": "movimientos:0; compras:0; pagos_proveedor:0; actividad:0; compra_items:0; movimientos_inventario:0; resumen_dashboard:400; productos(costos):0",
+  "evid": "API REST con token de vendedor"
+ },
+ "EMP-007": {
+  "estado": "Aprobado",
+  "obtenido": "Servidor deniega: movimientos:0; compras:0; pagos_proveedor:0; actividad:0; compra_items:0; movimientos_inventario:0; resumen_dashboard:400; productos(costos):0",
+  "evid": "Mismo set que AUT-006 + rutas /finanzas /proveedores /empleados redirigen a Inicio"
+ },
+ "AUT-007": {
+  "estado": "Aprobado",
+  "obtenido": "PATCH precio → 200 filas=0; ajuste → 400 «No tienes permiso para modificar el inventario»; PATCH stock → 200; precio y stock intactos (3650000, 0)",
+  "evid": "UI vendedor sin Editar/Cargar"
+ },
+ "INV-013": {
+  "estado": "Aprobado",
+  "obtenido": "Ajuste por API rechazado: «No tienes permiso para modificar el inventario»; stock intacto (0)",
+  "evid": "UI vendedor sin botón Cargar"
+ },
+ "AUT-010": {
+  "estado": "Aprobado",
+  "obtenido": "Lectura con token vencido → 401 «JWT cryptographic operation failed»; emitir factura → 401",
+  "evid": "supabase-js refresca o devuelve a /login"
+ },
+ "EMP-001": {
+  "estado": "Aprobado",
+  "obtenido": "Función crear-empleado → 200; perfil QA Vendedor B rol vendedor; permisos ['vender', 'ver_inventario', 'crear_clientes']",
+  "evid": "Edge Function crear-empleado + perfiles/perfil_permisos"
+ },
+ "PRO-001": {
+  "estado": "Aprobado",
+  "obtenido": "HTTP 201; proveedor id 2",
+  "evid": "Formulario simplificado: Nombre*, WhatsApp, Correo"
+ },
+ "PRO-006": {
+  "estado": "Aprobado",
+  "obtenido": "Sin nombre → HTTP 400 «null value in column \"nombre\" of relation \"proveedores\" violates not-null constraint»; la UI exige Nombre*",
+  "evid": "NOT NULL en proveedores.nombre"
+ },
+ "INV-001": {
+  "estado": "Aprobado",
+  "obtenido": "Productos creados: QA-FUNDA-IP15-NEG y QA-CABLE-USBC",
+  "evid": "POST productos (admin)"
+ },
+ "INV-002": {
+  "estado": "Aprobado",
+  "obtenido": "Guardado sin foto_url (null); la tarjeta usa el placeholder común",
+  "evid": "foto_url null"
+ },
+ "INV-004": {
+  "estado": "Aprobado",
+  "obtenido": "Segundo producto con el mismo SKU → HTTP 409 «duplicate key value violates unique constraint \"productos_codigo_key\"». La UI además busca un código libre (sufijo).",
+  "evid": "unique(productos.codigo) + codigoLibre() en ProductoForm"
+ },
+ "INV-003": {
+  "estado": "Aprobado",
+  "obtenido": "Sin nombre → HTTP 400 «null value in column \"nombre\" of relation \"productos\" violates not-null constraint»",
+  "evid": "NOT NULL nombre + validación del formulario"
+ },
+ "INV-017": {
+  "estado": "Aprobado",
+  "obtenido": "Precio -100 → HTTP 400 «new row for relation \"productos\" violates check constraint \"productos_precio_venta_check\"»",
+  "evid": "check (precio_venta >= 0); MoneyInput solo admite dígitos"
+ },
+ "INV-016": {
+  "estado": "Aprobado",
+  "obtenido": "Vendedor cambia SKU → 200 filas 0; admin pone SKU repetido → 409 «duplicate key value violates unique constraint \"productos_codigo_key\"»",
+  "evid": "RLS productos_update + unique"
+ },
+ "INV-005": {
+  "estado": "Aprobado",
+  "obtenido": "Tras editar y releer: {'nombre': 'QA Funda iPhone 15 Pro', 'marca': 'QA Marca', 'modelo': 'iPhone 15 Pro'}",
+  "evid": "PATCH + GET"
+ },
+ "INV-006": {
+  "estado": "Aprobado",
+  "obtenido": "Admin ve compra 1000 / venta 5000; vendedor ve solo precio_venta 5000",
+  "evid": "vista productos_venta sin costos"
+ },
+ "INV-007": {
+  "estado": "Aprobado",
+  "obtenido": "Búsqueda por modelo «iPhone 15»: [('QA Funda iPhone 15 Pro', 'Fundas', 'iPhone 15 Pro')]",
+  "evid": "Categoría Fundas + modelo compatible"
+ },
+ "INV-008": {
+  "estado": "Aprobado",
+  "obtenido": "Coincidencias por nombre:1, codigo:1, marca:2",
+  "evid": "Buscador de Inventario filtra nombre, SKU y marca"
+ },
+ "INV-009": {
+  "estado": "Aprobado",
+  "obtenido": "Filtro Fundas → 2 productos, todos Fundas",
+  "evid": "Hoja de filtros (categoría, marca, agotado/bajo)"
+ },
+ "PRO-003": {
+  "estado": "Aprobado",
+  "obtenido": "Compra 2 a crédito; stock A 0→10, B 0→5 (una sola vez)",
+  "evid": "rpc registrar_compra"
+ },
+ "PRO-004": {
+  "estado": "Aprobado",
+  "obtenido": "Historial: [{'id': 2, 'fecha': '2026-10-12', 'total': 12500, 'numero_documento': 'QA-001'}]",
+  "evid": "Ficha del proveedor > Compras"
+ },
+ "PRO-002": {
+  "estado": "Aprobado",
+  "obtenido": "Productos asociados: ['QA-FUNDA-IP15-NEG', 'QA-CABLE-USBC']",
+  "evid": "productos.proveedor_id"
+ },
+ "PRO-005": {
+  "estado": "Aprobado",
+  "obtenido": "Saldo 12.500 (vence 2026-11-12) → abono 5.000 → 7.500; abono excesivo rechazado «El abono debe ser mayor que 0 y no superar el saldo (7500)»; pago final → 0",
+  "evid": "compras_saldo + registrar_pago_proveedor"
+ },
+ "INV-010": {
+  "estado": "Aprobado",
+  "obtenido": "Ingreso +2 → stock 10→12; movimiento 36",
+  "evid": "Cargar unidades > Otro origen"
+ },
+ "INV-011": {
+  "estado": "Aprobado",
+  "obtenido": "Salida -1 → stock 12→11; movimiento 37",
+  "evid": "ajustar_inventario ajuste_salida"
+ },
+ "INV-012": {
+  "estado": "Aprobado",
+  "obtenido": "Salida de 500 → HTTP 400 «Stock insuficiente para el producto 6 (disponible 11, solicitado 500)»; stock sigue en 11",
+  "evid": "trigger aplicar_movimiento_inventario"
+ },
+ "INV-014": {
+  "estado": "Aprobado",
+  "obtenido": "Alerta: stock 5 (> mín 3) → sin alerta, stock 3 (= mín) → alerta, stock 2 (< mín) → alerta, stock 5 (> mín) → sin alerta",
+  "evid": "vista stock_bajo (stock <= stock_min)"
+ },
+ "CLI-001": {
+  "estado": "Aprobado",
+  "obtenido": "Vendedor crea cliente → HTTP 201, id 6",
+  "evid": "POST clientes (permiso crear_clientes)"
+ },
+ "CLI-002": {
+  "estado": "Aprobado",
+  "obtenido": "Sin documento → HTTP 400 «null value in column \"documento\" of relation \"clientes\" violates not-null constraint»; la UI pide Nombre, documento y WhatsApp (≥10 dígitos)",
+  "evid": "NOT NULL documento + validación ClienteForm"
+ },
+ "CLI-007": {
+  "estado": "Aprobado",
+  "obtenido": "Mismo tipo y documento → HTTP 409 «duplicate key value violates unique constraint \"clientes_tipo_documento_documento_key\"» → UI: «Ya existe un registro con esos datos.»",
+  "evid": "unique(tipo_documento, documento)"
+ },
+ "CLI-004": {
+  "estado": "Aprobado",
+  "obtenido": "Persistido: {'telefono': '3001112233', 'correo': 'qa.cliente@prueba.com'}",
+  "evid": "GET tras guardar"
+ },
+ "CLI-003": {
+  "estado": "Aprobado",
+  "obtenido": "Coincidencias: nombre:1, documento:1",
+  "evid": "Buscador de Clientes y ClientePicker"
+ },
+ "VEN-004": {
+  "estado": "Aprobado",
+  "obtenido": "Pedir 6 con stock 5 → HTTP 400 «Stock insuficiente para el producto 7 (disponible 5, solicitado 6)». En la UI el selector de cantidad se limita al stock.",
+  "evid": "trigger de stock + POS"
+ },
+ "VEN-009": {
+  "estado": "Corregido (falta ejecutar SQL 05)",
+  "obtenido": "Sin productos → «La factura necesita al menos un producto». La app exige cliente («Falta el cliente»), pero el servidor aceptaba venta sin cliente. Corregido en emitir_factura_segura (script 05).",
+  "evid": "supabase/05_reglas_venta_y_auditoria.sql"
+ },
+ "VEN-007": {
+  "estado": "Aprobado",
+  "obtenido": "Factura FV19 (id 22) total 13000, cliente 6, vendedor propio",
+  "evid": "rpc emitir_factura"
+ },
+ "VEN-011": {
+  "estado": "Aprobado",
+  "obtenido": "Stock A 11→9 (−2), B 5→4 (−1)",
+  "evid": "movimientos salida_venta"
+ },
+ "VEN-006": {
+  "estado": "Aprobado",
+  "obtenido": "Factura asociada al cliente 6 (QA Cliente Pruebas)",
+  "evid": "facturas.cliente_id"
+ },
+ "CLI-006": {
+  "estado": "Aprobado",
+  "obtenido": "Factura FV19 enlazada al cliente id 6",
+  "evid": ""
+ },
+ "VEN-002": {
+  "estado": "Aprobado",
+  "obtenido": "Ítems: [(6, 2, 5000), (7, 1, 3000)]; subtotal 2×5.000 + 1×3.000 = 13000",
+  "evid": "Precio tomado del servidor"
+ },
+ "FAC-001": {
+  "estado": "Aprobado",
+  "obtenido": "Número único FV19; ítems y total (13.000) coinciden con la venta",
+  "evid": "unique(prefijo, numero)"
+ },
+ "INT-002": {
+  "estado": "Aprobado",
+  "obtenido": "Factura total 13000 = Σ ítems; movimientos [(6, -2), (7, -1)] = ítems",
+  "evid": "facturas / factura_items / movimientos_inventario"
+ },
+ "INV-015": {
+  "estado": "Aprobado",
+  "obtenido": "Garantía {'inicio': '2026-10-12', 'fin': '2027-04-12', 'estado': 'vigente'}; historial con 4 movimientos (ajuste_entrada, ajuste_salida, entrada_compra, salida_venta)",
+  "evid": "garantias + movimientos_inventario"
+ },
+ "VEN-012": {
+  "estado": "Aprobado",
+  "obtenido": "Vendedor B: facturas 0, ítems de la factura de A 0, ventas_por_empleado []",
+  "evid": "RLS facturas_select"
+ },
+ "DAS-009": {
+  "estado": "Aprobado",
+  "obtenido": "El vendedor B no recibe ninguna venta del vendedor A (0 filas en facturas, ítems y resumen)",
+  "evid": ""
+ },
+ "EMP-005": {
+  "estado": "Aprobado",
+  "obtenido": "Consulta directa de datos de A con sesión de B → 0 filas",
+  "evid": ""
+ },
+ "FAC-002": {
+  "estado": "Aprobado",
+  "obtenido": "Vendedor A ve 6 facturas propias; admin ve todas",
+  "evid": "RLS por rol"
+ },
+ "VEN-013": {
+  "estado": "Aprobado",
+  "obtenido": "Vendedor sin permiso: «No tienes permiso para aplicar descuentos»; admin descuento 1.000 sobre 3.000 → total 2000; descuento mayor al subtotal: «El descuento no puede superar el subtotal». No hay impuestos implementados.",
+  "evid": "emitir_factura"
+ },
+ "FAC-011": {
+  "estado": "Aprobado",
+  "obtenido": "Devolución parcial de 1 funda: stock 9→10, devuelto 5000, neto de la factura 13.000→8000",
+  "evid": "rpc registrar_devolucion"
+ },
+ "FAC-009": {
+  "estado": "Aprobado",
+  "obtenido": "Estado anulada por admin, motivo «QA anulación autorizada»; stock 4→5; 1 registro en actividad",
+  "evid": "rpc anular_factura"
+ },
+ "FAC-015": {
+  "estado": "Aprobado",
+  "obtenido": "Devolver más de lo vendido: «Cantidad a devolver inválida para \"QA Funda iPhone 15 Pro\"»; anular con devoluciones: «La factura tiene devoluciones y no se puede anular»; devolver otra vez: «Cantidad a devolver inválida para \"QA Cable USB-C\"»; anular dos veces: «La factura ya está anulada»; stock sin ",
+  "evid": ""
+ },
+ "FAC-010": {
+  "estado": "Aprobado",
+  "obtenido": "Vendedor por API → «No tienes permiso para anular facturas»; factura sigue emitida. En la UI pide correo y contraseña del administrador.",
+  "evid": "tiene_permiso(anular_facturas)"
+ },
+ "FAC-012": {
+  "estado": "Aprobado",
+  "obtenido": "PATCH total (admin) → 200 filas 0; PATCH ítems → 200 filas 0; DELETE → 200 filas 0; total intacto 13000",
+  "evid": "Sin políticas de update/delete en facturas"
+ },
+ "FAC-013": {
+  "estado": "Aprobado",
+  "obtenido": "Consulta id inexistente → []; acción → «La factura no existe»",
+  "evid": ""
+ },
+ "DAS-001": {
+  "estado": "Aprobado",
+  "obtenido": "Dashboard hoy 26305000 / 3 facturas = recálculo 26305000 / 3 (solo emitidas, neto de devoluciones)",
+  "evid": "resumen_dashboard vs facturas_netas"
+ },
+ "DAS-002": {
+  "estado": "Aprobado",
+  "obtenido": "Mes 75770000 (18 fact.), año 75770000; dashboard mes 75770000",
+  "evid": "Recálculo por período"
+ },
+ "DAS-007": {
+  "estado": "Aprobado",
+  "obtenido": "Contador del mes 18 = 18 emitidas (excluye 4 anuladas)",
+  "evid": ""
+ },
+ "DAS-004": {
+  "estado": "Aprobado",
+  "obtenido": "Valor inventario 24993500 = Σ costo × stock (24993500)",
+  "evid": "Fórmula costo × stock de productos activos"
+ },
+ "DAS-005": {
+  "estado": "Aprobado",
+  "obtenido": "2 productos con stock ≤ mínimo (recálculo 2)",
+  "evid": "vista stock_bajo"
+ },
+ "DAS-003": {
+  "estado": "Aprobado",
+  "obtenido": "Ingreso 7.000 → ingresos +7000; gasto 3.000 → gastos +3000; ventas sin cambio (+0). Movimientos QA eliminados.",
+  "evid": "resumen_dashboard"
+ },
+ "DAS-006": {
+  "estado": "Aprobado",
+  "obtenido": "Administrador de prueba: 41055000 (11 fact.); Vendedor de prueba: 28860000 (5 fact.); José Aldana: 5855000 (2 fact.) = recálculo por vendedor",
+  "evid": "rpc ventas_por_empleado"
+ },
+ "EMP-004": {
+  "estado": "Aprobado",
+  "obtenido": "Administrador de prueba: 41055000 (11 fact.); Vendedor de prueba: 28860000 (5 fact.); José Aldana: 5855000 (2 fact.)",
+  "evid": ""
+ },
+ "EMP-003": {
+  "estado": "Aprobado",
+  "obtenido": "Sin permiso → «No tienes permiso para modificar el inventario»; al otorgar «Modificar inventario» → OK (mov 55); al quitarlo → rechazado otra vez",
+  "evid": "perfil_permisos + tiene_permiso()"
+ },
+ "EMP-008": {
+  "estado": "Corregido (falta ejecutar SQL 05)",
+  "obtenido": "Ventas, anulaciones, devoluciones, inventario, compras y clientes quedan con actor, acción y fecha. Defecto: el alta de empleado quedaba sin actor y los cambios de permisos no se registraban. Corregido en script 05.",
+  "evid": "auditar() + trigger en perfil_permisos"
+ },
+ "INT-003": {
+  "estado": "Aprobado",
+  "obtenido": "facturas A22/V8/anón0; clientes A6/V6/anón0; productos_venta A7/V7/anón401; productos A7/V0/anón0; movimientos A0/V0/anón0; compras A2/V0/anón0; perfiles A4/V1/anón0; actividad A75/V0/anón0",
+  "evid": "Lectura por rol (A=admin, V=vendedor). Escrituras ya cubiertas en AUT-007, FAC-010, FAC-012, EMP-003"
+ },
+ "INT-001": {
+  "estado": "Aprobado",
+  "obtenido": "Releídos en sesión nueva: producto «QA Funda iPhone 15 Pro», cliente «QA Cliente Pruebas», factura FV19; sin duplicados",
+  "evid": ""
+ },
+ "INV-018": {
+  "estado": "Aprobado",
+  "obtenido": "Producto QA sigue guardado tras nueva sesión: QA Funda iPhone 15 Pro",
+  "evid": ""
+ },
+ "VEN-014": {
+  "estado": "Corregido (falta ejecutar SQL 05)",
+  "obtenido": "Repetir la misma solicitud tras un corte creaba 2 facturas (FV-0021 y FV-0022, anuladas). Ahora la app envía una clave por venta y el servidor devuelve la misma factura en el reintento.",
+  "evid": "Vender.jsx + script 05"
+ },
+ "INT-004": {
+  "estado": "Corregido (falta ejecutar SQL 05)",
+  "obtenido": "Mismo defecto que VEN-014: dos facturas por una sola operación. Corregido con clave de idempotencia y bloqueo por clave.",
+  "evid": "script 05"
+ },
+ "INT-005": {
+  "estado": "Aprobado",
+  "obtenido": "Datos inválidos → HTTP 400 «invalid input syntax for type bigint: \"abc\"»; función inexistente → 404. Sin claves ni trazas; la UI muestra mensajes amigables (mensajeError).",
+  "evid": ""
+ },
+ "INT-006": {
+  "estado": "Aprobado",
+  "obtenido": "22 facturas recorridas en páginas de 5: sin repetidos ni perdidos",
+  "evid": "order fecha desc, id desc"
+ },
+ "EMP-002": {
+  "estado": "Aprobado",
+  "obtenido": "Desactivado (activo=false). Sesión previa: inventario 0 filas, vender → «No tienes permiso para vender». Login nuevo → token emitido (200) pero sin datos (clientes 0) y la app muestra «Tu usuario está desactivado».",
+  "evid": "es_activo() en RLS y RPC; ProtectedRoute"
+ },
+ "AUT-009": {
+  "estado": "Aprobado",
+  "obtenido": "Igual que EMP-002: el acceso a datos y operaciones queda bloqueado al instante, también con la sesión ya abierta.",
+  "evid": ""
+ },
+ "AUT-004": {
+  "estado": "Aprobado",
+  "obtenido": "Formulario vacío: el navegador marca «Completa este campo» en correo y contraseña; no inicia sesión (sigue en /login).",
+  "evid": "validación required"
+ },
+ "AUT-005": {
+  "estado": "Aprobado",
+  "obtenido": "Cerrar sesión → /login; Atrás → /login; abrir /facturas directo → /login; no queda token guardado.",
+  "evid": "ProtectedRoute"
+ },
+ "AUT-008": {
+  "estado": "Fallido",
+  "obtenido": "No hay recuperación por correo: «¿Olvidaste tu contraseña?» solo dice «Pídele al administrador que restablezca tu contraseña», pero el módulo Empleados no tiene opción para restablecerla.",
+  "evid": "Login.jsx / Empleados.jsx — pendiente de decisión"
+ },
+ "DAS-010": {
+  "estado": "Aprobado",
+  "obtenido": "Vendedor: Inicio, Inventario, Vender, Facturas, Historial, Clientes y Más sin «comisión», «utilidad», «gastos», «valor del inventario», «ingresos globales» ni costos. /finanzas, /proveedores, /empleados redirigen a Inicio.",
+  "evid": "Búsqueda de texto en 9 pantallas"
+ },
+ "DAS-011": {
+  "estado": "Aprobado",
+  "obtenido": "«Mis últimas facturas» muestra solo FV-0019…0023 del propio vendedor; el filtro por vendedor_id se aplica en servidor y cliente.",
+  "evid": "sellerHome.js + RLS"
+ },
+ "DAS-012": {
+  "estado": "Corregido",
+  "obtenido": "Antes solo había Hoy / Esta semana / Este mes (faltaba año). Se agregó «Este año» con comparación vs. año anterior. Hoy $26.305.000 (3) · Mes y Año $28.860.000 (5) = API.",
+  "evid": "InicioVendedor.jsx, sellerHome.js"
+ },
+ "DAS-008": {
+  "estado": "Aprobado",
+  "obtenido": "Mes sin movimientos (mayo 2025): Ventas $0 · 0 facturas, Ingresos $0, Gastos $0, sin errores.",
+  "evid": "Inicio admin, selector de mes"
+ },
+ "EMP-006": {
+  "estado": "Aprobado",
+  "obtenido": "La interfaz del vendedor no muestra comisiones (Inicio, menús, Más). Observación: la API sí le devuelve su propio % de comisión (perfiles.comision_pct, ventas_por_empleado.comision).",
+  "evid": "UI + API"
+ },
+ "VEN-001": {
+  "estado": "Aprobado",
+  "obtenido": "Nueva venta abre el punto de venta con «Tus más vendidos», categorías, marcas y buscador; sin errores.",
+  "evid": "/vender"
+ },
+ "VEN-003": {
+  "estado": "Aprobado",
+  "obtenido": "+ / − recalculan: 2 → $10.000; tope en 11 = stock disponible ($55.000); al bajar vuelve a $10.000.",
+  "evid": "Carrito POS"
+ },
+ "VEN-005": {
+  "estado": "Aprobado",
+  "obtenido": "Quitar línea pide confirmación y actualiza: 3 productos $13.000 → 2 productos $10.000. Se corrigió la tilde «Se quitarán».",
+  "evid": "Vender.jsx"
+ },
+ "VEN-008": {
+  "estado": "Aprobado",
+  "obtenido": "Vaciar o quitar productos no toca el servidor; el stock solo bajó al confirmar la venta (11 → 9).",
+  "evid": "Carrito local"
+ },
+ "VEN-010": {
+  "estado": "Aprobado",
+  "obtenido": "Triple clic en «Cobrar»: se creó una sola factura (FV-0023). El botón se bloquea al primer toque.",
+  "evid": "useAction (bloqueo síncrono)"
+ },
+ "FAC-003": {
+  "estado": "Aprobado",
+  "obtenido": "Historial: «19», «0019» y «FV-0019» encuentran FV-0019.",
+  "evid": "FacturasHistorial"
+ },
+ "FAC-004": {
+  "estado": "Corregido",
+  "obtenido": "Por cliente funcionaba; por monto solo sin puntos («13000»). Ahora «13.000» y «$13.000» también encuentran la factura.",
+  "evid": "FacturasHistorial.jsx"
+ },
+ "FAC-005": {
+  "estado": "Aprobado",
+  "obtenido": "Filtro Anuladas → 4 (todas anuladas); Emitidas → 19 (ninguna anulada); Tarjeta → 1.",
+  "evid": "Hoja de filtros"
+ },
+ "FAC-006": {
+  "estado": "Aprobado",
+  "obtenido": "PDF generado con logo, número, cliente, ítems y total correctos; nombre de archivo ANGIE-TECH-FV-xxxx.pdf.",
+  "evid": "invoicePdf.js"
+ },
+ "FAC-007": {
+  "estado": "Aprobado",
+  "obtenido": "Correo prepara mailto con destinatario, asunto «Factura FV-0023 de ANGIE TECH», cuerpo y enlace al PDF; el envío real lo confirma la app de correo. Registro en factura_envios OK (API 201).",
+  "evid": "InvoiceDelivery"
+ },
+ "FAC-008": {
+  "estado": "Corregido",
+  "obtenido": "WhatsApp prepara wa.me con número, total y enlace al PDF, y aclara que no adjunta archivo. Defecto corregido: el mensaje firmaba «TechStore» en vez de «ANGIE TECH».",
+  "evid": "lib/factura.js"
+ },
+ "FAC-014": {
+  "estado": "Corregido",
+  "obtenido": "Con nombre largo y 28 productos el PDF montaba textos (nombre del cliente sobre «Atendido por», descripción sobre la cantidad) y la dirección se salía del recuadro. Corregido: el texto se mide con su tamaño real y el panel crece. Verificado: 3 páginas sin cruces.",
+  "evid": "invoicePdf.js"
+ },
+ "CLI-005": {
+  "estado": "Corregido",
+  "obtenido": "Historial muestra las 5 facturas. Defecto: «Total comprado» contaba una factura devuelta por completo ($23.000 · 2 compras). Ahora $10.000 · 1 compra (neto de devoluciones).",
+  "evid": "Clientes.jsx"
+ },
+ "CLI-008": {
+  "estado": "Aprobado",
+  "obtenido": "Editar cliente: teléfono 3001112233 → 3009998877 guardado; el historial sigue con 5 facturas.",
+  "evid": "Ficha de cliente"
+ },
+ "UI-001": {
+  "estado": "Aprobado",
+  "obtenido": "Cambio claro ↔ oscuro: data-theme cambia, fondos y textos se actualizan, sin recargar ni perder datos.",
+  "evid": "ThemeToggle"
+ },
+ "UI-002": {
+  "estado": "Corregido",
+  "obtenido": "Admin: banner «Administrador · Controla tu negocio» en ambos temas, pero el título salía «Administrad…» en celulares (corregido). Vendedor: su Inicio no mostraba el banner de rol (corregido, imagen clara y oscura).",
+  "evid": "luxe.css, InicioVendedor.jsx"
+ },
+ "UI-003": {
+  "estado": "Aprobado",
+  "obtenido": "12 rutas de admin y 9 de vendedor abren correctamente; rutas sin permiso redirigen a Inicio.",
+  "evid": "Navegación"
+ },
+ "UI-004": {
+  "estado": "Corregido",
+  "obtenido": "320 px: sin scroll horizontal en 11 pantallas. Se corrigieron los totales del Historial y del resumen de Movimientos que se salían del borde.",
+  "evid": "luxe.css"
+ },
+ "UI-005": {
+  "estado": "Aprobado",
+  "obtenido": "1280 px: carga sin errores ni scroll horizontal. Observación: el diseño se estira a todo el ancho (pensado para celular).",
+  "evid": "Vista escritorio"
+ },
+ "UI-006": {
+  "estado": "Aprobado",
+  "obtenido": "Productos sin foto usan el mismo marcador «photo-pending cat-placeholder» en listas y detalle.",
+  "evid": "Inventario"
+ },
+ "UI-007": {
+  "estado": "No ejecutado",
+  "obtenido": "Requiere un celular físico con teclado real; no se puede simular en este entorno.",
+  "evid": "Pendiente en iPhone/Android"
+ },
+ "UI-008": {
+  "estado": "Corregido",
+  "obtenido": "Sin red, Proveedores mostraba «$0 · Todo al día» y Clientes una lista vacía, como si no hubiera datos. Ahora aparece «Sin conexión… No repitas ventas ni pagos» con Reintentar, y se quita al volver la red.",
+  "evid": "supabase.js, AppShell.jsx"
+ },
+ "UI-009": {
+  "estado": "Corregido",
+  "obtenido": "Botones con nombre accesible (0 sin nombre) y campos con etiqueta. Corregido: la lista de clientes al vender no se podía usar con teclado. Observación: botones «Más opciones» de 30×30 px (recomendado ≥ 44).",
+  "evid": "ClientePicker.jsx"
+ },
+ "UI-010": {
+  "estado": "Aprobado",
+  "obtenido": "Moneda $13.000 (es-CO, sin decimales), fechas «12 de oct de 2026 · 6:20 p. m.» en hora de Bogotá.",
+  "evid": "format.js"
+ }
+}

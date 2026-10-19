@@ -18,6 +18,9 @@ begin
   if auth.uid() is distinct from p_actor_id or not public.tiene_permiso('vender') then
     raise exception 'La sesión no tiene permiso para emitir esta venta';
   end if;
+  if p_cliente_id is null then
+    raise exception 'Elige o registra el cliente para continuar';
+  end if;
   if p_request_id is null or p_request_id !~ '^[A-Za-z0-9-]{8,100}$' then
     raise exception 'Identificador de venta no válido';
   end if;

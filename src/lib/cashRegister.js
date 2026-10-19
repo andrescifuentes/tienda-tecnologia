@@ -44,9 +44,10 @@ function checkedActor(state, context) {
   if (!actor?.activo || !(actor.rol === 'admin' || state.tables.perfil_permisos.some(p => p.perfil_id === actor.id && p.permiso === 'vender'))) throw new Error('No tienes permiso para operar caja.')
   return actor
 }
+const demoBusiness=row=>row?.negocio_id??1
 function ownedSession(state, id, actor) {
   const session = state.tables.caja_sesiones.find(s => String(s.id) === String(id))
-  if (!session || (session.responsable_id !== actor.id && actor.rol !== 'admin')) throw new Error('No tienes permiso para esta caja.')
+  if (!session || demoBusiness(session)!==demoBusiness(actor) || (session.responsable_id !== actor.id && actor.rol !== 'admin')) throw new Error('No tienes permiso para esta caja.')
   return session
 }
 function requestId(id) { if (typeof id !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(id)) throw new Error('Identificador de operación inválido.'); return id }
@@ -55,7 +56,7 @@ export function demoCashAction(state, name, args, context) {
   const actor = checkedActor(state, context), tables = state.tables
   tables.caja_sesiones ||= []; tables.caja_eventos ||= []
   if (name === 'caja_estado') {
-    const allowed = tables.caja_sesiones.filter(s => actor.rol === 'admin' || s.responsable_id === actor.id).sort((a, b) => b.id - a.id)
+    const allowed = tables.caja_sesiones.filter(s => demoBusiness(s)===demoBusiness(actor)&&(actor.rol === 'admin' || s.responsable_id === actor.id)).sort((a, b) => b.id - a.id)
     const active = allowed.find(s => s.responsable_id === actor.id && s.estado === 'abierta') || null
     const selected = args.p_caja_id != null ? ownedSession(state, args.p_caja_id, actor) : active
     const page = args.p_antes_id == null ? allowed : allowed.filter(s=>s.id < cashInteger(args.p_antes_id))
@@ -63,12 +64,12 @@ export function demoCashAction(state, name, args, context) {
   }
   const req = requestId(args.p_request_id)
   if (name === 'caja_abrir') {
-    const previous = tables.caja_sesiones.find(s => s.request_id === req && s.responsable_id === actor.id)
+    const previous = tables.caja_sesiones.find(s => demoBusiness(s)===demoBusiness(actor)&&s.request_id === req && s.responsable_id === actor.id)
     if (previous) return previous.id
-    if (tables.caja_sesiones.some(s => s.responsable_id === actor.id && s.estado === 'abierta')) throw new Error('Ya tienes una caja abierta. Actualiza la consulta.')
+    if (tables.caja_sesiones.some(s => demoBusiness(s)===demoBusiness(actor)&&s.responsable_id === actor.id && s.estado === 'abierta')) throw new Error('Ya tienes una caja abierta. Actualiza la consulta.')
     const initial = cashInteger(args.p_inicial_cent)
     if (initial < 0) throw new Error('El saldo inicial no puede ser negativo.')
-    const row = context.add(state, 'caja_sesiones', { responsable_id: actor.id, responsable_nombre: actor.nombre, apertura_en: context.now().toISOString(), estado: 'abierta', inicial_cent: initial, revision: 0, request_id: req })
+    const row = context.add(state, 'caja_sesiones', { negocio_id:demoBusiness(actor),responsable_id: actor.id, responsable_nombre: actor.nombre, apertura_en: context.now().toISOString(), estado: 'abierta', inicial_cent: initial, revision: 0, request_id: req })
     context.activity(state, 'Caja abierta', 'caja', row.id, { inicial_cent: initial })
     return row.id
   }
@@ -97,19 +98,20 @@ export function demoCashAction(state, name, args, context) {
     if (!adjustment || Math.abs(adjustment.monto_cent) !== value || tables.caja_eventos.some(e => e.ajuste_id === adjustment.id)) throw new Error('Selecciona un ajuste pendiente y su importe exacto; no puede pagarse dos veces.')
   }
   const signed = args.p_tipo === 'entrada' ? value : -value
-  const event = context.add(state, 'caja_eventos', { caja_id: session.id, tipo: args.p_tipo, metodo: method, monto_cent: signed, efectivo_cent: method === 'efectivo' ? signed : 0, descripcion: description, referencia: reference, ajuste_id: adjustment?.id || null, creado_por: actor.id, fecha: context.now().toISOString(), request_id: req })
+  const event = context.add(state, 'caja_eventos', { negocio_id:demoBusiness(session),caja_id: session.id, tipo: args.p_tipo, metodo: method, monto_cent: signed, efectivo_cent: method === 'efectivo' ? signed : 0, descripcion: description, referencia: reference, ajuste_id: adjustment?.id || null, creado_por: actor.id, fecha: context.now().toISOString(), request_id: req })
   session.revision++
   cashSummary(session, tables.caja_eventos) // Validate safe aggregate before committing.
   context.activity(state, 'Movimiento de caja', 'caja', session.id, { evento_id: event.id, tipo: event.tipo })
   return event.id
 }
 export function recordDemoCash(state, { actorId, tipo, metodo, valor, origenId, referencia }, context) {
-  const session = state.tables.caja_sesiones?.find(s => s.responsable_id === actorId && s.estado === 'abierta')
+  const actor=state.tables.perfiles.find(p=>p.id===actorId)
+  const session = state.tables.caja_sesiones?.find(s => demoBusiness(s)===demoBusiness(actor)&&s.responsable_id === actorId && s.estado === 'abierta')
   if (!session || !valor) return
   const source = tipo + ':' + origenId
-  if (state.tables.caja_eventos.some(e => e.origen === source)) return
+  if (state.tables.caja_eventos.some(e => demoBusiness(e)===demoBusiness(session)&&e.origen === source)) return
   const value = cashCentavos(valor), signed = tipo === 'venta' ? value : -value
-  context.add(state, 'caja_eventos', { caja_id: session.id, tipo, metodo, monto_cent: signed, efectivo_cent: tipo === 'venta' && metodo === 'efectivo' ? value : 0, descripcion: tipo === 'venta' ? 'Venta confirmada' : 'Ajuste comercial; confirma el reembolso realizado', referencia, origen: source, origen_id: origenId, creado_por: actorId, fecha: context.now().toISOString() })
+  context.add(state, 'caja_eventos', { negocio_id:demoBusiness(session),caja_id: session.id, tipo, metodo, monto_cent: signed, efectivo_cent: tipo === 'venta' && metodo === 'efectivo' ? value : 0, descripcion: tipo === 'venta' ? 'Venta confirmada' : 'Ajuste comercial; confirma el reembolso realizado', referencia, origen: source, origen_id: origenId, creado_por: actorId, fecha: context.now().toISOString() })
   session.revision++
   cashSummary(session, state.tables.caja_eventos)
 }

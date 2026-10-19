@@ -2222,3 +2222,108 @@ html,body{overflow-x:hidden;max-width:100%}
 .mb-home .mb-eyebrow{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:500;color:#6f5a3a}
 :root:not([data-theme="light"]) .mb-home .mb-eyebrow{color:rgba(246,239,226,.75)}
 .quick-actions{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:8px!important}
+/* QA 320px: totales que no caben en pantallas angostas */
+.fm-sum>div{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fm-sum span{min-width:0}
+.fm-sum b{font-size:clamp(11.5px,3.7vw,13.5px);overflow:hidden;text-overflow:ellipsis}
+.fv-day span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:380px){.fv-day{flex-wrap:wrap;row-gap:6px}.fv-day i{display:none}.fv-day small{margin-left:auto}}
+@media (max-width:380px){.fm-sum>div{grid-template-columns:repeat(2,minmax(0,1fr))}.fm-sum .net{grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:baseline;padding-top:8px;border-top:1px solid var(--inv-line)}.fm-sum b{font-size:13.5px}}
+/* QA: "Administrador" completo en celulares (antes salía "Administrad…") */
+.mb-home .mb-title{font-size:clamp(20px,6.4vw,34px)!important}
+/* Aviso de conexión perdida */
+.net-alert{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 10px);z-index:9999;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:#2a1414;border:1px solid rgba(255,122,126,.45);color:#ffe1e1;box-shadow:0 12px 30px rgba(0,0,0,.35);font-size:12.5px;line-height:1.35}
+.net-alert span{flex:1;min-width:0}.net-alert b{display:block;font-size:13.5px;color:#fff}
+.net-alert button{flex:none;padding:8px 12px;border-radius:12px;background:#ff7a7e;color:#2a1414;font-weight:700;font-size:12.5px;border:0}
+:root[data-theme="light"] .net-alert{background:#fff1f1;border-color:#e9a3a6;color:#7a2226}:root[data-theme="light"] .net-alert b{color:#5c1418}:root[data-theme="light"] .net-alert button{background:#c8323a;color:#fff}
+@media (min-width:640px){.net-alert{left:50%;right:auto;transform:translateX(-50%);width:min(560px,calc(100% - 24px))}}
+/* Venta: cerrar solo después de enviar la factura */
+.post-sale-footer:has(> .fd-finish.locked:only-child){grid-template-columns:1fr}
+.fd-finish.locked{color:var(--muted);background:var(--inv-card,rgba(255,255,255,.04));border:1.5px dashed rgba(212,168,92,.55)}
+.fd-finish.locked .inv-i{color:var(--gold-light,#d4a85c)}
+:root[data-theme="light"] .fd-finish.locked{color:#6f5a3a;border-color:#c79a52;background:#fbf6ec}
+.delivery-optional.required{color:#c8323a;font-weight:700}
+:root:not([data-theme="light"]) .delivery-optional.required{color:#ff8a8e}
+/* Área de toque de 44 px en «Más opciones» sin cambiar el diseño */
+.inv-menu .fp-icon{position:relative}
+.inv-menu .fp-icon::after{content:'';position:absolute;inset:-7px}
+/* Empleados: acceso restablecido */
+.access-done{display:grid;gap:3px;margin:0 0 12px;padding:12px 14px;border-radius:14px;background:rgba(47,210,126,.1);border:1px solid rgba(47,210,126,.35);font-size:12.5px;color:var(--ink)}
+.access-done b{color:#2fd27e;font-size:13px}.access-done code{font-size:13px;font-weight:700;letter-spacing:.02em;user-select:all}.access-done small{color:var(--muted)}
+:root[data-theme="light"] .access-done b{color:#13834c}
+/* Marca de cada negocio: los que no son Angie Tech muestran su nombre (o su logo) */
+.brand-lockup.brand-text-lockup{width:auto!important;height:auto!important;max-width:min(62vw,250px);display:flex;align-items:center;min-height:34px;margin:0}
+.brand-text-lockup .brand-name{font-family:'Playfair Display',Georgia,serif;font-weight:600;font-size:22px;line-height:1.1;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:linear-gradient(135deg,#f3dcae,#c79a52);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand-text-lockup.compact .brand-name{font-size:19px}
+.brand-text-lockup .brand-logo-custom{position:static!important;filter:none!important;width:auto!important;max-width:100%;max-height:44px;object-fit:contain}
+:root[data-theme="light"] .brand-text-lockup .brand-name{background:linear-gradient(135deg,#a27532,#6e4d1d);-webkit-background-clip:text;background-clip:text}
+.fx-logo.fx-logo-txt{width:auto;font-family:'Playfair Display',Georgia,serif;font-size:22px;font-weight:600;color:#f1d6a7;letter-spacing:.03em;line-height:1.1;max-width:60%}
+.notice-summary .notice-read-all{margin-top:10px;background:none;border:0;padding:6px 0;min-height:44px;color:var(--gold,#c79a52);font-weight:600;font-size:13px;cursor:pointer}
+/* Inicio: acceso destacado a «Detalle del negocio» */
+.ah-detail-cta{display:flex;align-items:center;gap:14px;width:100%;margin-top:16px;padding:16px 16px;min-height:76px;border-radius:20px;border:1px solid color-mix(in srgb,var(--gold,#c79a52) 55%,transparent);background:linear-gradient(120deg,color-mix(in srgb,var(--gold,#c79a52) 18%,var(--surface,#151310)),var(--surface,#151310) 70%);box-shadow:0 10px 28px #0000002e,inset 0 1px 0 #ffffff14;color:var(--ink,#f6f3ec);text-align:left;font:inherit;cursor:pointer}
+.ah-detail-cta:active{transform:scale(.985)}
+.ah-detail-ic{flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#e9cf98,#c79a52);color:#1b150b}
+.ah-detail-ic svg{width:22px;height:22px}
+.ah-detail-txt{flex:1;min-width:0}
+.ah-detail-txt b{display:block;font-family:'Playfair Display',serif;font-weight:500;font-size:20px;line-height:1.2}
+.ah-detail-txt small{display:block;margin-top:3px;font-size:12.5px;color:var(--muted)}
+.ah-detail-cta>svg:last-child{flex:none;color:var(--gold,#c79a52)}
+/* Filtros › Marca: todas las marcas visibles en varias filas (sin carrusel cortado) */
+.flt-sheet .pos-brands.in-sheet{display:flex!important;flex-wrap:wrap!important;gap:8px!important;overflow:visible!important;margin:0!important;padding:0 0 4px!important;mask-image:none!important;-webkit-mask-image:none!important;scroll-snap-type:none!important}
+.flt-sheet .pos-brands.in-sheet>button{flex:0 0 auto!important;min-height:44px;max-width:100%}
+/* Empleados › Historial de actividad con el estilo de la app */
+.emp-act{display:flex;align-items:center;gap:12px;width:100%;padding:12px 0;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;font:inherit;text-align:left}
+.emp-act.is-link{cursor:pointer}.emp-act.is-link:active{opacity:.8}
+.emp-act-ic{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:13px;background:color-mix(in srgb,var(--gold,#c79a52) 14%,transparent);color:var(--gold,#c79a52)}
+.emp-act-ic svg{width:19px;height:19px}
+.emp-act-ic.good{background:var(--good-bg);color:var(--good)}.emp-act-ic.bad{background:var(--bad-bg);color:var(--bad)}.emp-act-ic.warn{background:var(--warn-bg);color:var(--warn)}
+.emp-act-main{flex:1;min-width:0}
+.emp-act-main b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
+.emp-act-main small{display:block;margin-top:2px;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emp-act-time{flex:none;max-width:34%;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.35}
+/* Inicio › Ingresos y Gastos: ícono pequeño junto al título (más liviano) */
+.ah-duo .ah-mini{padding:13px 13px 12px!important;gap:0!important}
+.ah-duo .ah-mini-label{display:inline-flex;align-items:center;gap:7px;min-width:0}
+.ah-duo .ah-mini-icon{width:24px!important;height:24px!important;border-radius:7px!important;box-shadow:none!important}
+.ah-duo .ah-mini-icon svg{width:14px!important;height:14px!important}
+.ah-duo .ah-mini-top{font-size:12.5px}
+.ah-duo .ah-mini b{font-size:clamp(17px,5vw,21px)!important;margin:8px 0 4px!important}
+/* Barra inferior más compacta: menos espacio vacío bajo los íconos en iPhone */
+.nav{padding:2px 4px max(6px,calc(env(safe-area-inset-bottom) - 14px))!important}
+.nav button{min-height:52px!important;padding:6px 0 4px!important;gap:4px!important}
+/* Configuración › Mensaje al cliente */
+.msg-sheet .msg-label{margin:14px 2px 6px;font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--muted)}
+.msg-sheet .msg-text{width:100%;min-height:170px;resize:vertical;line-height:1.5;font-size:15px;padding:12px 14px;box-sizing:border-box}
+.msg-chips{display:flex;flex-wrap:wrap;gap:8px}
+.msg-chips button{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid color-mix(in srgb,var(--gold,#c79a52) 45%,transparent);background:color-mix(in srgb,var(--gold,#c79a52) 10%,transparent);color:var(--gold,#c79a52);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.msg-preview{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:14px;line-height:1.5;padding:14px;border-radius:16px;background:#075e54;color:#f2f2f2;border:0}
+:root[data-theme="light"] .msg-preview{background:#dcf8c6;color:#1b1b1b}
+.msg-reset{display:block;margin:12px auto 0;min-height:44px;background:none;border:0;color:var(--gold,#c79a52);font:inherit;font-weight:600;cursor:pointer}
+/* Correo en pausa: botón visible pero bloqueado */
+.fd-act.mail.is-off{opacity:.45;cursor:not-allowed;filter:grayscale(.6)}
+.fd-act.mail.is-off small{color:var(--gold,#c79a52)}
+/* Configuración › Datos de la empresa */
+.empresa-hint{margin:-4px 2px 10px!important}
+.empresa-edit-btn{display:block;width:100%;min-height:50px;margin-top:10px;border-radius:14px;border:0;background:linear-gradient(135deg,#e9cf98,#c79a52);color:#1b150b;font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+.empresa-sheet .field,.empresa-sheet label{margin-bottom:10px}
+.empresa-preview{padding:14px 16px;border-radius:14px;background:#fffdf7;color:#1b150b;border:1px solid #e8dcc2}
+.empresa-preview b{display:block;font-size:15px}
+.empresa-preview span{display:block;margin-top:4px;font-size:12.5px;color:#6b604f;line-height:1.45}
+.empresa-sheet .msg-label{margin:14px 2px 6px;font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--muted)}
+.empresa-extra-hint{margin:-2px 2px 8px!important}
+.empresa-extra{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) 40px;gap:8px;margin-bottom:8px;align-items:center}
+.empresa-extra .inp{min-height:46px;padding:0 12px;font-size:14px}
+.empresa-extra button{height:40px;border-radius:12px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
+.empresa-extra-add{display:block;width:100%;min-height:46px;border-radius:12px;border:1px dashed color-mix(in srgb,var(--gold,#c79a52) 60%,transparent);background:none;color:var(--gold,#c79a52);font:inherit;font-weight:600;cursor:pointer}
+/* Factura › datos de la empresa ordenados (rótulo dorado + valor) */
+.print-invoice.fx .fx-store{padding:14px 16px 12px;border-bottom:1px solid #eadfca}
+.fx-store-head{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+.fx-store-eyebrow{font-size:8px!important;letter-spacing:.22em;font-weight:700;color:#b08a47!important}
+.print-invoice.fx .fx-store b{font-size:15px;font-weight:700;color:#181613;letter-spacing:.01em}
+.fx-store-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px;margin:0}
+.fx-store-grid>div{min-width:0}
+.fx-store-grid>div.wide{grid-column:span 2}
+.fx-store-grid dt{font-size:8px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:#9a8e7c;margin:0 0 2px}
+.fx-store-grid dd{margin:0;font-size:11px;line-height:1.35;color:#2a251e;overflow-wrap:anywhere}
+.print-invoice.fx .fx-store .fx-store-empty{font-size:10px!important;color:#7a7064}
+@media (max-width:380px){.fx-store-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fx-store-grid>div.wide{grid-column:1/-1}}

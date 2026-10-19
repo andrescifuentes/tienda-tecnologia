@@ -1,0 +1,12 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {businessDraft,saveBusinessSettings} from '../src/lib/businessSettings.js'
+import {invoiceMessageBody} from '../src/lib/invoiceEmail.js'
+const invoice={prefijo:'FV',numero:30,total:100,clientes:{nombre:'Luisa'}},legacy={asunto_correo:'Antiguo',mensaje_correo:'Mensaje antiguo',mensaje_whatsapp:'Antiguo'}
+test('Mensaje vigente de Andres tiene prioridad sobre plantillas antiguas',()=>{const d=invoiceMessageBody({invoice,tienda:{nombre:'Empresa B',mensaje_factura:'Hola {cliente}: {factura} {enlace}',plantillas_factura:legacy},pdfUrl:'https://app.test/f/abcdefghijkl'});assert.equal(d.body,'Hola Luisa: FV-0030 https://app.test/f/abcdefghijkl')})
+test('Restaurar mensaje original no reactiva una plantilla obsoleta',()=>{const d=invoiceMessageBody({invoice,tienda:{nombre:'Empresa B',mensaje_factura:null,plantillas_factura:legacy}});assert.ok(!d.body.includes('Antiguo'));assert.ok(d.body.includes('Empresa B'))})
+const store={id:7,nombre:'Empresa B',nit:'900123456-7',direccion:'Calle 1',local:'Local 2',telefono:'3001234567',correo:'ventas@example.test',factura_pie:'Gracias',datos_extra:[]}
+function fallback(code='PGRST202'){const calls=[],client={rpc:async()=>({data:null,error:{code,message:code==='42501'?'permission denied':'schema cache'}}),from:table=>{const q={update(data){calls.push({table,data});return q},eq(key,value){calls.at(-1).owner={key,value};return q},select(){return q},single:async()=>({data:{id:7},error:null})};return q}};return{client,calls}}
+test('Editor existente guarda por RLS del negocio cuando falta la extension RPC',async()=>{const{client,calls}=fallback();await saveBusinessSettings(client,{...businessDraft(store),nombre:'Nuevo nombre'},{esAdmin:true,store});assert.equal(calls.length,1);assert.equal(calls[0].owner.value,7);assert.equal(calls[0].data.nit,'900123456-7');assert.equal(calls[0].data.nombre,'Nuevo nombre')})
+test('Campos nuevos no se descartan ni se simula guardado si falta SQL',async()=>{const{client,calls}=fallback();await assert.rejects(saveBusinessSettings(client,{...businessDraft(store),razon_social:'Empresa SAS'},{esAdmin:true,store}),/no se guardaron/);assert.equal(calls.length,0)})
+test('Denegacion de permisos jamas usa el fallback de compatibilidad',async()=>{const{client,calls}=fallback('42501');await assert.rejects(saveBusinessSettings(client,businessDraft(store),{esAdmin:true,store}),/permission denied/);assert.equal(calls.length,0)})

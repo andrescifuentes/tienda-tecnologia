@@ -123,7 +123,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
     <Modal title="Detalle de factura" className="invoice-detail-sheet experience-sheet fd-sheet" keyboardAware restoreInputFocus={false} onClose={cerrar}>
       <ErrorBox text={err} />
       {businessNotice && <p className="post-sale-note invoice-business-notice" role="status">{businessNotice}</p>}
-      {confirmRefund && <ConfirmAction title="Confirmar devolución" label="Confirmar devolución" onClose={()=>setConfirmRefund(false)} onConfirm={devolver}>Se registrará la devolución de los productos elegidos y su reverso de dinero y comisión. {reintegra ? 'El stock disponible aumentará.' : 'El producto dañado no aumentará el stock disponible.'}</ConfirmAction>}
+      {confirmRefund && <ConfirmAction title="Confirmar devolución" label="Confirmar devolución" onClose={()=>setConfirmRefund(false)} onConfirm={devolver}>Se registrará la devolución de los productos elegidos y su reverso de dinero. {reintegra ? 'El stock disponible aumentará.' : 'El producto dañado no aumentará el stock disponible.'}</ConfirmAction>}
       <section className={'fd-hero' + (nueva ? ' new' : '') + (anulada ? ' void' : '')}>
         {nueva ? <span className="fd-check" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24" /><path d="M15 27l7 7 15-16" /></svg></span> : <span className="fd-hero-ic"><I n="receipt" /></span>}
         <span className="fd-hero-eyebrow">{nueva ? '¡Venta registrada!' : anulada ? 'Factura anulada' : 'Factura de venta'}</span>
@@ -153,7 +153,6 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
         <div className="fd-line"><span>Subtotal</span><b>{money(f.subtotal)}</b></div>
         {f.descuento > 0 && <div className="fd-line"><span>Descuento</span><b>−{money(f.descuento)}</b></div>}
         <div className="fd-line grand"><span>Total</span><b>{money(f.total)}</b></div>
-        {f.comision != null && <div className="fd-line small"><span>Comisión ({f.comision_pct}%)</span><span>{money(f.comision)}</span></div>}
       </div>
       {anulada && <p className="fd-void-note"><I n="warn" />Motivo de anulación: {f.motivo_anulacion}</p>}
 

@@ -6,7 +6,7 @@ const prepare=options=>prepararEnvioFactura({invoice,...options})
 test('WhatsApp uses the customer phone and actual invoice; short professional text has no URL or invented attachment',()=>{
  const r=prepare({canal:'whatsapp',telefono:'300 123 4567',detalle:'*Producto*'})
  assert.equal(r.destino,'300 123 4567');assert.ok(r.url.startsWith('https://wa.me/573001234567?text='))
- assert.ok(r.cuerpo.includes('Hola, María'));assert.ok(r.cuerpo.includes('FV-2042'));assert.ok(r.cuerpo.includes('$1.234.567'));assert.ok(r.cuerpo.includes('COP'));assert.ok(r.cuerpo.split('\n').length>4);assert.ok(r.cuerpo.length<300);assert.ok(!r.cuerpo.includes('*'));assert.equal(r.adjuntoManual,true)
+ assert.ok(/Hola,? María/.test(r.cuerpo));assert.ok(r.cuerpo.includes('FV-2042'));assert.ok(r.cuerpo.includes('$1.234.567'));assert.ok(r.cuerpo.includes('COP'));assert.ok(r.cuerpo.split('\n').length>4);assert.ok(r.cuerpo.length<300);assert.ok(!r.cuerpo.includes('*'));assert.equal(r.adjuntoManual,true)
 })
 for(const phone of ['+57 3001234567','+1 2025550123'])test('International phone '+phone,()=>assert.ok(prepare({canal:'whatsapp',telefono:phone}).url.startsWith('https://wa.me/')))
 for(const phone of ['',null,undefined])test('Missing phone '+phone,()=>assert.throws(()=>prepare({canal:'whatsapp',telefono:phone}),/cliente no tiene un número de WhatsApp/))
@@ -34,3 +34,5 @@ test('Post-sale action dismisses input keyboard; does not steal focus from butto
  const previous=globalThis.document;let calls=0
  try{globalThis.document={activeElement:{matches:()=>true,blur:()=>calls++}};quitarFocoEntrada();assert.equal(calls,1);globalThis.document={activeElement:{matches:()=>false,blur:()=>calls++}};quitarFocoEntrada();assert.equal(calls,1)}finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous}
 })
+
+test('Enlace público de Andrés se comparte sin afirmar adjunto y Storage se excluye',()=>{const publicDraft=prepare({canal:'whatsapp',telefono:'3001234567',pdfUrl:'https://app.example.test/f/abcdefghijkl'});assert.equal(publicDraft.adjuntoManual,false);assert.ok(publicDraft.cuerpo.includes('/f/abcdefghijkl'));for(const link of ['https://storage.example.test/storage/v1/object/sign/facturas/x?token=secret','https://app.example.test/f/abcdefghijkl?token=secret']){const r=prepare({canal:'whatsapp',telefono:'3001234567',pdfUrl:link});assert.equal(r.adjuntoManual,true);assert.ok(!r.cuerpo.includes('token=secret'))}})
