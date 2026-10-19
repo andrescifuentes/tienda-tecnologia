@@ -78,6 +78,8 @@ export function demoCashAction(state, name, args, context) {
   if (name === 'caja_movimiento') { const previous = tables.caja_eventos.find(e => e.caja_id === session.id && e.request_id === req); if (previous) return previous.id }
   if (session.estado !== 'abierta') throw new Error('La caja está cerrada. No se puede modificar.')
   if (name === 'caja_cerrar') {
+    // SQL 17: closing requires admin or the per-employee «cerrar_caja» permission.
+    if (actor.rol !== 'admin' && !tables.perfil_permisos.some(p => p.perfil_id === actor.id && p.permiso === 'cerrar_caja')) throw new Error('No tienes permiso para cerrar caja. Pide autorización al administrador.')
     if (cashInteger(args.p_revision) !== session.revision) throw new Error('La caja recibió movimientos nuevos. Actualiza y revisa el efectivo antes de cerrar.')
     const counted = cashInteger(args.p_contado_cent), notes = String(args.p_observaciones || '').trim()
     if (counted < 0 || notes.length > 1000) throw new Error('Efectivo contado u observaciones inválidos.')

@@ -1,0 +1,19 @@
+/* Inventario: control por unidad (IMEI / serial) y datos adicionales */
+.pf-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px;border-radius:12px;border:1px solid var(--inv-line);background:var(--inv-input)}
+.pf-seg button{all:unset;cursor:pointer;text-align:center;padding:10px 4px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--muted)}
+.pf-seg button.on{background:var(--inv-gold);color:var(--inv-gold-ink)}
+.pf-seg button:disabled{opacity:.35;cursor:not-allowed}
+.pf-seg button:focus-visible{outline:2px solid #d4a85c;outline-offset:1px}
+.pf-attr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) 44px;gap:8px;margin-bottom:8px}
+.pf-attr-x{all:unset;cursor:pointer;display:grid;place-items:center;height:46px;border-radius:11px;border:1px solid var(--inv-line);color:var(--muted)}
+.pu-search{margin:8px 0 4px}
+.pu-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--inv-line)}
+.pu-row:last-child{border-bottom:0}
+.pu-main{all:unset;min-width:0;display:flex;flex-direction:column;gap:2px;cursor:pointer}
+.pu-main:disabled{cursor:default}
+.pu-main .mono{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+.pu-main small{font-size:12px;color:var(--muted)}
+.pu-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
+.pu-sale{all:unset;cursor:pointer;font-size:11.5px;color:#d4a85c;text-decoration:underline;text-underline-offset:2px}
+.serial-option small.serial-attrs{display:block;font-size:12px;color:var(--muted);letter-spacing:0;text-transform:none}
+@media (max-width:360px){.pf-attr{grid-template-columns:1fr 44px}.pf-attr input:first-child{grid-column:1/-1}}

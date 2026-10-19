@@ -12,7 +12,8 @@ import { useAction } from '../lib/useAction'
 import ProductoForm from '../components/ProductoForm'
 import FullPage from '../components/FullPage'
 import CompraForm from '../components/CompraForm'
-import { Empty, Loader, Badge, Input, Select, ErrorBox } from '../components/ui'
+import ProductUnits from '../components/ProductUnits'
+import { Empty, Loader, Input, Select, ErrorBox } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { money, fechaHora, limpiarBusqueda, mensajeError } from '../lib/format'
@@ -184,11 +185,7 @@ export default function Inventario() {
 }
 
 function ProductoDetalle({ p, editar, costos, puedeVender, onClose, onEditar, onVender, onAjuste, onMovs, onIngreso, onCargar, onCambio }) {
-  const [uni, setUni] = useState(null)
   const [tone, label] = estadoStock(p)
-  useEffect(() => {
-    if (p.maneja_serial) supabase.from('unidades_serializadas').select('id,serial,estado').eq('producto_id', p.id).order('id', { ascending: false }).limit(100).then(({ data }) => setUni(data || []))
-  }, [p])
   const copiar = async () => { try { await navigator.clipboard.writeText(p.codigo); toast('Código copiado') } catch { toast(p.codigo) } }
   const filas = [
     ['phone', 'Categoría', p.categoria || 'Sin categoría', <CategoryIcon key="c" categoria={p.categoria} />],
@@ -200,6 +197,7 @@ function ProductoDetalle({ p, editar, costos, puedeVender, onClose, onEditar, on
     p.stock_max != null && ['box', 'Stock máximo', unidades(p.stock_max)],
     costos && p.precio_compra != null && ['tag', 'Precio de compra', money(p.precio_compra)],
     p.codigo_barras && ['barcode', 'Código de barras', p.codigo_barras],
+    ...(Array.isArray(p.atributos) ? p.atributos : []).map(a => ['tag', a.etiqueta, a.valor]),
   ].filter(f => f && f[2])
   const menu = <Menu label="Opciones del producto" items={[
     editar && { label: 'Editar', icon: 'pencil', onClick: onEditar },
@@ -230,9 +228,7 @@ function ProductoDetalle({ p, editar, costos, puedeVender, onClose, onEditar, on
       {filas.map(([ic, k, v, custom]) => <div key={k} className="inv-spec"><span className="inv-spec-icon">{custom || <I n={ic} />}</span><span><small>{k}</small><b>{v}</b></span></div>)}
     </div>
     {p.descripcion && <div className="inv-desc"><small>Descripción</small><p>{p.descripcion}</p></div>}
-    {p.maneja_serial && <div className="inv-desc"><small>IMEI / seriales</small>
-      {!uni ? <Loader /> : uni.length === 0 ? <p>Sin unidades registradas.</p> : uni.map(u => <div key={u.id} className="inv-serial"><span>{u.serial}</span><Badge tone={u.estado === 'disponible' ? 'good' : ''}>{u.estado}</Badge></div>)}
-    </div>}
+    {p.maneja_serial && <ProductUnits producto={p} editar={editar} />}
     {isDemoMode && editar && <div className="destructive-zone"><RecordStatus table="productos" record={p} onSaved={onCambio} /></div>}
   </FullPage>
 }

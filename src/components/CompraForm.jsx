@@ -12,6 +12,7 @@ import { supabase, isDemoMode } from '../lib/supabase'
 import { money, limpiarBusqueda, mensajeError, hoyBogota } from '../lib/format'
 import { toast } from '../lib/toast'
 import { I } from './InvIcons'
+import { parseSerialList } from '../lib/imei'
 
 // Ingreso de mercancía = registrar compra a un proveedor
 export default function CompraForm({ proveedorId, productoInicial, cantidadInicial, onClose, onSaved }) {
@@ -54,12 +55,19 @@ export default function CompraForm({ proveedorId, productoInicial, cantidadInici
       if (!Number.isFinite(Number(i.costo)) || Number(i.costo) < 0) return setErr(`Costo inválido en ${i.producto.nombre}`)
       p_items.push({ producto_id: i.producto.id, cantidad: cant, costo_unitario: Number(i.costo) || 0 })
       if (i.producto.maneja_serial) {
-        const ss = i.seriales.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean)
-        if (ss.length !== cant) return setErr(`${i.producto.nombre}: escribe ${cant} seriales (uno por línea). Llevas ${ss.length}.`)
+        const tipo = i.producto.tipo_serial === 'imei' ? 'IMEI' : 'seriales'
+        let ss
+        try { ss = parseSerialList(i.seriales, i.producto.tipo_serial) } catch (e) { return setErr(`${i.producto.nombre}: ${e.message}`) }
+        if (ss.length !== cant) return setErr(`${i.producto.nombre}: escribe ${cant} ${tipo} (uno por línea). Llevas ${ss.length}.`)
         ss.forEach((s) => p_seriales.push({ producto_id: i.producto.id, serial: s }))
       }
     }
     setBusy(true)
+    // Friendly early check; the unique index (and SQL 18 trigger) remain the real guarantee.
+    if (p_seriales.length) {
+      const { data: repetidos } = await supabase.from('unidades_serializadas').select('serial').in('serial', p_seriales.map(s => s.serial))
+      if (repetidos?.length) { setBusy(false); return setErr('Ya están registrados en el inventario: ' + repetidos.map(r => r.serial).join(', ') + '. Revisa los IMEI/seriales.') }
+    }
     const { error } = await supabase.rpc('registrar_compra', {
       p_proveedor_id: Number(prov), p_numero_documento: doc.trim() || null, p_forma_pago: forma,
       ...(isDemoMode?{p_fecha:date,p_notas:notes.trim(),p_request_id:requestId.current}:{}),
@@ -86,7 +94,7 @@ export default function CompraForm({ proveedorId, productoInicial, cantidadInici
               <label><small>Cantidad</small><div className="pos-step"><button type="button" onClick={() => upd(idx, 'cantidad', Math.max(1, (Number(i.cantidad) || 1) - 1))}>−</button><output>{i.cantidad}</output><button type="button" onClick={() => upd(idx, 'cantidad', (Number(i.cantidad) || 0) + 1)}>+</button></div></label>
               <label><small>Costo por unidad</small><span className="cf-box sm"><span className="cf-prefix">$</span><input inputMode="numeric" value={i.costo} onChange={(e) => upd(idx, 'costo', e.target.value.replace(/\D/g, ''))} /></span></label>
             </div>
-            {i.producto.maneja_serial && <label className="cp-serial"><small>Seriales / IMEI · uno por línea ({i.cantidad})</small><textarea rows={3} value={i.seriales} onChange={(e) => upd(idx, 'seriales', e.target.value)} placeholder="356789012345678" /></label>}
+            {i.producto.maneja_serial && <label className="cp-serial"><small>{i.producto.tipo_serial === 'imei' ? 'IMEI (15 dígitos)' : 'Seriales / IMEI'} · uno por línea · {i.seriales.split(/[\n,;]+/).filter(s => s.trim()).length} de {i.cantidad}</small><textarea rows={3} inputMode={i.producto.tipo_serial === 'imei' ? 'numeric' : undefined} autoCapitalize="characters" spellCheck="false" value={i.seriales} onChange={(e) => upd(idx, 'seriales', e.target.value)} placeholder="356789012345678" /></label>}
             <div className="cp-sub"><span>Subtotal</span><b>{money(Number(i.cantidad) * Number(i.costo))}</b></div>
           </div>
         ))}

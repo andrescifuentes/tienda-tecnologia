@@ -23,8 +23,11 @@ import { supabase, isDemoMode } from '../lib/supabase'
 import { money, limpiarBusqueda, mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
 import '../styles/sale-quantity.css'
+import '../styles/inventory-units.css'
 import MoneyInput from '../components/MoneyInput'
 import { obtenerConsumidorFinal, esConsumidorFinal, notaVenta } from '../lib/consumidorFinal'
+import TransferenciaQR, { MedioLogo } from '../components/TransferenciaQR'
+import { registerInvoiceTransferMethod } from '../lib/transferMethods'
 
 const precioDe = i => i.precio ?? i.producto.precio_venta
 
@@ -130,6 +133,9 @@ export default function Vender() {
   const [sinDatos, setSinDatos] = useState(draft.sinDatos ?? true)
   const listoCliente = !!cliente || sinDatos
   const [metodo, setMetodo] = useState(draft.metodo || 'efectivo')
+  // Medio de transferencia mostrado al cliente (QR del administrador). No registra pagos.
+  const [medioTransfer, setMedioTransferState] = useState(null), [verQR, setVerQR] = useState(false), medioRef = useRef(null)
+  const setMedioTransfer = m => { medioRef.current = m; setMedioTransferState(m) }
   const [descuento, setDescuento] = useState(draft.descuento || '')
   const [notas, setNotas] = useState(draft.notas || '')
   const [verCliente, setVerCliente] = useState(false)
@@ -177,7 +183,7 @@ export default function Vender() {
   async function agregar(p) {
     if (!cartEditable()) return
     if (p.maneja_serial) {
-      const { data } = await supabase.from('unidades_serializadas').select('id,serial').eq('producto_id', p.id).eq('estado', 'disponible').order('id')
+      const { data } = await supabase.from('unidades_serializadas').select('*').eq('producto_id', p.id).eq('estado', 'disponible').order('id')
       const usadas = carrito.map((i) => i.unidad?.id)
       const libres = (data || []).filter((u) => !usadas.includes(u.id))
       if (libres.length === 0) return toast('No hay unidades disponibles')
@@ -235,7 +241,10 @@ export default function Vender() {
   }
 
   function finishSale(result, attempt) {
+    // The sale is already confirmed; the transfer method is only an informative reference.
+    if (attempt.medioTransferencia && result.invoiceId) registerInvoiceTransferMethod(supabase, result.invoiceId, attempt.medioTransferencia.id).catch(e => toast('Venta registrada. No se pudo anotar el medio ' + attempt.medioTransferencia.nombre + ': ' + mensajeError(e)))
     if (!mounted.current) return
+    setMedioTransfer(null)
     clearSaleAttempt(sessionStorage, perfil.id, attempt.id)
     attemptRef.current = null; setSaleAttempt(null)
     quitarFocoEntrada(); setVerFacturaVenta(false)
@@ -248,6 +257,10 @@ export default function Vender() {
     if (mounted.current) setSaleAttempt({ ...attempt })
   }
   const [facturar, pendingSale] = useAction(facturarImpl, () => { if (mounted.current) setBusy(false) })
+  function cobrar() {
+    if (!listoCliente && !saleAttempt) { setFaltaCliente(true); setTimeout(() => setFaltaCliente(false), 600); return toast('Elige o registra el cliente para continuar') }
+    facturar()
+  }
   async function facturarImpl() {
     setErr(''); setBusy(true)
     let attempt = attemptRef.current
@@ -268,8 +281,10 @@ export default function Vender() {
       for (const value of [descuento,subtotal,total,...carrito.flatMap(i => [i.producto.precio_venta,i.producto.precio_compra ?? 0])]) if (monetaryError(value)) return setErr(monetaryError(value))
       if (carrito.some(i => !Number.isInteger(i.cantidad) || i.cantidad <= 0 || i.cantidad > i.producto.stock || i.producto.activo === false)) return setErr('Revisa el carrito: un producto está desactivado o no tiene stock suficiente. Reduce su cantidad o quítalo.')
       const items = carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.unidad ? 1 : i.cantidad, ...(i.unidad ? { unidad_id: i.unidad.id } : {}), descuento: (i.producto.precio_venta - precioDe(i)) * (i.unidad ? 1 : i.cantidad), ...(isDemoMode ? { precio_unitario: i.producto.precio_venta } : {}) }))
-      attempt = createSaleAttempt({ id: requestId, actorId: perfil.id, admin: esAdmin, mode: isDemoMode ? 'demo' : supabase.idempotentSales ? 'secure' : 'legacy', total,
-        args: { p_cliente_id: clienteVenta?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notaVenta(clienteVenta, notas), ...(isDemoMode ? { p_total_confirmado: total, p_vendedor_id: esAdmin ? seller : undefined } : {}) } })
+      const medio = metodo === 'transferencia' ? medioRef.current : null
+      attempt = { ...createSaleAttempt({ id: requestId, actorId: perfil.id, admin: esAdmin, mode: isDemoMode ? 'demo' : supabase.idempotentSales ? 'secure' : 'legacy', total,
+        args: { p_cliente_id: clienteVenta?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notaVenta(clienteVenta, notas), ...(isDemoMode ? { p_total_confirmado: total, p_vendedor_id: esAdmin ? seller : undefined } : {}) } }),
+        medioTransferencia: medio ? { id: medio.id, nombre: medio.nombre } : null }
       try { rememberAttempt(attempt) }
       catch { return setErr('No se pudo proteger el estado de esta venta. Habilita el almacenamiento del navegador y reintenta; no se envió ningún cobro.') }
     }
@@ -447,14 +462,15 @@ export default function Vender() {
       {serialDe && (
         <Modal title={`Serial · ${serialDe.nombre}`} subtitle="Selecciona una unidad disponible" className="experience-sheet serial-picker-sheet" keyboardAware onClose={() => setSerialDe(null)}>
           <div className="serial-product"><ProductThumbnail product={serialDe}/><span><b>{serialDe.nombre}</b><small>{unidades.length} unidades disponibles</small></span></div>
-          <div className="serial-list">{unidades.map((u) => <button type="button" key={u.id} className="row serial-option" onClick={() => agregarUnidad(u)}><span className="serial-mark"><Icon name="scan"/></span><span className="flex-1"><small>SERIAL / IMEI</small><b>{u.serial}</b><Badge tone="good">Disponible</Badge></span><span className="serial-select">Elegir <span aria-hidden="true">›</span></span></button>)}</div>
+          <div className="serial-list">{unidades.map((u) => <button type="button" key={u.id} className="row serial-option" onClick={() => agregarUnidad(u)}><span className="serial-mark"><Icon name="scan"/></span><span className="flex-1"><small>{serialDe.tipo_serial === 'imei' ? 'IMEI' : 'SERIAL / IMEI'}</small><b>{u.serial}</b>{[u.atributos?.color, u.atributos?.capacidad].some(Boolean) && <small className="serial-attrs">{[u.atributos.color, u.atributos.capacidad].filter(Boolean).join(' · ')}</small>}<Badge tone="good">Disponible</Badge></span><span className="serial-select">Elegir <span aria-hidden="true">›</span></span></button>)}</div>
         </Modal>
       )}
 
+      {verQR && verCarrito && <TransferenciaQR total={saleAttempt?.total ?? total} selectedId={medioTransfer?.id} busy={busy || pendingSale} onSelect={setMedioTransfer} onClose={() => setVerQR(false)} onConfirm={m => { setMedioTransfer(m); setVerQR(false); cobrar() }} />}
       {verCarrito && (() => {
         const mp = METODOS_PAGO.find(m => m[0] === metodo) || METODOS_PAGO[0]
         return <Modal expanded={expand} title="Tu venta" subtitle="Revisa y cobra" className="experience-sheet checkout-sheet pos-checkout pos-ck" keyboardAware restoreInputFocus={false} onClose={() => setVerCarrito(false)} footer={
-          <button className={'pos-pay2' + (listoCliente ? '' : ' locked')} disabled={busy || pendingSale || (!carrito.length && !saleAttempt)} onClick={() => { if (!listoCliente && !saleAttempt) { setFaltaCliente(true); setTimeout(() => setFaltaCliente(false), 600); return toast('Elige o registra el cliente para continuar') } facturar() }}>
+          <button className={'pos-pay2' + (listoCliente ? '' : ' locked')} disabled={busy || pendingSale || (!carrito.length && !saleAttempt)} onClick={cobrar}>
             <span className="pos-pay2-ic"><I n={listoCliente ? mp[2] : 'user'} /></span>
             <span className="pos-pay2-txt"><small>{busy ? 'Procesando…' : saleAttempt ? saleAttempt.status === 'retryable' ? 'Reintentar esta venta' : 'Comprobar venta' : listoCliente ? 'Cobrar en ' + mp[1].toLowerCase() : 'Falta el cliente'}</small><b>{busy ? 'Facturando' : money(saleAttempt?.total ?? total)}</b></span>
             <span className="pos-pay2-go"><I n="back" className="flip" /></span>
@@ -491,7 +507,11 @@ export default function Vender() {
           {isDemoMode && esAdmin && <Select disabled={!!saleAttempt} label="Vendedor" value={seller} onChange={e=>setSeller(e.target.value)}>{sellers.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</Select>}
 
           <div className="pos-step-head"><span className="pos-step-n">3</span><h4>Forma de pago</h4></div>
-          <div className="pos-pays2">{METODOS_PAGO.map(([k, l, ic]) => <button key={k} type="button" className={'m-' + k + (metodo === k ? ' on' : '')} aria-pressed={metodo === k} disabled={!!saleAttempt} onClick={() => setMetodo(k)}><span className="pos-pays2-ic"><I n={ic} /></span><span>{l}</span></button>)}</div>
+          <div className="pos-pays2">{METODOS_PAGO.map(([k, l, ic]) => <button key={k} type="button" className={'m-' + k + (metodo === k ? ' on' : '')} aria-pressed={metodo === k} disabled={!!saleAttempt} onClick={() => { setMetodo(k); if (k === 'transferencia') setVerQR(true); else setMedioTransfer(null) }}><span className="pos-pays2-ic"><I n={ic} /></span><span>{l}</span></button>)}</div>
+          {metodo === 'transferencia' && !saleAttempt && <button type="button" className="tqr-chosen" onClick={() => setVerQR(true)}>
+            {medioTransfer ? <MedioLogo medio={medioTransfer} size="sm" /> : <span className="pos-pays2-ic"><I n="bank" /></span>}
+            <span><small>{medioTransfer ? 'Medio de transferencia' : 'Código QR para el cliente'}</small><b>{medioTransfer ? medioTransfer.nombre : 'Mostrar medios de pago'}</b></span><em>{medioTransfer ? 'Ver QR' : 'Abrir'}</em>
+          </button>}
 
           {!extras && !desc && !notas ? <button type="button" className="pos-more" onClick={() => setExtras(true)}><I n="plus" />Agregar descuento o nota</button>
           : <div className="pos-extra">

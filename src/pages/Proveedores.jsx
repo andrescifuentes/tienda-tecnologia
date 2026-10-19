@@ -8,13 +8,15 @@ import Modal from '../components/Modal'
 import RecordStatus from '../components/RecordStatus'
 import { useAction } from '../lib/useAction'
 import CompraForm from '../components/CompraForm'
+import SupplierHistory from '../components/SupplierHistory'
+import '../styles/supplier-history.css'
 import { Brand, AnimatedCard } from '../components/TechVisuals'
 import { nombreNegocio } from '../lib/marca'
 import { useAuth } from '../context/AuthContext'
 import { I } from '../components/InvIcons'
 import { Empty, Loader, ErrorBox } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
-import { money, fecha, mensajeError } from '../lib/format'
+import { money, mensajeError } from '../lib/format'
 import { enlaceWhatsApp } from '../lib/whatsapp'
 import { toast } from '../lib/toast'
 
@@ -163,8 +165,10 @@ function Detalle({ compraId, p, onClose, onEditar, onCambio }) {
   const [monto, setMonto] = useState('')
   const [err, setErr] = useState('')
   const [nueva, setNueva] = useState(false)
+  const [historyTick, setHistoryTick] = useState(0)
   const cargar = () => {
-    supabase.from('compras_saldo').select('*').eq('proveedor_id', p.id).order('fecha', { ascending: false }).limit(30).then(({ data }) => setCompras(data || []))
+    setHistoryTick(t => t + 1)
+    supabase.from('compras_saldo').select('*').eq('proveedor_id', p.id).order('fecha', { ascending: false }).then(({ data }) => setCompras(data || []))
     supabase.from('productos').select('id,nombre,stock').eq('proveedor_id', p.id).eq('activo', true).order('nombre').then(({ data }) => setProds(data || []))
   }
   useEffect(cargar, [p.id]) // eslint-disable-line
@@ -180,7 +184,6 @@ function Detalle({ compraId, p, onClose, onEditar, onCambio }) {
   const total = (compras || []).reduce((n, c) => n + Number(c.total || 0), 0)
   const saldo = (compras || []).filter((c) => c.saldo > 0).reduce((n, c) => n + Number(c.saldo), 0)
   const tel = String(p.telefono || '').replace(/\D/g, '')
-  const hoy = hoyISO()
 
   return (
     <Modal title="Proveedor" className="experience-sheet fd-sheet pv-sheet" keyboardAware onClose={onClose} footer={<div className="pv-foot"><button type="button" className="inv-btn-outline" onClick={onEditar}><I n="pencil" />Editar</button><button type="button" className="inv-btn-gold" disabled={p.activo === false} onClick={() => setNueva(true)}><I n="truckIn" />Registrar compra</button></div>}>
@@ -203,20 +206,7 @@ function Detalle({ compraId, p, onClose, onEditar, onCambio }) {
         <div className="cl-tile"><span>Compras</span><b>{compras ? compras.length : '—'}</b></div>
       </section>
 
-      <h3 className="cl-section">Compras {compras?.length ? <span>{compras.length}</span> : null}</h3>
-      {!compras ? <Loader /> : compras.length === 0 ? <p className="cl-empty">Aún no hay compras a este proveedor.</p> : <div className="fv-list">
-        {compras.map((c) => {
-          const vencida = c.saldo > 0 && c.vence_el && String(c.vence_el).slice(0, 10) < hoy
-          return <div key={c.id} className={'pv-buy' + (c.saldo > 0 ? ' due' : '') + (vencida ? ' late' : '')}>
-            <button type="button" className="pv-buy-main" onClick={() => setSeePurchase(c.id)}>
-              <span className="fv-avatar walkin"><I n="truckIn" /></span>
-              <span className="fv-main"><span className="fv-name">{c.numero_documento || 'Compra #' + c.id}</span><span className="fv-seller">{fecha(c.fecha)} · {c.forma_pago}{c.vence_el ? ' · vence ' + fecha(c.vence_el) : ''}</span></span>
-              <span className="fv-side"><b className="fv-amount">{money(c.total)}</b>{c.saldo > 0 ? <span className={'fv-status ' + (vencida ? 'bad' : 'warn')}>{vencida ? 'Vencida' : 'Debe ' + money(c.saldo)}</span> : <span className="fv-status good">Pagada</span>}</span>
-            </button>
-            {c.saldo > 0 && <button type="button" className="pv-pay" onClick={() => { setPagar(c); setMonto(String(c.saldo)) }}><I n="cash" />Pagar {money(c.saldo)}</button>}
-          </div>
-        })}
-      </div>}
+      <SupplierHistory proveedorId={p.id} reload={historyTick} onOpen={setSeePurchase} onPay={c => { setPagar(c); setMonto(String(c.saldo)) }} />
 
       <h3 className="cl-section">Productos que surte {prods?.length ? <span>{prods.length}</span> : null}</h3>
       {!prods ? <Loader /> : prods.length === 0 ? <p className="cl-empty">Sin productos asignados a este proveedor.</p> : <div className="pv-prods">{prods.map((x) => <span key={x.id}><b>{x.nombre}</b><em>{x.stock} uds</em></span>)}</div>}

@@ -1,7 +1,7 @@
 import { money } from './format.js'
 
 // Convierte un registro técnico de «actividad» en una frase clara para el administrador.
-const PERMISOS = { vender: 'Vender', ver_inventario: 'Ver inventario', editar_inventario: 'Editar inventario', editar_precios: 'Cambiar precios y descuentos', ver_costos: 'Ver costos', crear_clientes: 'Crear clientes', hacer_devoluciones: 'Hacer devoluciones', anular_facturas: 'Anular facturas', registrar_compras: 'Registrar compras', ver_finanzas: 'Ver finanzas' }
+const PERMISOS = { vender: 'Vender', ver_inventario: 'Ver inventario', editar_inventario: 'Editar inventario', editar_precios: 'Cambiar precios y descuentos', ver_costos: 'Ver costos', crear_clientes: 'Crear clientes', hacer_devoluciones: 'Hacer devoluciones', anular_facturas: 'Anular facturas', registrar_compras: 'Registrar compras', ver_finanzas: 'Ver finanzas', cerrar_caja: 'Cierre de caja' }
 const TABLAS = { productos: ['Producto', 'box'], perfiles: ['Empleado', 'users'], clientes: ['Cliente', 'users'], proveedores: ['Proveedor', 'truck'], movimientos: ['Movimiento de caja', 'cash'] }
 const AJUSTES = { ajuste_entrada: 'Entrada', ajuste_salida: 'Salida', devolucion_proveedor: 'Devolución a proveedor' }
 const numero = n => { const m = /^([A-Za-z]+)-?(\d+)$/.exec(String(n || '')); return m ? `${m[1]}-${m[2].padStart(4, '0')}` : String(n || '') }

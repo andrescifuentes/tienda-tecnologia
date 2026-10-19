@@ -12,6 +12,13 @@ async function demo(email='ana@angietech.demo',storage=store()){
  const signed=await client.auth.signInWithPassword({email,password:DEMO_PASSWORD});assert.equal(signed.error,null)
  return {client,storage}
 }
+// SQL 17: a seller closes a drawer only after the admin grants «cerrar_caja».
+async function grantClose(client,email='ana@angietech.demo',id='demo-ana'){
+ await client.auth.signInWithPassword({email:'admin@angietech.demo',password:DEMO_PASSWORD})
+ const permisos=client.demo.snapshot().tables.perfil_permisos.filter(p=>p.perfil_id===id).map(p=>p.permiso)
+ assert.equal((await client.rpc('guardar_empleado_demo',{id,datos:{},permisos:[...permisos,'cerrar_caja']})).error,null)
+ assert.equal((await client.auth.signInWithPassword({email,password:DEMO_PASSWORD})).error,null)
+}
 async function rpc(client,name,args={}){const result=await client.rpc(name,args);assert.equal(result.error,null,result.error?.message);return result.data}
 const req=suffix=>'caja-request-'+suffix
 
@@ -30,7 +37,7 @@ test('CSV seguro declara centavos sin datos innecesarios',()=>{
  assert.ok(csv.startsWith('\uFEFF'));assert.ok(csv.includes("'=HYPERLINK"));assert.ok(csv.includes('Centavos COP enteros'));assert.ok(!csv.includes('access_token'))
 })
 test('demo apertura tres medios, cierre idempotente y persistencia sin duplicar Finanzas',async()=>{
- const {client,storage}=await demo();const before=client.demo.snapshot()
+ const {client,storage}=await demo();await grantClose(client);const before=client.demo.snapshot()
  const id=await rpc(client,'caja_abrir',{p_inicial_cent:1000000,p_request_id:req('open')});assert.equal(await rpc(client,'caja_abrir',{p_inicial_cent:1000000,p_request_id:req('open')}),id)
  assert.ok((await client.rpc('caja_abrir',{p_inicial_cent:0,p_request_id:req('duplicate')})).error)
  let invoiceId
@@ -71,7 +78,7 @@ test('demo permisos propios/admin y prohibicion de escrituras directas',async()=
  assert.ok((await client.from('caja_sesiones').update({estado:'cerrada'}).eq('id',id)).error)
 })
 test('demo historial paginado permite consultar cajas anteriores a las primeras 30',async()=>{
- const {client}=await demo()
+ const {client}=await demo();await grantClose(client)
  for(let i=0;i<32;i++){const id=await rpc(client,'caja_abrir',{p_inicial_cent:0,p_request_id:req('history-'+i)});await rpc(client,'caja_cerrar',{p_caja_id:id,p_revision:0,p_contado_cent:0,p_request_id:req('close-'+i)})}
  const first=await rpc(client,'caja_estado');assert.equal(first.history.length,30);assert.equal(first.history_limited,true)
  const second=await rpc(client,'caja_estado',{p_antes_id:first.history.at(-1).id});assert.equal(second.history.length,2);assert.equal(second.history_limited,false)

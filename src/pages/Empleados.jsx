@@ -29,6 +29,7 @@ const PERMISOS = [
   ['vender', 'Vender y facturar'], ['ver_inventario', 'Ver inventario'], ['editar_inventario', 'Modificar inventario'],
   ['editar_precios', 'Cambiar precios'], ['ver_costos', 'Ver costos'], ['crear_clientes', 'Crear clientes'],
   ['hacer_devoluciones', 'Hacer devoluciones'], ['anular_facturas', 'Anular facturas'], ['registrar_compras', 'Registrar compras'], ['ver_finanzas', 'Ver finanzas'],
+  ['cerrar_caja', 'Puede realizar cierre de caja'],
 ]
 const BASE = ['vender', 'ver_inventario', 'crear_clientes']
 
@@ -81,8 +82,9 @@ export default function Empleados() {
   )
 }
 
-function Permisos({ value, onChange }) {
-  return PERMISOS.map(([k, t]) => (
+// «cerrar_caja» se otorga desde la ficha: la función crear-empleado desplegada no lo conoce.
+function Permisos({ value, onChange, alCrear = false }) {
+  return PERMISOS.filter(([k]) => !alCrear || k !== 'cerrar_caja').map(([k, t]) => (
     <PremiumSwitch key={k} label={t} checked={value.includes(k)} onChange={checked=>onChange(checked ? [...value, k] : value.filter((x) => x !== k))}/>
   ))
 }
@@ -122,7 +124,7 @@ function Nuevo({ onClose, onSaved }) {
       <ErrorBox text={err} />
       <FormSection number="01" title="Identidad"><div className="admin-form-grid"><div className="admin-span"><Input required label="Nombre completo" value={f.nombre} onChange={set('nombre')}/></div>{isDemoMode&&<Input label="Documento empleado" value={f.documento||''} onChange={set('documento')}/>}<Input label="Teléfono" value={f.telefono} onChange={set('telefono')} inputMode="tel"/></div></FormSection>
       <FormSection number="02" title="Acceso"><Input label="Correo (con él inicia sesión)" type="email" value={f.correo} onChange={set('correo')}/>{isDemoMode&&<RoleField label="Rol" value={f.rol||'vendedor'} onChange={set('rol')}/>}<PasswordField value={f.password} onChange={set('password')} generate={isDemoMode}/></FormSection>
-      <FormSection number="03" title="Permisos" collapsible detail={`${permisos.length} activos`}><Permisos value={permisos} onChange={setPermisos}/></FormSection>
+      <FormSection number="03" title="Permisos" collapsible detail={`${permisos.length} activos`}><Permisos alCrear value={permisos} onChange={setPermisos}/></FormSection>
     </Modal>
   )
 }
@@ -164,11 +166,17 @@ function Detalle({ p, onClose, onCambio }) {
     const { error } = await supabase.from('perfiles').update({ telefono: tel.trim() || null, comision_pct: null }).eq('id', p.id)
     if (error) return setErr(mensajeError(error))
     if (!esAdmin) {
-      const d = await supabase.from('perfil_permisos').delete().eq('perfil_id', p.id)
-      if (d.error) return setErr(mensajeError(d.error))
-      if (permisos.length) {
-        const i = await supabase.from('perfil_permisos').insert(permisos.map((permiso) => ({ perfil_id: p.id, permiso })))
-        if (i.error) return setErr(mensajeError(i.error))
+      // Add first, then remove: a rejected permission (e.g. SQL 17 pending) never wipes the current ones.
+      const actuales = await supabase.from('perfil_permisos').select('permiso').eq('perfil_id', p.id)
+      if (actuales.error) return setErr(mensajeError(actuales.error))
+      const antes = (actuales.data || []).map(r => r.permiso), nuevos = permisos.filter(x => !antes.includes(x)), quitar = antes.filter(x => !permisos.includes(x))
+      if (nuevos.length) {
+        const i = await supabase.from('perfil_permisos').insert(nuevos.map((permiso) => ({ perfil_id: p.id, permiso })))
+        if (i.error) return setErr(nuevos.includes('cerrar_caja') && /cerrar_caja|enum|22P02/i.test(i.error.message + ' ' + i.error.code) ? 'El permiso de cierre de caja requiere ejecutar el script 17_cierre_caja_diario.sql en Supabase. No se cambiaron los permisos.' : mensajeError(i.error))
+      }
+      if (quitar.length) {
+        const d = await supabase.from('perfil_permisos').delete().eq('perfil_id', p.id).in('permiso', quitar)
+        if (d.error) return setErr(mensajeError(d.error))
       }
     }
     toast('Cambios guardados'); onCambio()
