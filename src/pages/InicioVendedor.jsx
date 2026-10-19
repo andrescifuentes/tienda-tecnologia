@@ -1,3 +1,4 @@
+import SalesPeriodDetail from '../components/SalesPeriodDetail'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell, { ThemeToggle } from '../components/AppShell'
@@ -22,6 +23,7 @@ export default function InicioVendedor() {
   const revision = useDemoRevision()
   const [periodo, setPeriodo] = useState('hoy')
   const [datos, setDatos] = useState(null), [err, setErr] = useState('')
+  const [ventasAbiertas,setVentasAbiertas]=useState(false)
   const [perfilAbierto, setPerfilAbierto] = useState(false), [factura, setFactura] = useState(null), [tick, setTick] = useState(0)
   useEffect(() => {
     let active = true
@@ -56,7 +58,7 @@ export default function InicioVendedor() {
       <ErrorBox text={err} />
       {!datos && !err ? <Loader /> : datos && <>
         <p className="seller-total-label">Total vendido</p>
-        <p className={'seller-total' + (money(datos.total).length > 14 ? ' compact' : '')}>{money(datos.total)}</p>
+        <button type="button" className="ah-sales-open" aria-label="Ver mis movimientos de ventas" onClick={()=>setVentasAbiertas(true)}><p className={'seller-total' + (money(datos.total).length > 14 ? ' compact' : '')}>{money(datos.total)}</p><small>Ver movimientos ›</small></button>
         <div className="seller-comparison">{datos.variacion == null ? <span className="seller-no-comparison">Sin período anterior para comparar</span> : <>
           <span className={'seller-delta ' + (datos.variacion > 0 ? 'positive' : datos.variacion < 0 ? 'negative' : 'neutral')}><Icon name="arrow" />{datos.variacion > 0 ? '+' : ''}{datos.variacion}%</span>
           <span>{datos.rango.comparacion}{datos.rango.nota && <small>{datos.rango.nota}</small>}</span>
@@ -71,6 +73,7 @@ export default function InicioVendedor() {
         <span className="seller-invoice-side"><strong>{money(f.total)}</strong><span className={'seller-status ' + (f.estado === 'emitida' ? 'issued' : f.estado === 'anulada' ? 'cancelled' : '')}>{f.estado === 'emitida' ? 'Emitida' : f.estado === 'anulada' ? 'Anulada' : f.estado === 'pendiente' ? 'Pendiente' : f.estado}</span></span><Chevron />
       </button>)}</div> : <Empty text="Aún no tienes facturas" description="Tu próxima venta aparecerá aquí." /> : null}
     </section>
+    {ventasAbiertas&&datos&&<SalesPeriodDetail range={datos.rango} expectedTotal={datos.total} onClose={()=>setVentasAbiertas(false)}/>}
     {perfilAbierto && <ProfileDialog onClose={() => setPerfilAbierto(false)} />}
     {factura && <Suspense fallback={<Loader />}><FacturaDetalle id={factura} onClose={() => setFactura(null)} onCambio={() => setTick(t => t + 1)} /></Suspense>}
   </AppShell>

@@ -1,4 +1,4 @@
-import {preserveNativeShareContext} from './nativeShareContext'
+import {preserveNativeShareContext} from './nativeShareContext.js'
 import { jsPDF } from 'jspdf'
 import { renderInvoicePdf } from '../../supabase/functions/_shared/invoice-pdf-core.js'
 import logoUrl from '../assets/brand/angie-tech-logo-gold.png'

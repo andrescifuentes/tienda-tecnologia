@@ -1,4 +1,5 @@
 import { invoiceBrand } from './invoice-brand.js'
+import { businessContactLines, validateBusinessLogo } from './business-settings.js'
 const money = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO')
 const numFactura = f => f.prefijo + '-' + String(f.numero).padStart(4, '0')
 const invoiceBusiness = (f, store) => f?.tienda_snapshot || store
@@ -7,9 +8,10 @@ const invoiceIdentity = f => ({ ...f, clientes: Object.hasOwn(f,'cliente_snapsho
 /** @param {{jsPDF: any, logo?: string|null, demo?: boolean}} options */
 export function renderInvoicePdf(invoice, items, tienda, options) {
   const { jsPDF, logo = null, demo = false } = options
-  const LOGO = logo
   invoice = invoiceIdentity(invoice)
   tienda = invoiceBusiness(invoice, tienda) || {}
+  let LOGO = logo
+  if(tienda.logo_data_url){try{LOGO=validateBusinessLogo(tienda.logo_data_url)}catch{ /* invalid historical logo falls back to brand */ }}
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const number = numFactura(invoice)
   const filename = `ANGIE-TECH-${number.replace(/[^a-zA-Z0-9-]/g, '')}.pdf`
@@ -29,8 +31,9 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   // 1. Banda negra superior
   doc.setFillColor(14, 13, 11).rect(0, 0, W, 50, 'F')
   doc.setFillColor(...GOLD).rect(0, 50, W, 1.1, 'F')
-  if (LOGO) { try { doc.addImage(LOGO, 'PNG', M, 10.5, 42, 29.1) } catch { /* sin logo */ } }
-  else T(marca, M, 28, { size: 22, bold: true, color: GOLD_L })
+  let logoDrawn = false
+  if (LOGO) { try { const image=doc.getImageProperties(LOGO),scale=Math.min(42/image.width,29.1/image.height),width=image.width*scale,height=image.height*scale; doc.addImage(LOGO, LOGO.startsWith('data:image/jpeg;')?'JPEG':'PNG', M+(42-width)/2, 10.5+(29.1-height)/2, width, height); logoDrawn=true } catch { /* invalid image keeps visible business name */ } }
+  if (!logoDrawn) T(marca, M, 28, { size: 22, bold: true, color: GOLD_L })
   T('FACTURA DE VENTA', R, 16, { size: 8, bold: true, color: GOLD, align: 'right' })
   doc.setDrawColor(...GOLD).setLineWidth(.3).line(R - 34, 18.5, R, 18.5)
   T(number, R, 31, { size: 24, bold: true, color: [255, 255, 255], align: 'right' })
@@ -41,9 +44,10 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
 
   // 2. Datos de la tienda
   let y = 60
-  const tiendaDatos = [tienda.nit && `NIT ${tienda.nit}`, tienda.direccion, tienda.telefono && `Tel. ${tienda.telefono}`, tienda.correo].filter(Boolean)
-  T(marca, M, y, { size: 10, bold: true }); T(tiendaDatos.length ? tiendaDatos.join('   ·   ') : 'Tecnología, celulares y accesorios', M, y + 5, { size: 8, color: MUTED })
-  y += 13
+  const tiendaDatos = businessContactLines(tienda)
+  const contactLines = doc.splitTextToSize(tiendaDatos.length ? tiendaDatos.join('   ·   ') : 'Tecnología, celulares y accesorios', R - M)
+  T(marca, M, y, { size: 10, bold: true }); T(contactLines, M, y + 5, { size: 8, color: MUTED })
+  y += 9 + contactLines.length * 4
 
   // 3. Panel Cliente | Atendido por (rótulo arriba, valor abajo)
   const c = invoice.clientes || {}, v = invoice.perfiles || {}

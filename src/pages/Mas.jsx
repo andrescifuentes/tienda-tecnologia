@@ -12,6 +12,8 @@ export default function Mas() {
   const [profileOpen,setProfileOpen] = useState(false)
   const navigate = useNavigate()
   const items = [
+    esAdmin && { to: '/reportes', icon: 'chart', t: 'Reportes', s: 'Exportar ventas y contactos' },
+    can('vender') && { to: '/caja', icon: 'cash', t: 'Caja', s: 'Apertura, movimientos y cierre' },
     esAdmin && { to: '/empleados', icon: 'users', t: 'Empleados', s: 'Crear vendedores, permisos y actividad' },
     can('registrar_compras') && { to: '/proveedores', icon: 'truck', t: 'Proveedores', s: 'Compras, cuentas por pagar' },
     can('ver_finanzas') && { to: '/finanzas', icon: 'cash', t: 'Finanzas', s: 'Ingresos y gastos' },
@@ -26,7 +28,7 @@ export default function Mas() {
         <span className="profile-avatar">{perfil.nombre.slice(0, 1).toUpperCase()}</span>
         <span className="admin-profile-copy"><strong>{perfil.nombre}</strong><small className="admin-role">{esAdmin ? 'Administrador' : 'Vendedor'}</small><small>{perfil.correo}</small></span><span className="admin-chevron" aria-hidden="true">›</span>
       </button>
-      {[{title:'Gestión del negocio',routes:['/empleados','/proveedores','/finanzas']},{title:'Operación',routes:['/garantias','/clientes','/facturas']},{title:'Sistema',routes:['/actividad','/configuracion']}].map(group=>items.some(i=>group.routes.includes(i.to))&&<section key={group.title}><h2 className="admin-group-title">{group.title}</h2><div className="card menu-list mb-3">
+      {[{title:'Gestión del negocio',routes:['/empleados','/proveedores','/finanzas','/reportes']},{title:'Operación',routes:['/caja','/garantias','/clientes','/facturas']},{title:'Sistema',routes:['/actividad','/configuracion']}].map(group=>items.some(i=>group.routes.includes(i.to))&&<section key={group.title}><h2 className="admin-group-title">{group.title}</h2><div className="card menu-list mb-3">
         {items.filter(i=>group.routes.includes(i.to)).map((i, index) => (
           <AnimatedCard as="button" type="button" key={i.to} index={index} className="row menu-row" onClick={() => navigate(i.to)}>
             <span className="menu-symbol"><Icon name={i.icon} /></span>

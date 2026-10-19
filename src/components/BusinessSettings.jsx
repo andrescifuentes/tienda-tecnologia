@@ -1,0 +1,29 @@
+import { useEffect, useRef, useState } from 'react'
+import Modal from './Modal'
+import { ErrorBox, Input, Loader } from './ui'
+import { useAuth } from '../context/AuthContext'
+import { supabase, isDemoMode } from '../lib/supabase'
+import { useAction } from '../lib/useAction'
+import { loadBusinessSettings, saveBusinessSettings, readBusinessLogo, businessDraft } from '../lib/businessSettings'
+import { toast } from '../lib/toast'
+import '../styles/business-settings.css'
+const fields=[['nombre','Nombre comercial',100],['razon_social','Razón social',160],['nit','NIT',15],['nit_dv','Dígito de verificación',1],['direccion','Dirección',200],['ciudad','Ciudad',100],['telefono','Teléfono',40],['whatsapp','WhatsApp',40],['correo','Correo empresarial',254]]
+export default function BusinessSettings({onClose}){
+ const {esAdmin,tienda,recargarPerfil}=useAuth(),[draft,setDraft]=useState(()=>businessDraft(tienda)),[loading,setLoading]=useState(true),[available,setAvailable]=useState(false),[loadError,setLoadError]=useState(''),[error,setError]=useState(''),[retry,setRetry]=useState(0),[reading,setReading]=useState(false)
+ const alive=useRef(true),generation=useRef(0)
+ useEffect(()=>{alive.current=true;return()=>{alive.current=false;++generation.current}},[])
+ useEffect(()=>{if(!esAdmin)return;let live=true;const controller=new AbortController();setLoading(true);setLoadError('');loadBusinessSettings(supabase,controller.signal).then(data=>{if(live){setDraft(data.draft);setAvailable(data.available)}}).catch(e=>{if(live)setLoadError(e.message)}).finally(()=>{if(live)setLoading(false)});return()=>{live=false;controller.abort()}},[esAdmin,retry])
+ const set=key=>event=>{setDraft(old=>({...old,[key]:event.target.value}));setError('')}
+ const [save,busy]=useAction(async()=>{setError('');try{await saveBusinessSettings(supabase,draft,{esAdmin});if(!alive.current)return;await recargarPerfil();toast('Datos de la empresa guardados');onClose()}catch(e){if(alive.current)setError(e.message)}})
+ async function logo(event){const file=event.target.files?.[0];event.target.value='';if(!file)return;const token=++generation.current;setReading(true);setError('');try{const value=await readBusinessLogo(file);if(alive.current&&token===generation.current)setDraft(old=>({...old,logo_data_url:value}))}catch(e){if(alive.current&&token===generation.current)setError(e.message)}finally{if(alive.current&&token===generation.current)setReading(false)}}
+ if(!esAdmin)return null
+ return <Modal title="Datos de la empresa" subtitle="Identidad y contacto comercial" className="admin-sheet business-settings" keyboardAware restoreInputFocus={false} onClose={onClose} footer={!loading&&!loadError&&<button className="btn full" disabled={busy||reading} onClick={save}>{busy?'Guardando…':'Guardar datos de empresa'}</button>}>
+  {loading?<Loader filas={3}/>:loadError?<><ErrorBox text={loadError}/><button className="btn sec full" onClick={()=>setRetry(n=>n+1)}>Reintentar consulta</button></>:<>
+   <ErrorBox text={error}/><p className="admin-hint" role="status">{isDemoMode?'Demo local: se guarda en este navegador y dirección; no sincroniza otros dispositivos.':available?'Los datos se guardan en Supabase para el negocio autorizado.':'Activación pendiente en Supabase (SQL 13). Puedes preparar los datos; el servidor debe habilitar su guardado.'}</p>
+   <section className="business-identity"><span className="premium-eyebrow">IDENTIDAD COMERCIAL</span><p>Se utiliza en nuevas facturas y comunicaciones. Las facturas históricas conservan su identidad registrada.</p></section>
+   <div className="business-fields">{fields.map(([key,label,max])=><Input key={key} label={label} name={key} value={draft[key]} onChange={set(key)} maxLength={max} required={key==='nombre'} type={key==='correo'?'email':key==='telefono'||key==='whatsapp'?'tel':'text'} inputMode={key==='nit'||key==='nit_dv'?'numeric':undefined} autoComplete={key==='correo'?'email':key==='direccion'?'street-address':key==='ciudad'?'address-level2':key==='telefono'?'tel':'off'}/>)}</div>
+   <div className="business-logo"><div>{draft.logo_data_url?<img src={draft.logo_data_url} alt="Logo configurado de la empresa"/>:<span>Sin logo personalizado</span>}</div><label className="btn sec">{reading?'Preparando logo…':'Elegir logo PNG o JPG'}<input type="file" accept="image/png,image/jpeg" disabled={busy||reading} onChange={logo}/></label>{draft.logo_data_url&&<button className="business-remove-logo" disabled={busy||reading} onClick={()=>{++generation.current;setDraft(old=>({...old,logo_data_url:''}))}}>Quitar logo personalizado</button>}<small>Máximo 5 MB al elegir. Se adapta para guardar hasta 256 KB; no se admiten SVG ni enlaces externos.</small></div>
+   <label className="lbl" htmlFor="business-footer">Información comercial / pie de factura</label><textarea id="business-footer" className="inp" rows={4} maxLength={1000} value={draft.factura_pie} onChange={set('factura_pie')}/><p className="admin-hint">Documento de venta interno. Esta configuración no activa facturación electrónica DIAN.</p>
+  </>}
+ </Modal>
+}

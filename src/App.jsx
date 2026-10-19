@@ -5,6 +5,8 @@ import { PageSkeleton } from './components/ui'
 import Login from './pages/Login'
 import Inicio from './pages/Inicio'
 
+const Reportes = lazy(() => import('./pages/Reportes'))
+const Caja = lazy(() => import('./pages/Caja'))
 const Actividad = lazy(() => import('./pages/Actividad'))
 const Configuracion = lazy(() => import('./pages/Configuracion'))
 const Vender = lazy(() => import('./pages/Vender'))
@@ -33,6 +35,8 @@ export default function App() {
       <Route path="/facturas/historial" element={<Privada><FacturasHistorial /></Privada>} />
       <Route path="/clientes" element={<Privada><Clientes /></Privada>} />
       <Route path="/configuracion" element={<Privada><Configuracion /></Privada>} />
+      <Route path="/reportes" element={<Privada soloAdmin><Reportes /></Privada>} />
+      <Route path="/caja" element={<Privada permiso="vender"><Caja /></Privada>} />
       <Route path="/actividad" element={<Privada><Actividad /></Privada>} />
       <Route path="/mas" element={<Privada><Mas /></Privada>} />
       <Route path="/empleados" element={<Privada soloAdmin><Empleados /></Privada>} />

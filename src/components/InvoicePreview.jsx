@@ -1,3 +1,4 @@
+import { businessContactLines, validateBusinessLogo } from '../../supabase/functions/_shared/business-settings.js'
 import { invoiceBrand } from '../../supabase/functions/_shared/invoice-brand.js'
 import { money, numFactura } from '../lib/format'
 import { invoiceBusiness, invoiceIdentity } from '../lib/invoiceSnapshot'
@@ -12,12 +13,14 @@ export default function InvoicePreview({ invoice, items, tienda, demo = false })
   const f = new Date(invoice.fecha)
   const fecha = f.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota' })
   const hora = f.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })
-  const datosTienda = [tienda.nit && `NIT ${tienda.nit}`, tienda.direccion, tienda.telefono && `Tel. ${tienda.telefono}`, tienda.correo].filter(Boolean)
+  const datosTienda = businessContactLines(tienda)
+  let logo = logoGold
+  if(tienda.logo_data_url){try{logo=validateBusinessLogo(tienda.logo_data_url)}catch{ /* use default brand for invalid historical data */ }}
   const unidades = items.reduce((a, i) => a + Number(i.cantidad || 0), 0)
   const Dato = ({ k, v }) => v ? <div className="fx-dato"><dt>{k}</dt><dd>{v}</dd></div> : null
   return <article className="print-invoice fx" data-print-invoice>
     <header className="fx-head">
-      <img src={logoGold} alt={marca} className="fx-logo" />
+      <img src={logo} alt={marca} className="fx-logo" />
       <div className="fx-ref">
         <small>FACTURA DE VENTA</small>
         <h2>{numFactura(invoice)}</h2>

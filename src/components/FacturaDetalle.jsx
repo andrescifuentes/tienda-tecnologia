@@ -1,9 +1,11 @@
 import { invoiceFields, invoiceItemFields, invoiceItemsTable } from '../lib/invoiceQueries'
 import InvoiceDelivery from './InvoiceDelivery'
+import { loadInvoiceBusinessSnapshot } from '../lib/businessSettings'
 import SellerSaleComplete from './SellerSaleComplete'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
 import { consultarFacturasVisibles } from '../lib/sellerHome'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { withDeadline, cancellableQuery, requireData } from '../lib/asyncResult'
 import Modal from './Modal'
 import ConfirmAction from './ConfirmAction'
 import { useAction } from '../lib/useAction'
@@ -19,39 +21,62 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
   const [f, setF] = useState(null)
   const [items, setItems] = useState([])
   const [devs, setDevs] = useState([])
-  const [err, setErr] = useState('')
+  const [err, setErr] = useState(''), [businessNotice, setBusinessNotice] = useState('')
   const [modo, setModo] = useState(null) // 'anular' | 'devolver'
   const [motivo, setMotivo] = useState('')
   const [cants, setCants] = useState({})
   const [reintegra, setReintegra] = useState(true)
   const [adminCorreo, setAdminCorreo] = useState(''), [adminClave, setAdminClave] = useState('')
   const necesitaAdmin = !can('anular_facturas')
-  const cerrar = () => { quitarFocoEntrada(); onClose() }
+  const loadGeneration = useRef(0), loadController = useRef(null)
+  const cerrar = () => { ++loadGeneration.current; loadController.current?.abort(); quitarFocoEntrada(); onClose() }
   const [busy, setBusy] = useState(false)
   const [confirmRefund,setConfirmRefund] = useState(false), [newWarranty,setNewWarranty] = useState(false)
 
   async function cargar() {
-    const { data, error } = await consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, invoiceFields(esAdmin, isDemoMode) + (isDemoMode ? ', clientes(*), perfiles(nombre)' : ', clientes(*), perfiles!facturas_vendedor_id_fkey(nombre,correo,telefono)')).eq('id', id).single()
-    if (error) return setErr(mensajeError(error))
-    const [it, dv] = await Promise.all([
-      supabase.from(invoiceItemsTable(supabase, esAdmin)).select(invoiceItemFields(esAdmin, isDemoMode)).eq('factura_id', id).order('id'),
-      supabase.from('devoluciones').select('id, motivo, total_devuelto, fecha, devolucion_items(factura_item_id, cantidad)').eq('factura_id', id),
-    ])
-    if(it.error||dv.error)return setErr('No se pudo consultar el detalle completo de esta factura. Reintenta la conexión.')
-    let lineas = it.data || []
-    // Código del producto (las líneas guardan nombre y precio; el código se toma del inventario)
-    const sinCodigo = [...new Set(lineas.filter(l => !l.codigo).map(l => l.producto_id))]
-    if (sinCodigo.length) {
-      let { data: cods } = await supabase.from(esAdmin ? 'productos' : 'productos_venta').select('id,codigo').in('id', sinCodigo)
-      if (!cods?.length) ({ data: cods } = await supabase.from('productos_venta').select('id,codigo').in('id', sinCodigo))
-      const mapa = Object.fromEntries((cods || []).map(r => [r.id, r.codigo]))
-      lineas = lineas.map(l => l.codigo ? l : { ...l, codigo: mapa[l.producto_id] || '' })
+    const generation = ++loadGeneration.current
+    loadController.current?.abort()
+    const controller = new AbortController()
+    loadController.current = controller
+    setErr('')
+    try {
+      const result = await withDeadline(async signal => {
+        const query = builder => cancellableQuery(builder, signal)
+        const data = requireData(await query(consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, invoiceFields(esAdmin, isDemoMode) + (isDemoMode ? ', clientes(*), perfiles(nombre)' : ', clientes(*), perfiles!facturas_vendedor_id_fkey(nombre,correo,telefono)')).eq('id', id).single()))
+        if (!data) throw Error('No se pudo consultar la factura guardada.')
+        const [it, dv, business] = await Promise.all([
+          query(supabase.from(invoiceItemsTable(supabase, esAdmin)).select(invoiceItemFields(esAdmin, isDemoMode)).eq('factura_id', id).order('id')),
+          query(supabase.from('devoluciones').select('id, motivo, total_devuelto, fecha, devolucion_items(factura_item_id, cantidad)').eq('factura_id', id)),
+          loadInvoiceBusinessSnapshot(supabase, data, signal),
+        ])
+        let lineas = requireData(it), devoluciones = requireData(dv)
+        if (!Array.isArray(lineas) || !Array.isArray(devoluciones)) throw Error('No se pudo consultar el detalle completo de esta factura.')
+        // Product codes are supplemental; the original line names and amounts stay unchanged.
+        const sinCodigo = [...new Set(lineas.filter(l => !l.codigo).map(l => l.producto_id).filter(value => value != null))]
+        if (sinCodigo.length) {
+          let { data: cods } = await query(supabase.from(esAdmin ? 'productos' : 'productos_venta').select('id,codigo').in('id', sinCodigo))
+          if (!cods?.length) ({ data: cods } = await query(supabase.from('productos_venta').select('id,codigo').in('id', sinCodigo)))
+          const mapa = Object.fromEntries((cods || []).map(row => [row.id, row.codigo]))
+          lineas = lineas.map(line => line.codigo ? line : { ...line, codigo: mapa[line.producto_id] || '' })
+        }
+        const unitIds = [...new Set(lineas.filter(line => !line.serial).map(line => line.unidad_id).filter(Boolean))]
+        if (unitIds.length) {
+          const units = requireData(await query(supabase.from('unidades_serializadas').select('id,serial').in('id',unitIds)))
+          if (!Array.isArray(units)) throw Error('No se pudieron consultar los seriales de esta factura.')
+          lineas = lineas.map(line => ({ ...line, serial:line.serial || units.find(unit => unit.id === line.unidad_id)?.serial }))
+        }
+        return { data:business.snapshot ? { ...data, tienda_snapshot:business.snapshot } : data, lineas, devoluciones, notice:business.notice }
+      }, { signal:controller.signal, message:'No se pudo cargar el detalle de la factura a tiempo. Puedes continuar vendiendo y consultarla después en Facturas.' })
+      if (generation !== loadGeneration.current) return
+      setF(result.data); setItems(result.lineas); setDevs(result.devoluciones); setBusinessNotice(result.notice)
+    } catch (error) {
+      if (generation === loadGeneration.current && !controller.signal.aborted) setErr(mensajeError(error))
     }
-    const unitIds=[...new Set(lineas.filter(i=>!i.serial).map(i=>i.unidad_id).filter(Boolean))]
-    if(unitIds.length){const units=await supabase.from('unidades_serializadas').select('id,serial').in('id',unitIds);if(units.error)return setErr('No se pudieron consultar los seriales de esta factura.');lineas=lineas.map(i=>({...i,serial:i.serial||units.data?.find(u=>u.id===i.unidad_id)?.serial}))}
-    setF(data); setItems(lineas); setDevs(dv.data || [])
   }
-  useEffect(() => { setModo(null); setMotivo(''); setAdminCorreo(''); setAdminClave(''); cargar() }, [id, nueva]) // eslint-disable-line
+  useEffect(() => {
+    setF(null); setItems([]); setDevs([]); setBusinessNotice(''); setModo(null); setMotivo(''); setAdminCorreo(''); setAdminClave(''); cargar()
+    return () => { ++loadGeneration.current; loadController.current?.abort() }
+  }, [id, nueva]) // eslint-disable-line
 
   const devueltos = (itemId) => devs.flatMap((d) => d.devolucion_items).filter((x) => x.factura_item_id === itemId).reduce((a, x) => a + x.cantidad, 0)
   const abrirAnulacion = () => { quitarFocoEntrada(); setErr(''); setMotivo(''); setAdminCorreo(''); setAdminClave(''); setModo('anular') }
@@ -87,13 +112,17 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
     toast('Devolución registrada'); setModo(null); setMotivo(''); setCants({}); cargar(); onCambio?.()
   }
 
-  if (!f) return <Modal title="Factura" restoreInputFocus={false} onClose={cerrar}>{err ? <ErrorBox text={err} /> : <Loader />}</Modal>
+  if (nueva) return <SellerSaleComplete invoice={f} onClose={cerrar} onViewInvoice={f ? onViewInvoice : undefined} onNewSale={onNewSale || cerrar}>
+    {businessNotice && <p className="post-sale-note invoice-business-notice" role="status">{businessNotice}</p>}
+    {f ? <InvoiceDelivery invoice={f} items={items} tienda={tienda} /> : err ? <><ErrorBox text={err}/><button type="button" className="btn sec full post-sale-retry" onClick={cargar}>Reintentar detalle de factura</button></> : <><p className="post-sale-note" role="status">Preparando el comprobante. La venta ya está registrada; puedes cerrar o iniciar otra venta.</p><Loader/></>}
+  </SellerSaleComplete>
+  if (!f) return <Modal title="Factura" restoreInputFocus={false} onClose={cerrar}>{err ? <><ErrorBox text={err}/><button type="button" className="btn sec full" onClick={cargar}>Reintentar detalle de factura</button></> : <Loader />}</Modal>
   const anulada = f.estado === 'anulada'
-  if (nueva) return <SellerSaleComplete invoice={f} onClose={cerrar} onViewInvoice={onViewInvoice} onNewSale={onNewSale || cerrar}><InvoiceDelivery invoice={f} items={items} tienda={tienda} /></SellerSaleComplete>
 
   return (
     <Modal title="Detalle de factura" className="invoice-detail-sheet experience-sheet fd-sheet" keyboardAware restoreInputFocus={false} onClose={cerrar}>
       <ErrorBox text={err} />
+      {businessNotice && <p className="post-sale-note invoice-business-notice" role="status">{businessNotice}</p>}
       {confirmRefund && <ConfirmAction title="Confirmar devolución" label="Confirmar devolución" onClose={()=>setConfirmRefund(false)} onConfirm={devolver}>Se registrará la devolución de los productos elegidos y su reverso de dinero y comisión. {reintegra ? 'El stock disponible aumentará.' : 'El producto dañado no aumentará el stock disponible.'}</ConfirmAction>}
       <section className={'fd-hero' + (nueva ? ' new' : '') + (anulada ? ' void' : '')}>
         {nueva ? <span className="fd-check" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24" /><path d="M15 27l7 7 15-16" /></svg></span> : <span className="fd-hero-ic"><I n="receipt" /></span>}

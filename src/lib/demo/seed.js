@@ -37,7 +37,7 @@ export function createDemoSeed(now = new Date()) {
     ['JBL-TUNE', 'Audífonos JBL Tune 520BT', 2, 'JBL', 145000, 229900, 9, 3, false],
     ['HUB7-USBC', 'Hub USB-C 7 en 1', 6, 'Ugreen', 105000, 169900, 5, 3, false],
   ]
-  const t = Object.fromEntries(['perfiles','perfil_permisos','actividad','categorias','proveedores','productos','unidades_serializadas','movimientos_inventario','compras','compra_items','pagos_proveedor','clientes','facturas','factura_items','factura_envios','devoluciones','devolucion_items','garantias','reclamos_garantia','movimientos','tienda'].map((name) => [name, []]))
+  const t = Object.fromEntries(['perfiles','perfil_permisos','actividad','categorias','proveedores','productos','unidades_serializadas','movimientos_inventario','compras','compra_items','pagos_proveedor','clientes','facturas','factura_items','factura_envios','devoluciones','devolucion_items','garantias','reclamos_garantia','movimientos','tienda','caja_sesiones','caja_eventos'].map((name) => [name, []]))
   const add = (table, data) => { const row = { id: t[table].length + 1, ...data }; t[table].push(row); return row }
   t.perfiles = DEMO_ACCOUNTS.map(([id, nombre, correo, rol, comision_pct], i) => ({ id, nombre, correo, rol, comision_pct, activo: true, telefono: `300000010${i}`, password_hash: PASSWORD_HASH }))
   for (const p of t.perfiles.filter((p) => p.rol !== 'admin')) for (const permiso of ['vender','ver_inventario','crear_clientes']) add('perfil_permisos', { perfil_id: p.id, permiso })

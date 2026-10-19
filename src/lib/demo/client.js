@@ -5,6 +5,8 @@ import { hashDemoPassword } from './password.js'
 import { coordinateDemoWrite, readDemoState } from './writeCoordinator.js'
 import { monetaryAmount } from '../money.js'
 import { freezeInvoiceIdentity } from '../invoiceSnapshot.js'
+import { demoCashAction, recordDemoCash } from '../cashRegister.js'
+import { validateBusinessSettings } from '../../../supabase/functions/_shared/business-settings.js'
 
 const clone = (value) => structuredClone(value)
 const fail = (message) => { throw new Error(message) }
@@ -42,7 +44,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     const state = JSON.parse(raw)
     if (state.version !== 1 || !state.tables?.productos) fail('Los datos demo locales no son compatibles. Restablece la demo desde Configuración.')
     // Additive migration: keep all existing transactions and sessions.
-    for (const table of ['garantia_eventos','notificaciones_leidas']) state.tables[table] ||= []
+    for (const table of ['garantia_eventos','notificaciones_leidas','caja_sesiones','caja_eventos']) state.tables[table] ||= []
     state.sequences ||= {}
     for (const [table, records] of Object.entries(state.tables)) state.sequences[table] = Math.max(state.sequences[table] || 0, ...records.map(r => Number(r.id) || 0))
     for (const row of state.tables.clientes) row.activo ??= true
@@ -119,7 +121,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     else if(table==='facturas_netas') data=state.tables.facturas.map(f=>net(state,f))
     else data=state.tables[table] || fail(`Módulo demo desconocido: ${table}`)
     const profile=user(state)
-    if(profile.rol!=='admin') { if(table==='facturas'||table==='facturas_netas') data=data.filter(f=>f.vendedor_id===profile.id); if(table==='perfiles')data=data.filter(p=>p.id===profile.id); if(['movimientos','compras_saldo','actividad'].includes(table) && !state.tables.perfil_permisos.some(p=>p.perfil_id===profile.id && p.permiso==='ver_finanzas')) data=table==='actividad'?data.filter(a=>a.perfil_id===profile.id):[] }
+    if(profile.rol!=='admin') { if(['caja_sesiones','caja_eventos'].includes(table)) data=data.filter(r=>table==='caja_sesiones'?r.responsable_id===profile.id:state.tables.caja_sesiones.some(s=>s.id===r.caja_id&&s.responsable_id===profile.id)); if(table==='facturas'||table==='facturas_netas') data=data.filter(f=>f.vendedor_id===profile.id); if(table==='perfiles')data=data.filter(p=>p.id===profile.id); if(['movimientos','compras_saldo','actividad'].includes(table) && !state.tables.perfil_permisos.some(p=>p.perfil_id===profile.id && p.permiso==='ver_finanzas')) data=table==='actividad'?data.filter(a=>a.perfil_id===profile.id):[] }
     if (profile.rol !== 'admin') {
       const invoices = new Set(state.tables.facturas.filter(f => f.vendedor_id === profile.id).map(f => f.id))
       const lines = new Set(state.tables.factura_items.filter(i => invoices.has(i.factura_id)).map(i => i.id))
@@ -183,6 +185,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
         authenticated(state)
         let data=rows(state,this.table).filter(r=>this.filters.every(test=>test(r)))
         if(this.operation!=='read') {
+          if (['caja_sesiones','caja_eventos'].includes(this.table)) fail('Utiliza las operaciones auditadas de caja.')
           permit(state,requiredPermission[this.table]||'admin')
           const table=state.tables[this.table] || fail('La vista es de solo lectura')
           if(this.operation==='insert') { data=[]; for(const payload of Array.isArray(this.payload)?this.payload:[this.payload]) { const value={...payload}; if(this.table==='productos')Object.assign(value,{stock:0,activo:true,maneja_serial:!!value.maneja_serial}); if(['proveedores','clientes'].includes(this.table))value.activo=true; if(this.table==='reclamos_garantia'){find(state,'garantias',value.garantia_id);Object.assign(value,{estado:'abierto',fecha:now().toISOString()})} validate(state,this.table,value); const row=add(state,this.table,value); data.push(hydrate(state,this.table,row)); activity(state,'Registro creado',this.table,row.id) } }
@@ -221,6 +224,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     freezeInvoiceIdentity(state,invoice)
     for(const {p,qty,lineDiscount,unit,price} of prepared){const item=add(state,'factura_items',{factura_id:invoice.id,producto_id:p.id,unidad_id:unit?.id||null,nombre:p.nombre,codigo:p.codigo,cantidad:qty,precio_unitario:price,costo_unitario:p.precio_compra,descuento:lineDiscount});if(unit){unit.estado='vendida';unit.factura_item_id=item.id}move(state,p,-qty,'salida_venta','factura',invoice.id);if(p.garantia_meses){const end=new Date(date+'T12:00:00Z');end.setUTCMonth(end.getUTCMonth()+p.garantia_meses);add(state,'garantias',{factura_item_id:item.id,producto_id:p.id,cliente_id:invoice.cliente_id,unidad_id:unit?.id||null,inicio:date,fin:demoDate(end),estado:'vigente'})}}
     ledger(state,'ingreso','Ventas',invoice.total,{origen:'venta',factura_id:invoice.id,descripcion:`Factura ${invoice.prefijo}-${invoice.numero}`})
+    recordDemoCash(state,{actorId:actor.id,tipo:'venta',metodo:invoice.metodo_pago,valor:invoice.total,origenId:invoice.id,referencia:invoice.prefijo+'-'+invoice.numero},{add,now})
     activity(state,'Nueva venta realizada','factura',invoice.id,{numero:`${invoice.prefijo}-${invoice.numero}`,total:invoice.total})
     return invoice.id
   }
@@ -246,13 +250,14 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     const seen=new Set();const prepared=args.p_items.map(entry=>{const i=find(state,'factura_items',entry.factura_item_id),count=quantity(entry.cantidad);if(i.factura_id!==f.id||seen.has(i.id))fail('Producto inválido o repetido');seen.add(i.id);const previous=state.tables.devolucion_items.filter(d=>d.factura_item_id===i.id),returned=sum(previous,'cantidad');if(count>i.cantidad-returned)fail('La devolución supera la cantidad disponible');return {i,count,monto:Math.round(lineTotals.get(i.id)*(returned+count)/i.cantidad)-sum(previous,'monto')}})
     const previousRefunds=state.tables.devoluciones.filter(d=>d.factura_id===f.id),value=sum(prepared,'monto'),commission=Math.round((sum(previousRefunds,'total_devuelto')+value)*(f.comision_pct||0)/100)-sum(previousRefunds,'comision_revertida'),d=add(state,'devoluciones',{factura_id:f.id,motivo:args.p_motivo,reintegra_stock:!!args.p_reintegra_stock,total_devuelto:value,comision_revertida:commission,creado_por:state.session.user.id,fecha:now().toISOString()})
     for(const {i,count,monto} of prepared){add(state,'devolucion_items',{devolucion_id:d.id,factura_item_id:i.id,cantidad:count,monto});if(d.reintegra_stock){move(state,find(state,'productos',i.producto_id),count,'devolucion_cliente','devolucion',d.id,i.costo_unitario);if(i.unidad_id){const u=find(state,'unidades_serializadas',i.unidad_id);u.estado='disponible';u.factura_item_id=null}}else{move(state,find(state,'productos',i.producto_id),0,'devolucion_danada','devolucion',d.id,i.costo_unitario,d.motivo);if(i.unidad_id)find(state,'unidades_serializadas',i.unidad_id).estado='defectuosa'}state.tables.garantias.filter(g=>g.factura_item_id===i.id).forEach(g=>{if(sum(state.tables.devolucion_items.filter(di=>di.factura_item_id===i.id),'cantidad')>=i.cantidad)g.estado='resuelta';warrantyEvent(state,g,g.estado,'Devolución: '+d.motivo)})}
+    recordDemoCash(state,{actorId:state.session.user.id,tipo:'devolucion',metodo:f.metodo_pago,valor:value,origenId:d.id,referencia:'Devolución '+d.id+' · '+f.prefijo+'-'+f.numero},{add,now});
     ledger(state,'gasto','Devoluciones',value,{origen:'devolucion',factura_id:f.id,devolucion_id:d.id});activity(state,'Devolución registrada','factura',f.id,{total:value});return d.id
   }
   function cancel(state,args){
     permit(state,'anular_facturas');const f=find(state,'facturas',args.p_factura_id)
     if(f.estado==='anulada'||!args.p_motivo?.trim())fail('La factura ya está anulada o falta el motivo')
     if(f.estado==='emitida')for(const i of state.tables.factura_items.filter(i=>i.factura_id===f.id)){const refunded=sum(state.tables.devolucion_items.filter(d=>d.factura_item_id===i.id),'cantidad'),remaining=i.cantidad-refunded;if(remaining){move(state,find(state,'productos',i.producto_id),remaining,'devolucion_cliente','anulacion',f.id,i.costo_unitario);if(i.unidad_id){const u=find(state,'unidades_serializadas',i.unidad_id);if(u.factura_item_id===i.id){u.estado='disponible';u.factura_item_id=null}}}state.tables.garantias.filter(g=>g.factura_item_id===i.id).forEach(g=>{g.estado='resuelta'})}
-    const remaining=net(state,f).total_neto;if(f.estado==='emitida')ledger(state,'gasto','Anulación de venta',remaining,{origen:'anulacion',factura_id:f.id})
+    const remaining=net(state,f).total_neto;if(f.estado==='emitida')recordDemoCash(state,{actorId:state.session.user.id,tipo:'anulacion',metodo:f.metodo_pago,valor:remaining,origenId:f.id,referencia:f.prefijo+'-'+f.numero},{add,now});if(f.estado==='emitida')ledger(state,'gasto','Anulación de venta',remaining,{origen:'anulacion',factura_id:f.id})
     Object.assign(f,{estado:'anulada',motivo_anulacion:args.p_motivo,anulada_por:state.session.user.id,anulada_en:now().toISOString()});activity(state,'Factura anulada','factura',f.id);return null
   }
   function employeeSales(state,args){
@@ -268,6 +273,8 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
     add(state,'garantia_eventos',{garantia_id:g.id,estado,nota,fecha:now().toISOString(),creado_por:state.session.user.id})
   }
   function rpcAction(state,name,args){
+    if (['caja_abrir','caja_movimiento','caja_cerrar','caja_estado'].includes(name)) return demoCashAction(state,name,args,{add,activity,now})
+    if(name==='guardar_datos_empresa'){permit(state,'admin');const value=validateBusinessSettings(args.p_datos);Object.assign(state.tables.tienda[0],value,{nombre_personalizado:true});activity(state,'Datos de empresa actualizados','tienda',1);return value}
     if(name==='leer_notificacion_demo'){authenticated(state);if(!state.tables.notificaciones_leidas.some(n=>n.perfil_id===state.session.user.id&&n.notificacion_id===args.id))add(state,'notificaciones_leidas',{perfil_id:state.session.user.id,notificacion_id:args.id});return null}
     if (name === 'actualizar_perfil_demo') { authenticated(state); const p=user(state); if(!args.nombre?.trim())fail('El nombre es obligatorio.'); p.nombre=args.nombre.trim(); p.telefono=args.telefono?.trim()||null; activity(state,'Perfil actualizado','perfil',p.id); return hydrate(state,'perfiles',p) }
     if (name === 'desactivar_registro_demo') { const table=args.tabla; if(!['productos','clientes','proveedores'].includes(table))fail('Registro inválido.'); permit(state,requiredPermission[table]); const r=find(state,table,args.id); r.activo=!args.desactivar; activity(state,r.activo?'Registro activado':'Registro desactivado',table,r.id); return hydrate(state,table,r) }
@@ -323,7 +330,7 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
   }
   return {
     from:(table)=>new Query(table),
-    rpc:(name,args={})=>safe(()=>name==='resumen_dashboard'?readCurrent(state=>visible(state,dashboard(state,args))):name==='ventas_por_empleado'?readCurrent(state=>employeeSales(state,args)):transaction(state=>visible(state,rpcAction(state,name,args)))),
+    rpc:(name,args={})=>safe(()=>name==='caja_estado'?readCurrent(state=>demoCashAction(state,name,args,{add,activity,now})):name==='resumen_dashboard'?readCurrent(state=>visible(state,dashboard(state,args))):name==='ventas_por_empleado'?readCurrent(state=>employeeSales(state,args)):transaction(state=>visible(state,rpcAction(state,name,args)))),
     auth:{
       getSession:async()=>{const result=await safe(()=>readCurrent(state=>state.session));return {data:{session:result.data},error:result.error}},
       onAuthStateChange:subscribe,

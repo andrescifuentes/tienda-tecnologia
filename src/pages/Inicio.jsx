@@ -1,3 +1,4 @@
+import SalesPeriodDetail from '../components/SalesPeriodDetail'
 import {readFinancialRows} from '../lib/financeQueries'
 import '../styles/invoice-message-settings.css'
 import FacturaDetalle from '../components/FacturaDetalle'
@@ -166,6 +167,7 @@ function DashboardAdmin() {
   const [period, setPeriod] = useState('mes')
   const [data, setData] = useState(null), [err, setErr] = useState(''), [verTodo, setVerTodo] = useState(false)
   const [detalleNegocio, setDetalleNegocio] = useState(false)
+  const [salesOpen,setSalesOpen]=useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -213,7 +215,7 @@ function DashboardAdmin() {
           </div>
         </div>
         <div className="ah-sales-row">
-          <div><FitAmount className="ah-amount" minSize={18}>{money(p.ventas)}</FitAmount><p className="ah-count">{p.facturas} {p.facturas === 1 ? 'factura' : 'facturas'} · <MonthPicker value={ym} onChange={setYm} period={period} /></p></div>
+          <div><button type="button" className="ah-sales-open" aria-label="Ver movimientos de ventas" onClick={()=>setSalesOpen(true)}><FitAmount className="ah-amount" minSize={18}>{money(p.ventas)}</FitAmount><small>Ver movimientos ›</small></button><p className="ah-count">{p.facturas} {p.facturas === 1 ? 'factura' : 'facturas'} · <MonthPicker value={ym} onChange={setYm} period={period} /></p></div>
           <Delta value={p.dVentas} label={p.vsLabel} />
         </div>
         <SalesChart values={p.values} labels={p.labels} current={p.current} />
@@ -242,6 +244,7 @@ function DashboardAdmin() {
       <div className="ah-acts activity-list">
         {data.feed.length ? data.feed.slice(0, 4).map(a => <ActivityRow key={a.key} a={a} onOpen={() => navigate(a.to)} />) : <Empty text="Sin actividad reciente" description="Aquí verás tus ventas, compras y movimientos apenas ocurran." />}
       </div>
+      {salesOpen && <SalesPeriodDetail range={{desde:p.ini,hasta:p.fin}} expectedTotal={p.ventas} onClose={()=>setSalesOpen(false)}/>}
       {detalleNegocio && <DetalleNegocio onClose={() => setDetalleNegocio(false)} />}
       {verTodo && <Modal title="Actividad reciente" onClose={() => setVerTodo(false)}><div className="ah-acts in-modal">{data.feed.map(a => <ActivityRow key={a.key} a={a} onOpen={() => navigate(a.to)} />)}</div></Modal>}
     </>}

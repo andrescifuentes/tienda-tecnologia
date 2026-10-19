@@ -33,9 +33,9 @@ async function withInvoiceCustomers(client,invoices,signal){
  for(let offset=0;offset<ids.length;offset+=100){const batch=ids.slice(offset,offset+100),rows=await operation('clientes',()=>readFinancialRows(()=>client.from('clientes').select('id,nombre').in('id',batch).order('id'),signal));for(const customer of rows)customers.set(String(customer.id),customer)}
  return invoices.map(f=>needsName(f)?{...f,clientes:customers.get(String(f.cliente_id))||null}:f)
 }
-async function loadNetInvoices(client,{period,auth,signal}){
+export async function loadNetInvoices(client,{period,auth,signal}){
  const baseTable=invoiceTable(client,auth,false),netTable=invoiceTable(client,auth,true)
- const range=query=>query.gte('fecha',period.ini+'T00:00:00-05:00').lte('fecha',period.fin+'T23:59:59.999999-05:00').order('id')
+ const range=query=>(!auth.esAdmin&&auth.perfilId?query.eq('vendedor_id',auth.perfilId):query).gte('fecha',period.ini+'T00:00:00-05:00').lte('fecha',period.fin+'T23:59:59.999999-05:00').order('id')
  const [baseResult,netResult]=await Promise.allSettled([
   operation(baseTable,()=>readFinancialRows(()=>range(client.from(baseTable).select(auth.esAdmin?'*':invoiceFields)),signal)),
   operation(netTable,()=>readFinancialRows(()=>range(client.from(netTable).select(netFields)),signal)),
