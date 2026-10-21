@@ -91,7 +91,7 @@ export default function Login() {
   }
   return <main ref={screenRef} className="login-screen login-cinematic"><div className="login-layout">
     <section className="login-hero" aria-labelledby="login-headline">
-      <img className="login-photo" src={photo} alt="Tecnología: teléfonos, computador y accesorios" fetchPriority="high" />
+      <img className="login-photo" src={photo} alt="Tecnología: teléfonos, computador y accesorios" fetchpriority="high" />
       <div className="login-ambient" aria-hidden="true"/>
       <div className="login-masthead"><div className="login-brand"><Brand /><p>TU ALIADO TECNOLÓGICO</p></div><button type="button" className="login-theme" aria-label="Cambiar tema" onClick={()=>{const next=getTheme()==='dark'?'light':'dark';setTheme(next);setLocalTheme(next)}}><Icon name={theme==='dark'?'sun':'moon'}/></button></div>
       <div className="login-story"><span className="login-kicker">TECNOLOGÍA QUE TE IMPULSA</span><h1 id="login-headline"><span>Tu negocio.</span><em>Siempre contigo.</em></h1><p>Todo tu equipo. Una sola conexión.</p></div>

@@ -137,7 +137,7 @@ try {
   await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')")
   assert.equal(await evaluate('document.documentElement.dataset.theme'),'dark','Default must ignore OS light preference')
   results.push({name:'Dark default under OS light',status:'PASS'})
-  const routes=[['/','.stat-card','inicio'],['/inventario','.product-card','inventario'],['/vender','.sale-product','ventas'],['/facturas','.invoice-card','facturas'],['/clientes','.row','clientes'],['/proveedores','.row','proveedores'],['/empleados','.row','empleados'],['/finanzas','.row','finanzas'],['/garantias','.row','garantias'],['/mas','.menu-row','mas'],['/configuracion','.settings-panel','configuracion']]
+  const routes=[['/','.ah-sales-open','inicio'],['/inventario','.product-card','inventario'],['/vender','.sale-product','ventas'],['/facturas','.invoice-card','facturas'],['/clientes','.row','clientes'],['/proveedores','.row','proveedores'],['/empleados','.row','empleados'],['/finanzas','.row','finanzas'],['/garantias','.row','garantias'],['/mas','.menu-row','mas'],['/configuracion','.settings-panel','configuracion']]
   const dimensions=[[320,700],[360,800],[390,844],[430,932]],measurements=[]
   const applyTheme=theme=>evaluate('import("/src/lib/theme.js").then(m=>m.setTheme('+JSON.stringify(theme)+'))')
   for(const theme of ['dark','light']){
@@ -152,7 +152,7 @@ try {
       if(width===390){assert.ok(m.demoBottom<=height,'Login demo must be visible at 390x844');assert.ok(m.scroll<=height+2,'Login must fit at 390x844')}
     }
   }
-  await evaluate("document.querySelector('.login-form button.btn').click()");await waitFor("!!document.querySelector('.stat-card')")
+  await evaluate("document.querySelector('.login-form button.btn').click()");await waitFor("!!document.querySelector('.ah-sales-open')")
   for(const theme of ['dark','light']){
     await applyTheme(theme)
     for(const[width,height]of dimensions){

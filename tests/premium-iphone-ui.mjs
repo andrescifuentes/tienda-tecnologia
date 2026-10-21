@@ -146,7 +146,7 @@ try {
   const dimensions=[[320,700],[360,800],[390,844],[430,932]]
   await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')")
   for(const t of ['dark','light'])for(const[w,h]of dimensions){await send('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:1,mobile:true});await theme(t);await geometry(`${t}-${w}-login`,w,h,false);await screenshot(`${t}-${w}-login`);assert.ok(await evaluate("[...document.querySelectorAll('.login-input input')].every(i=>parseFloat(getComputedStyle(i).fontSize)>=16)"));if(w===390)assert.ok(await evaluate("document.querySelector('.demo-access').getBoundingClientRect().bottom<=844"))}
-  await button('Entrar');await waitFor("!!document.querySelector('.stat-card')")
+  await button('Entrar');await waitFor("!!document.querySelector('.ah-sales-open')")
   for(const t of ['dark','light'])for(const[w,h]of dimensions){
     await send('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:1,mobile:true});await theme(t)
     for(const[path,label]of [['/','home'],['/mas','more'],['/inventario','inventory'],['/facturas','invoices'],['/vender','sell'],['/finanzas','finance']]){await go(path);await waitFor("!document.querySelector('.loading-state')");await geometry(`${t}-${w}-${label}`,w,h);await screenshot(`${t}-${w}-${label}`)}

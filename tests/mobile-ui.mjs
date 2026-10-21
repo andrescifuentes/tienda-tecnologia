@@ -139,7 +139,7 @@ try {
   await send('Page.navigate', { url: base + '/login' })
   await waitFor("!!document.querySelector('.login-form')")
   const routes = [
-    ['/login', 'login', '.login-form'], ['/', 'admin', '.stat-card'],
+    ['/login', 'login', '.login-form'], ['/', 'admin', '.ah-sales-open'],
     ['/inventario', 'admin', '.product-card'], ['/vender', 'admin', '.sale-product'],
     ['/facturas', 'admin', '.invoice-card'], ['/mas', 'admin', '.menu-row'],
   ]
@@ -202,7 +202,7 @@ try {
   for (const path of ['/clientes','/empleados','/proveedores','/finanzas','/garantias']) {
     await navigate(path); await delay(700); await geometry(`320-${path.slice(1)}`,320,568)
   }
-  await navigate('/', 'seller'); await waitFor("!!document.querySelector('.stat-card')")
+  await navigate('/', 'seller'); await waitFor("!!document.querySelector('.ah-sales-open')")
   await geometry('320-inicio-vendedor',320,568); await screenshot('320-inicio-vendedor')
   assert.equal(await evaluate("[...document.querySelectorAll('.nav button')].map(b=>b.textContent).join('|')"),'Mis ventas|Vender|Productos|Clientes|Más','Preserve role-specific navigation')
   await navigate('/login','login')
@@ -225,11 +225,11 @@ try {
   }
   results.push({name:'prefers-reduced-motion: six screens',status:'PASS'})
   await send('Emulation.setEmulatedMedia', { features:[{name:'prefers-reduced-motion',value:'no-preference'}] })
-  await navigate('/'); await waitFor("!!document.querySelector('.stat-card')")
+  await navigate('/'); await waitFor("!!document.querySelector('.ah-sales-open')")
   await tap('[aria-label="Cambiar tema"]'); assert.equal(await evaluate("document.documentElement.dataset.theme"),'light')
   await geometry('320-tema-claro',320,568); await tap('[aria-label="Cambiar tema"]')
   await send('Emulation.setDeviceMetricsOverride', {width:768,height:1024,deviceScaleFactor:1,mobile:true})
-  await navigate('/'); await waitFor("!!document.querySelector('.stat-card')"); await delay(700); await geometry('768-tablet',768,1024); await screenshot('768-tablet')
+  await navigate('/'); await waitFor("!!document.querySelector('.ah-sales-open')"); await delay(700); await geometry('768-tablet',768,1024); await screenshot('768-tablet')
   assert.deepEqual(externalRequests, [], 'No requests should leave the local test server')
   assert.deepEqual(browserErrors, [], 'No browser runtime or resource errors')
   const report = { status:'PASS', cases:results.length, results, externalRequests, browserErrors, fixturesOnly:true, testedOn:'Chromium with touch emulation; physical device testing remains necessary' }
