@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Modal from './Modal'
 import FacturaDetalle from './FacturaDetalle'
 import { Badge, Loader, ErrorBox, Input } from './ui'
+import { LocalTag } from './LocalSelector'
 import { supabase } from '../lib/supabase'
 import { useAction } from '../lib/useAction'
 import { mensajeError, numFactura, fecha } from '../lib/format'
@@ -13,7 +14,8 @@ const ESTADO = { disponible: ['good', 'Disponible'], vendida: ['', 'Vendida'], e
 const resumen = a => [a?.color, a?.capacidad, a?.imei2 && 'IMEI 2 ' + a.imei2].filter(Boolean).join(' · ')
 
 // Unidades de un producto controlado por IMEI/serial: qué unidad hay, cuál se vendió y en qué factura.
-export default function ProductUnits({ producto, editar }) {
+// nombreLocal (opcional): con varios locales, muestra en qué local está cada unidad disponible.
+export default function ProductUnits({ producto, editar, nombreLocal }) {
   const [units, setUnits] = useState(null), [ventas, setVentas] = useState({}), [q, setQ] = useState(''), [edit, setEdit] = useState(null), [factura, setFactura] = useState(null), [tick, setTick] = useState(0)
   useEffect(() => {
     let live = true
@@ -44,7 +46,7 @@ export default function ProductUnits({ producto, editar }) {
             {resumen(u.atributos) && <small>{resumen(u.atributos)}</small>}
             {u.atributos?.nota && <small>{u.atributos.nota}</small>}
           </button>
-          <span className="pu-side"><Badge tone={tone}>{label}</Badge>{venta && <button type="button" className="pu-sale" onClick={() => setFactura(venta.id)}>{numFactura(venta)} · {fecha(venta.fecha)}</button>}</span>
+          <span className="pu-side">{nombreLocal && u.estado === 'disponible' && u.local_id != null && <LocalTag nombre={nombreLocal(u.local_id)} />}<Badge tone={tone}>{label}</Badge>{venta && <button type="button" className="pu-sale" onClick={() => setFactura(venta.id)}>{numFactura(venta)} · {fecha(venta.fecha)}</button>}</span>
         </div> })}
     {edit && <UnitEditor unidad={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); setTick(t => t + 1) }} />}
     {factura && <FacturaDetalle id={factura} onClose={() => setFactura(null)} />}

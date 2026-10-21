@@ -213,9 +213,12 @@ export function createDemoClient({ storage = globalThis.localStorage, now = () =
       this.filters.push(r => r[key] != null); return this
     }
     in(key,values) { this.filters.push(r=>values.some(v=>String(v)===String(r[key]))); return this }
-    gt(key,value) { this.filters.push(r=>r[key]>value); return this }
-    gte(key,value) { this.filters.push(r=>r[key]>=value); return this }
-    lte(key,value) { this.filters.push(r=>r[key]<=value); return this }
+    // Fechas con zona horaria (…T00:00:00-05:00) se comparan como instantes, igual que Postgres.
+    cmp(key,value,test) { const instant=typeof value==='string'&&/T\d\d:\d\d.*(Z|[+-]\d\d:?\d\d)$/.test(value); this.filters.push(r=>instant&&r[key]!=null?test(Date.parse(r[key]),Date.parse(value)):test(r[key],value)); return this }
+    gt(key,value) { return this.cmp(key,value,(a,b)=>a>b) }
+    gte(key,value) { return this.cmp(key,value,(a,b)=>a>=b) }
+    lt(key,value) { return this.cmp(key,value,(a,b)=>a<b) }
+    lte(key,value) { return this.cmp(key,value,(a,b)=>a<=b) }
     or(expression) { const terms=expression.split(',').map(term=>{const [key,op,...rest]=term.split('.');const value=rest.join('.');return r=>op==='eq'?String(r[key])===value:op==='ilike'?String(r[key]||'').toLocaleLowerCase('es').includes(value.replaceAll('%','').toLocaleLowerCase('es')):false}); this.filters.push(r=>terms.some(term=>term(r))); return this }
     order(key,{ascending=true}={}) { this.sort.push({key,ascending}); return this }
     limit(count) { this.count=count; return this }

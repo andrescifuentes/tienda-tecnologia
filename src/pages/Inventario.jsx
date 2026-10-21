@@ -210,11 +210,7 @@ export default function Inventario() {
 }
 
 function ProductoDetalle({ p, loc, filtroLocal, onTraslado, editar, costos, puedeVender, onClose, onEditar, onVender, onAjuste, onMovs, onIngreso, onCargar, onCambio }) {
-  const [uni, setUni] = useState(null)
   const [tone, label] = estadoStock(p)
-  useEffect(() => {
-    if (p.maneja_serial) supabase.from('unidades_serializadas').select(loc?.habilitado ? 'id,serial,estado,local_id' : 'id,serial,estado').eq('producto_id', p.id).order('id', { ascending: false }).limit(100).then(({ data }) => setUni(data || []))
-  }, [p])
   const copiar = async () => { try { await navigator.clipboard.writeText(p.codigo); toast('Código copiado') } catch { toast(p.codigo) } }
   const filas = [
     ['phone', 'Categoría', p.categoria || 'Sin categoría', <CategoryIcon key="c" categoria={p.categoria} />],
@@ -263,9 +259,7 @@ function ProductoDetalle({ p, loc, filtroLocal, onTraslado, editar, costos, pued
       {editar && loc.locales.length === 1 && <p className="inv-zero-hint" style={{ marginTop: 10 }}>Cuando crees tu segundo local en <b>Más › Configuración › Locales</b>, aquí verás el stock de cada uno y podrás trasladar unidades.</p>}
     </div>}
     {p.descripcion && <div className="inv-desc"><small>Descripción</small><p>{p.descripcion}</p></div>}
-    {p.maneja_serial && <div className="inv-desc"><small>IMEI / seriales</small>
-      {!uni ? <Loader /> : uni.length === 0 ? <p>Sin unidades registradas.</p> : uni.map(u => <div key={u.id} className="inv-serial"><span>{u.serial}</span>{loc?.habilitado && u.estado === 'disponible' && <LocalTag nombre={loc.nombre(u.local_id)} />}<Badge tone={u.estado === 'disponible' ? 'good' : ''}>{u.estado}</Badge></div>)}
-    </div>}
+    {p.maneja_serial && <ProductUnits producto={p} editar={editar} nombreLocal={loc?.habilitado ? loc.nombre : null} />}
     {isDemoMode && editar && <div className="destructive-zone"><RecordStatus table="productos" record={p} onSaved={onCambio} /></div>}
   </FullPage>
 }

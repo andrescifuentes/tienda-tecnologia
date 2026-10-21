@@ -227,8 +227,17 @@ begin
 end $$;
 
 -- 2. Cerrar un turno también requiere el permiso (antes bastaba «vender»).
+--    Si ya existe la caja por local (scripts 18 y 20: caja_cerrar con base para mañana),
+--    NO se crea esta versión: tener las dos daría «function caja_cerrar is not unique»
+--    y nadie podría cerrar caja. En ese caso se conserva la versión por local.
+do $do$
+begin
+  if exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace and proname = 'caja_cerrar' and pronargs = 6) then
+    drop function if exists public.caja_cerrar(bigint, text, bigint, bigint, text);
+  else
+    execute $fn$
 create or replace function public.caja_cerrar(p_caja_id bigint,p_request_id text,p_revision bigint,p_contado_cent bigint,p_observaciones text default '')returns bigint
-language plpgsql security definer set search_path=public,pg_temp as $$
+language plpgsql security definer set search_path=public,pg_temp as $body$
 declare actor uuid;s public.caja_sesiones%rowtype;summary jsonb;difference bigint;nombre text;
 begin
  actor:=public._caja_validar();
@@ -248,7 +257,10 @@ begin
  update public.caja_sesiones set estado='cerrada',cierre_en=clock_timestamp(),cerrado_por=actor,cerrado_nombre=nombre,contado_cent=p_contado_cent,diferencia_cent=difference,observaciones=trim(p_observaciones),resumen_cierre=summary,cierre_request_id=p_request_id where id=s.id;
  perform public.registrar_actividad('caja.cierre','caja_sesiones',s.id::text,jsonb_build_object('contado_cent',p_contado_cent,'diferencia_cent',difference));
  return s.id;
-end $$;
+end $body$
+    $fn$;
+  end if;
+end $do$;
 
 revoke all on function public._caja_validar_cierre(), public._caja_dia_alcance(uuid), public._caja_dia_resumen(integer, date, uuid) from public, anon, authenticated;
 revoke all on function public.caja_dia_estado(date, uuid), public.caja_cerrar_dia(date, uuid, text, text, bigint, text), public.caja_cierres_dia(bigint) from public, anon;

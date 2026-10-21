@@ -23,7 +23,12 @@ export const plantillaFactura = tienda => String(tienda?.mensaje_factura || '').
 // Sin enlace se quita la línea del enlace (el PDF se adjunta aparte).
 export function armarMensajeFactura(plantilla, { cliente, negocio, factura, total, enlace = '' }) {
   let texto = String(plantilla || MENSAJE_FACTURA_BASE)
-  if (!enlace) texto = texto.split('\n').filter(l => !/^\s*\{enlace\}\s*$/.test(l)).join('\n')
+  if (!enlace) {
+    // Sin enlace, la frase que lo presentaba no debe quedar terminando en «:».
+    const esEnlace = l => /^\s*\{enlace\}\s*$/.test(l || '')
+    const lineas = texto.split('\n')
+    texto = lineas.map((l, i) => esEnlace(lineas[i + 1]) ? l.replace(/:\s*$/, '.') : l).filter(l => !esEnlace(l)).join('\n')
+  }
   else if (!texto.includes('{enlace}')) texto += '\n\n' + enlace
   const valores = { cliente: cliente || '', negocio, factura, total, enlace }
   return texto.replace(/\{(cliente|negocio|factura|total|enlace)\}/g, (_, k) => valores[k] ?? '').replace(/ +([,.:!?])/g, '$1').replace(/\n{3,}/g, '\n\n').trim()

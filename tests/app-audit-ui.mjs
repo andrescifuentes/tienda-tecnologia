@@ -135,7 +135,7 @@ try {
 
 
 ﻿  await send('Page.enable');await send('Page.bringToFront');await send('Runtime.enable');await send('Log.enable');await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')");await evaluate("document.querySelector('.login-form .btn').click()");await waitFor("!!document.querySelector('.stat-card')");
+  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')");await evaluate("document.querySelector('.login-form .btn').click()");await waitFor("!!document.querySelector('.ah-sales-open')");
   const evidence=[];
   const go=async path=>{await send('Page.navigate',{url:base+path});await waitFor("!!document.querySelector('.nav') && document.readyState==='complete'");await delay(600)};
   const rpc=(name,args)=>evaluate(`import('/src/lib/supabase.js').then(async({supabase})=>{const r=await supabase.rpc(${JSON.stringify(name)},${JSON.stringify(args)});if(r.error)throw Error(r.error.message);return r.data})`);

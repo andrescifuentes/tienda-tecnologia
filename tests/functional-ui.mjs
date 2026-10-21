@@ -149,7 +149,7 @@ try {
   const imageFingerprint=key=>evaluate('import("/src/lib/demo/images.js").then(async m=>{const b=await m.loadImage('+JSON.stringify(key)+');if(!b)return null;const a=new Uint8Array(await b.arrayBuffer());return {size:b.size,type:b.type,bytes:[...a].reduce((n,v,i)=>(n+v*(i+1))%1000000007,0)}})')
   const upload=async filename=>{const doc=await send('DOM.getDocument');const input=await send('DOM.querySelector',{nodeId:doc.root.nodeId,selector:'input[aria-label="Seleccionar foto del producto"]'});assert.ok(input.nodeId);await send('DOM.setFileInputFiles',{nodeId:input.nodeId,files:[join(root,'src','assets','products',filename)]});await waitFor("!!document.querySelector('.photo-editor-preview>img') && !document.querySelector('.sheet-foot button').disabled")}
   const productVisible=async()=>{await waitFor("!!document.querySelector('.product-card')");await waitFor("document.querySelector('.product-thumbnail img')?.src.startsWith('blob:') && document.querySelector('.product-thumbnail img')?.naturalWidth>0")}
-  await button('Entrar');await waitFor("!!document.querySelector('.stat-card')")
+  await button('Entrar');await waitFor("!!document.querySelector('.ah-sales-open')")
   const source=JSON.parse(readFileSync(join(root,'src/assets/products/sources.json'),'utf8'))['SGS24-256'].filename
   const initial=await state()
   assert.equal(initial.tables.productos.length,18)
@@ -288,7 +288,7 @@ try {
 
   await go('/configuracion');await button('Restablecer datos demo');await button('Cancelar');assert.ok((await state()).tables.productos.some(p=>p.codigo==='TEST-S26'));await button('Restablecer datos demo');await button('Restablecer y cerrar sesión');await waitFor("!!document.querySelector('.login-form')");await waitFor('localStorage.getItem("angie-tech:demo:v1") && JSON.parse(localStorage.getItem("angie-tech:demo:v1")).tables.productos.length===18');await waitFor('import("/src/lib/demo/images.js").then(async m=>!await m.loadImage('+JSON.stringify(product.image_ref)+'))')
   assert.equal((await state()).tables.clientes.length,10);assert.equal((await state()).tables.facturas.length,16);assert.equal((await state()).session,null);assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);assert.equal(await evaluate("Object.keys(sessionStorage).filter(k=>k.startsWith('angie:cart:')).length"),0)
-  await button('Entrar');await waitFor("!!document.querySelector('.stat-card')");await go('/inventario');await waitFor("document.querySelectorAll('.product-card').length===18");assert.equal(await evaluate("document.querySelectorAll('.product-thumbnail img').length"),18)
+  await button('Entrar');await waitFor("!!document.querySelector('.ah-sales-open')");await go('/inventario');await waitFor("document.querySelectorAll('.product-card').length===18");assert.equal(await evaluate("document.querySelectorAll('.product-thumbnail img').length"),18)
   check('Reset confirmation/cancel, seed restored, uploaded photo removed, draft cleared, logged out, theme retained and demo photos restored')
   assert.deepEqual(externalRequests,[]);assert.deepEqual(browserErrors,[])
   await writeFile(join(artifacts,'results.json'),JSON.stringify({status:'PASS',cases:results.length,results,externalRequests,browserErrors,origin:base},null,2));console.log(JSON.stringify({status:'PASS',cases:results.length,artifacts,origin:base}));await send('Browser.close').catch(()=>{})

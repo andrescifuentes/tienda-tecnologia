@@ -149,9 +149,9 @@ try {
   async function go(path){await send('Page.navigate',{url:base+path});await waitFor(`location.pathname + location.search === ${JSON.stringify(path)} && document.readyState === 'complete' && !!document.querySelector('.nav')`);await delay(550)}
   async function login(email='admin@angietech.demo'){
     const s=await state();if(s?.session){await go('/mas');await button('Cerrar sesión');await waitFor("!!document.querySelector('.login-form')")}
-    await field('Correo',email);await field('Contraseña','AngieDemo123!');await button('Entrar');await waitFor("!!document.querySelector('.stat-card')")
+    await field('Correo',email);await field('Contraseña','AngieDemo123!');await button('Entrar');await waitFor("!!document.querySelector('.ah-sales-open')")
   }
-  const routes=[['/','inicio','.stat-card'],['/inventario','inventario','.product-card'],['/vender','vender','.sale-product'],['/facturas','facturas','.invoice-card'],['/clientes','clientes','.row'],['/proveedores','proveedores','.row'],['/empleados','empleados','.row'],['/finanzas','finanzas','.row'],['/garantias','garantias','.row'],['/mas','mas','.menu-row'],['/configuracion','configuracion','.settings-panel']]
+  const routes=[['/','inicio','.ah-sales-open'],['/inventario','inventario','.product-card'],['/vender','vender','.sale-product'],['/facturas','facturas','.invoice-card'],['/clientes','clientes','.row'],['/proveedores','proveedores','.row'],['/empleados','empleados','.row'],['/finanzas','finanzas','.row'],['/garantias','garantias','.row'],['/mas','mas','.menu-row'],['/configuracion','configuracion','.settings-panel']]
   for(const [width,height] of [[320,568],[360,740],[390,844],[430,932]]){
     // Responsive cases are isolated; the functional suite verifies draft persistence.
     await evaluate("Object.keys(sessionStorage).filter(k=>k.startsWith('angie:cart:')).forEach(k=>sessionStorage.removeItem(k))")
@@ -161,7 +161,7 @@ try {
     await waitFor("!!document.querySelector('.login-form')");await delay(550)
     await geometry(`${width}-login`,width,height,false);await screenshot(`${width}-login`)
     await button('Ver');assert.equal(await evaluate("document.querySelector('#login-password').type"),'text');await button('Ocultar')
-    await button('Entrar');await waitFor("!!document.querySelector('.stat-card')")
+    await button('Entrar');await waitFor("!!document.querySelector('.ah-sales-open')")
     for(const [path,name,selector] of routes){await go(path);await waitFor(`!!document.querySelector(${JSON.stringify(selector)})`);await geometry(`${width}-${name}`,width,height);await screenshot(`${width}-${name}`)}
     for(const [path,label,name] of [['/inventario','+ Nuevo','nuevo-producto'],['/inventario','Ingreso','ingreso'],['/clientes','+ Nuevo','nuevo-cliente'],['/proveedores','+ Nuevo','nuevo-proveedor'],['/empleados','+ Vendedor','nuevo-empleado'],['/finanzas','+ Registrar','nuevo-gasto'],['/garantias','+ Nueva','nueva-garantia']]){
       await go(path);await button(label);await waitFor("!!document.querySelector('[role=dialog]')");await geometry(`${width}-${name}`,width,height);await screenshot(`${width}-${name}`);await close()
@@ -177,7 +177,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true})
   await go('/mas');await button('Cerrar sesión');await waitFor("!!document.querySelector('.login-form')")
   await button('¿Olvidaste tu contraseña?');await waitFor("document.querySelector('.sheet')?.textContent.includes('AngieDemo123!')");await close()
-  await tap('.demo-roles');await field('Probar como','ana@angietech.demo');await tap('.login-options input');await tap('.demo-entry');await waitFor("!!document.querySelector('.stat-card')")
+  await tap('.demo-roles');await field('Probar como','ana@angietech.demo');await tap('.login-options input');await tap('.demo-entry');await waitFor("!!document.querySelector('.ah-sales-open')")
   assert.equal((await state()).session.user.id,'demo-ana')
   assert.equal(await evaluate("localStorage.getItem('angie:remember-email')"),'ana@angietech.demo')
   results.push({name:'Demo entry authenticates the selected seller; password help and remembered email work',status:'PASS'})
@@ -227,7 +227,7 @@ try {
   results.push({name:'Sale appears in client purchase history',status:'PASS'})
   const persisted=(await state()).tables;await send('Page.reload');await waitFor("!!document.querySelector('.nav')");assert.deepEqual((await state()).tables,persisted)
   results.push({name:'Real page reload preserves all demo tables and session',status:'PASS'})
-  await login();await go('/');await waitFor("!!document.querySelector('.stat-card')")
+  await login();await go('/');await waitFor("!!document.querySelector('.ah-sales-open')")
   const expected=await evaluate("import('/src/lib/supabase.js').then(async({supabase,isDemoMode})=>{if(!isDemoMode)throw new Error('Demo required');return (await supabase.rpc('resumen_dashboard')).data[0]})")
   assert.equal(await evaluate("document.querySelectorAll('.stat-card')[0].querySelector('.stat-value').textContent.replace(/\\D/g,'')"),String(Math.round(expected.ventas_hoy)))
   results.push({name:'Dashboard renders the current transactional summary',status:'PASS'})

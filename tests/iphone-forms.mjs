@@ -134,7 +134,7 @@ try {
   await send('Page.enable');await send('Runtime.enable');await send('Log.enable');await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]})
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true})
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]})
-  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')");await evaluate("document.querySelector('.login-form button.btn').click()");await waitFor("!!document.querySelector('.stat-card')")
+  await send('Page.navigate',{url:base+'/login'});await waitFor("!!document.querySelector('.login-form')");await evaluate("document.querySelector('.login-form button.btn').click()");await waitFor("!!document.querySelector('.ah-sales-open')")
   const forms=[['/inventario','+ Nuevo','producto'],['/inventario','Ingreso','compra'],['/clientes','+ Nuevo','cliente'],['/proveedores','+ Nuevo','proveedor'],['/empleados','+ Vendedor','empleado'],['/finanzas','+ Registrar','gasto'],['/garantias','+ Nueva','garantia']]
   for(const theme of ['dark','light']){
     await evaluate('import("/src/lib/theme.js").then(m=>m.setTheme('+JSON.stringify(theme)+'))')
