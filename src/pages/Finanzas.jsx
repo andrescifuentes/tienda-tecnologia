@@ -17,10 +17,13 @@ import { supabase, isDemoMode } from '../lib/supabase'
 import { money, fecha, rangoMes, hoyBogota, mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
 import { I } from '../components/InvIcons'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import FinanceDetail from '../components/FinanceDetail'
 import CompraDetalle from '../components/CompraDetalle'
-import { financeDetails } from '../lib/financeDetails'
+import { financeDetails, incomeBreakdown, financePurchaseRows } from '../lib/financeDetails'
+import { loadFinancePeriod, financeErrorMessage } from '../lib/financeQueries'
+import { useLocales } from '../lib/locales'
+import LocalSelector from '../components/LocalSelector'
 
 const CATS_G = ['Proveedores', 'Servicios', 'Arriendo', 'Servicios públicos', 'Nómina', 'Transporte', 'Publicidad', 'Mantenimiento', 'Impuestos', 'Otros']
 const CATS_I = ['Venta adicional', 'Servicio', 'Abono', 'Otro ingreso', 'Servicio técnico', 'Otros ingresos']
@@ -28,50 +31,46 @@ const CATS_I = ['Venta adicional', 'Servicio', 'Abono', 'Otro ingreso', 'Servici
 export default function Finanzas() {
   const revision = useDemoRevision()
   const navigate = useNavigate()
-  const { can } = useAuth()
+  const [params,setParams]=useSearchParams()
+  const initialMonth=params.get('mes'),currentMonth=hoyBogota().slice(0,7)
+  const monthOffset=/^\d{4}-\d{2}$/.test(initialMonth||'')&&initialMonth<=currentMonth?(Number(initialMonth.slice(0,4))-Number(currentMonth.slice(0,4)))*12+Number(initialMonth.slice(5))-Number(currentMonth.slice(5)):0
+  const { can, esAdmin, perfil } = useAuth()
   const costos = can('ver_costos')
+  const loc = useLocales(perfil)
+  const localFiltro = esAdmin ? loc.filtro : null
   const [remove,setRemove] = useState(null)
-  const [mes, setMes] = useState(0)
+  const [mes, setMes] = useState(monthOffset)
   const [tipo, setTipo] = useState('todos')
   const [movs, setMovs] = useState(null)
   const [profit, setProfit] = useState(0)
   const [ventas, setVentas] = useState(0)
   const [form, setForm] = useState(null)
   const [tick, setTick] = useState(0)
-  const [detail, setDetail] = useState(null)
+  const [detail, setDetail] = useState(['ingreso','gasto'].includes(params.get('detalle'))?params.get('detalle'):null)
   const [invoices, setInvoices] = useState([])
   const [compras, setCompras] = useState([])
   const [verCompra, setVerCompra] = useState(null)
-  const [detailError, setDetailError] = useState('')
+  const [detailError, setDetailError] = useState(''),[loadError,setLoadError]=useState('')
   const r = rangoMes(mes)
 
   useEffect(() => {
-    let live = true
-    setMovs(null)
-    setDetailError('')
-    ;(async () => {
-      const [m, v, f, summary, cp] = await Promise.all([
-        supabase.from('movimientos').select('*').gte('fecha', r.ini).lte('fecha', r.fin).order('fecha', { ascending: false }).order('id', { ascending: false }),
-        supabase.rpc('ventas_por_empleado', { p_desde: r.ini, p_hasta: r.fin }),
-        supabase.from(isDemoMode?'facturas_netas':'facturas').select('*').eq('estado','emitida'),
-        isDemoMode?supabase.rpc('resumen_dashboard',{p_desde:r.ini,p_hasta:r.fin}):Promise.resolve(null),
-        supabase.from('compras').select('id,fecha,total,numero_documento,forma_pago,estado,proveedores(nombre)').eq('estado','recibida').gte('fecha', r.ini).lte('fecha', r.fin).order('fecha', { ascending: false }),
-      ])
-      if (!live) return
-      if(isDemoMode)setProfit(summary.data?.[0]?.utilidad_mes||0)
-      setInvoices(f.data||[]); setCompras(cp?.data||[])
-      setDetailError([m,v,f].some(result=>result.error)?'No se pudo cargar el detalle financiero completo. Intenta de nuevo.':'')
-      setMovs(m.data || []); setVentas((v.data || []).reduce((a, x) => a + Number(x.total_vendido), 0))
-    })()
-    return () => { live=false }
-  }, [mes, tick, revision]) // eslint-disable-line
+    let live=true;const controller=new AbortController()
+    setMovs(null);setDetailError('');setLoadError('')
+    loadFinancePeriod(supabase,{period:r,demo:isDemoMode,auth:{esAdmin,perfilId:perfil.id},signal:controller.signal,local:localFiltro}).then(data=>{
+      if(!live)return
+      if(isDemoMode)setProfit(data.summary?.[0]?.utilidad_mes||0)
+      setInvoices(data.invoices);setCompras(data.purchases);setMovs(data.movements);setDetailError(data.invoiceError?financeErrorMessage(data.invoiceError):'')
+      setVentas((data.team||[]).reduce((sum,row)=>sum+Number(row.total_vendido),0))
+    }).catch(error=>{if(live){setLoadError(financeErrorMessage(error));setMovs([])}})
+    return()=>{live=false;controller.abort()}
+  }, [mes,tick,revision,esAdmin,perfil.id,localFiltro]) // eslint-disable-line
 
   const ing = (movs || []).filter((m) => m.tipo === 'ingreso' && (!isDemoMode || !m.origen)).reduce((a, m) => a + Number(m.monto), 0)
   const comp = compras.reduce((a, c) => a + Number(c.total || 0), 0)
   const gas = (movs || []).filter((m) => m.tipo === 'gasto' && (!isDemoMode || !m.origen)).reduce((a, m) => a + Number(m.monto), 0) + comp
   const compraMovs = compras.map((c) => ({ id: 'c' + c.id, tipo: 'gasto', categoria: 'Compra de mercancía', descripcion: [c.proveedores?.nombre, c.numero_documento, c.forma_pago === 'credito' ? 'a crédito' : null].filter(Boolean).join(' · '), monto: c.total, fecha: c.fecha, origen: 'compra' }))
   const lista = [...(movs || []), ...compraMovs].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).filter((m) => tipo === 'todos' || m.tipo === tipo)
-  const details = detail ? (() => { const d = financeDetails({invoices,movements:movs||[],period:r,demo:isDemoMode}); d.gasto = [...d.gasto, ...compras.map((c) => ({ id:'compra-'+c.id, date:c.fecha, concept:'Compra de mercancía · '+(c.proveedores?.nombre || 'Proveedor'), origin:c.forma_pago === 'credito' ? 'Compra a crédito' : 'Compra de contado', reference:c.numero_documento || 'Compra #'+c.id, amount:Number(c.total), type:'gasto' }))].sort((a,b)=>b.date.localeCompare(a.date)); return d })() : null
+  const details = detail ? (() => { const d = financeDetails({invoices,movements:movs||[],period:r,demo:isDemoMode}); d.gasto = [...d.gasto, ...financePurchaseRows(compras)].sort((a,b)=>b.date.localeCompare(a.date)); return d })() : null
 
   const totalIn = ventas + ing
   const resultado = isDemoMode ? profit : totalIn - gas
@@ -81,6 +80,8 @@ export default function Finanzas() {
     <ModuleBanner modulo="mas" title="Finanzas" sub="Ingresos, gastos y resultado" actions={<button type="button" onClick={() => setForm({ tipo: 'gasto' })}><I n="plus" />Registrar</button>} />
   </div>
 
+  if(loadError)return <AppShell title="Finanzas" header={header}><div className="finance-detail-period"><button className="btn sec sm" aria-label="Mes anterior" onClick={()=>setMes(m=>m-1)}>‹</button><b>{r.label}</b><button className="btn sec sm" aria-label="Mes siguiente" disabled={mes>=0} onClick={()=>setMes(m=>m+1)}>›</button></div><ErrorBox text={loadError}/><button className="btn sec full" onClick={()=>setTick(t=>t+1)}>Reintentar consulta</button></AppShell>
+
   async function borrar(m) {
     const { error } = await supabase.from('movimientos').delete().eq('id', m.id)
     if (error) throw new Error(mensajeError(error))
@@ -89,6 +90,8 @@ export default function Finanzas() {
 
   return (
     <AppShell title="Finanzas" header={header}>
+      {esAdmin && <LocalSelector loc={loc} />}
+      {detailError&&<div className="finance-detail-warning"><ErrorBox text={"El resumen y los gastos están disponibles; el detalle de ingresos no pudo verificarse. "+detailError}/><button className="btn sec full" onClick={()=>setTick(t=>t+1)}>Reintentar detalle de ingresos</button></div>}
       <section className={'fz-hero' + (resultado < 0 ? ' neg' : '')}>
         <div className="fz-nav">
           <button type="button" aria-label="Mes anterior" onClick={() => setMes(mes - 1)}><I n="back" /></button>
@@ -142,14 +145,14 @@ export default function Finanzas() {
       </button>
       {remove && <ConfirmAction className="finance-confirm-sheet" title="Eliminar movimiento" label="Eliminar" onClose={()=>setRemove(null)} onConfirm={()=>borrar(remove)}><div className="finance-delete-preview"><b>{remove.categoria}</b><strong>{money(remove.monto)}</strong><small>{fecha(remove.fecha)} · {remove.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} manual</small></div><p>Se eliminará este movimiento manual. Las operaciones automáticas se revierten desde su registro original.</p></ConfirmAction>}
       {verCompra && <CompraDetalle id={verCompra} onClose={() => setVerCompra(null)} />}
-      {form && <Form inicial={form} onClose={() => setForm(null)} onSaved={() => { setForm(null); setTick((t) => t + 1) }} />}
-      {detail && <FinanceDetail type={detail} rows={details[detail]} total={detail==='ingreso'?ventas+ing:gas} period={r} month={mes} onMonth={setMes} loading={!movs} error={detailError} onClose={()=>setDetail(null)}/>}
+      {form && <Form loc={loc} localInicial={localFiltro} inicial={form} onClose={() => setForm(null)} onSaved={() => { setForm(null); setTick((t) => t + 1) }} />}
+      {detail && <FinanceDetail breakdown={detail==='ingreso'?incomeBreakdown({invoices,movements:movs||[],period:r,demo:isDemoMode}):null} onChanged={()=>setTick(t=>t+1)} type={detail} rows={details[detail]} total={detail==='ingreso'?ventas+ing:gas} period={r} month={mes} onMonth={setMes} loading={!movs} error={detail==='ingreso'?detailError:''} onClose={()=>{setDetail(null);if(params.has('detalle')){const next=new URLSearchParams(params);next.delete('detalle');setParams(next,{replace:true})}}}/>}
     </AppShell>
   )
 }
 
-function Form({ inicial, onClose, onSaved }) {
-  const [f, setF] = useState({ tipo: inicial.tipo, categoria: '', descripcion: '', monto: '', fecha: hoyBogota() })
+function Form({ inicial, loc, localInicial = null, onClose, onSaved }) {
+  const [f, setF] = useState({ tipo: inicial.tipo, categoria: '', descripcion: '', monto: '', fecha: hoyBogota(), local_id: localInicial ?? '' })
   const [err, setErr] = useState('')
   const [custom, setCustom] = useState(false)
   const descriptionId = useId()
@@ -159,7 +162,7 @@ function Form({ inicial, onClose, onSaved }) {
     if (!f.categoria.trim()) return setErr('Elige o escribe la categoría.')
     if (!(Number(f.monto) > 0)) return setErr('El monto debe ser mayor que cero.')
     if (monetaryError(f.monto)) return setErr(monetaryError(f.monto))
-    const { error } = await supabase.from('movimientos').insert({ tipo: f.tipo, categoria: f.categoria.trim(), descripcion: f.descripcion.trim() || null, monto: Number(f.monto), fecha: f.fecha })
+    const { error } = await supabase.from('movimientos').insert({ tipo: f.tipo, categoria: f.categoria.trim(), descripcion: f.descripcion.trim() || null, monto: Number(f.monto), fecha: f.fecha, ...(loc?.multi ? { local_id: f.local_id === '' ? null : Number(f.local_id) } : {}) })
     if (error) return setErr(mensajeError(error))
     toast(f.tipo === 'gasto' ? 'Gasto registrado' : 'Ingreso registrado'); onSaved()
   }
@@ -170,6 +173,7 @@ function Form({ inicial, onClose, onSaved }) {
       <div className="movement-segments" aria-label="Tipo de movimiento">{['gasto','ingreso'].map(t => <button key={t} type="button" className={t + (f.tipo === t ? ' active' : '')} aria-pressed={f.tipo === t} onClick={() => { setF({...f, tipo:t, categoria:''}); setCustom(false) }}>{t === 'gasto' ? 'Gasto' : 'Ingreso'}</button>)}</div>
       <Select label="Categoría" value={custom ? '__custom' : f.categoria} onChange={e => { const other = e.target.value === '__custom'; setCustom(other); setF({...f,categoria:other?'':e.target.value}) }}><option value="">Elegir categoría</option>{cats.map(c => <option key={c}>{c}</option>)}<option value="__custom">+ Otra categoría</option></Select>
       {custom && <Input label="Otra categoría" value={f.categoria} onChange={set('categoria')} maxLength={100} />}
+      {loc?.multi && <Select label="Local" value={f.local_id} onChange={set('local_id')}><option value="">General (todos los locales)</option>{loc.locales.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</Select>}
       <section className="movement-money-card"><div className="movement-money-heading"><span className="premium-eyebrow">IMPORTE DEL MOVIMIENTO</span><span>COP</span></div><MoneyInput label="Monto" value={f.monto} onValueChange={monto => setF(prev => ({...prev,monto}))} />
       <div className="movement-amounts">{[[10000,'+10 mil'],[50000,'+50 mil'],[100000,'+100 mil'],[500000,'+500 mil'],[1000000,'+1 millón']].map(([amount,label]) => <button type="button" key={amount} onClick={() => setF(prev => ({...prev,monto:String(BigInt(prev.monto || '0')+BigInt(amount))}))}>{label}</button>)}</div>
       </section>

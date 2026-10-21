@@ -10,6 +10,9 @@ import { fechaHora, mensajeError, money, hoyBogota, rangoMes } from '../lib/form
 import { describirActividad } from '../lib/actividadTexto'
 import { Icon } from '../components/Icons'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { useLocales } from '../lib/locales'
+import LocalSelector, { LocalTag } from '../components/LocalSelector'
 
 // Una línea del historial, escrita para personas (no códigos internos)
 function ActividadFila({ a }) {
@@ -33,6 +36,8 @@ const PERMISOS = [
 const BASE = ['vender', 'ver_inventario', 'crear_clientes']
 
 export default function Empleados() {
+  const { perfil } = useAuth()
+  const loc = useLocales(perfil)
   const [q, setQ] = useState('')
   const [lista, setLista] = useState(null)
   const [listError, setListError] = useState('')
@@ -52,7 +57,9 @@ export default function Empleados() {
     })
     return () => { current = false }
   }, [tick])
-  const visible = (lista||[]).filter(p=>[p.nombre,p.correo,p.rol].some(v=>String(v||'').toLocaleLowerCase().includes(q.toLocaleLowerCase())))
+  // Con un local elegido se ven sus vendedores (y los administradores que ven todos los locales)
+  const delLocal = p => !loc.filtro || p.local_id === loc.filtro || (p.rol === 'admin' && p.local_id == null)
+  const visible = (lista||[]).filter(p=>delLocal(p)&&[p.nombre,p.correo,p.rol].some(v=>String(v||'').toLocaleLowerCase().includes(q.toLocaleLowerCase())))
   const refrescar = () => { setTick((t) => t + 1) }
   const creado = profile => {
     setNuevo(false); setQ('')
@@ -64,19 +71,20 @@ export default function Empleados() {
     <div className="admin-premium admin-employees"><AppShell title="Empleados" sub="Equipo, acceso y permisos" right={<button className="btn sm" onClick={() => setNuevo(true)}>+ Vendedor</button>}>
       <ErrorBox text={listError} />
       {listError && <button className="btn sec sm" onClick={refrescar}>Actualizar lista</button>}
+      <LocalSelector loc={loc} />
       <SearchBar value={q} onChange={setQ} placeholder="Buscar empleado o correo" />
       {!lista ? <Loader /> : visible.length === 0 ? <Empty /> : (
         <div className="admin-list entity-list">
           {visible.map((p) => (
             <button type="button" key={p.id} className="row card admin-list-card employee-card" onClick={() => setSel(p)}>
               <div className="employee-card-heading"><span className="entity-avatar">{p.nombre.slice(0,1)}</span><div className="employee-card-copy"><p className="admin-card-title">{p.nombre}</p><p className="admin-card-secondary">{p.rol==='admin'?'Administrador':'Vendedor'}</p></div><Badge tone={p.activo?'good':'bad'}>{p.activo?'Activo':'Inactivo'}</Badge></div>
-              <p className="admin-card-secondary mt-2">{p.correo}</p>{isDemoMode&&<div className="employee-summary"><div className="employee-summary-grid"><span><small>Ventas mes</small><b>{money(sales.month.find(s=>s.vendedor_id===p.id)?.total_vendido||0)}</b></span><span><small>Facturas mes</small><b>{sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0}</b></span></div><div className="employee-aux"><span>Hoy {money(sales.day.find(s=>s.vendedor_id===p.id)?.total_vendido||0)} · {sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0} facturas mes</span><span className="admin-chevron" aria-hidden="true">›</span></div></div>}
+              <p className="admin-card-secondary mt-2">{p.correo}</p>{loc.multi && <p className="mt-2"><LocalTag nombre={p.local_id != null ? loc.nombre(p.local_id) : p.rol === 'admin' ? 'Todos los locales' : 'Sin local'} /></p>}{isDemoMode&&<div className="employee-summary"><div className="employee-summary-grid"><span><small>Ventas mes</small><b>{money(sales.month.find(s=>s.vendedor_id===p.id)?.total_vendido||0)}</b></span><span><small>Facturas mes</small><b>{sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0}</b></span></div><div className="employee-aux"><span>Hoy {money(sales.day.find(s=>s.vendedor_id===p.id)?.total_vendido||0)} · {sales.month.find(s=>s.vendedor_id===p.id)?.facturas||0} facturas mes</span><span className="admin-chevron" aria-hidden="true">›</span></div></div>}
             </button>
           ))}
         </div>
       )}
-      {nuevo && <Nuevo onClose={() => setNuevo(false)} onSaved={creado} />}
-      {sel && <Detalle p={sel} onClose={() => setSel(null)} onCambio={() => { refrescar(); setSel(null) }} />}
+      {nuevo && <Nuevo loc={loc} onClose={() => setNuevo(false)} onSaved={creado} />}
+      {sel && <Detalle loc={loc} p={sel} onClose={() => setSel(null)} onCambio={() => { refrescar(); setSel(null) }} />}
     </AppShell></div>
   )
 }
@@ -87,7 +95,8 @@ function Permisos({ value, onChange }) {
   ))
 }
 
-function Nuevo({ onClose, onSaved }) {
+function Nuevo({ loc, onClose, onSaved }) {
+  const [localId, setLocalId] = useState(loc?.filtro || loc?.miLocal || loc?.locales[0]?.id || null)
   const [f, setF] = useState({ nombre: '', correo: '', password: '', telefono: '' })
   const [permisos, setPermisos] = useState(BASE)
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
@@ -108,7 +117,12 @@ function Nuevo({ onClose, onSaved }) {
     sending.current = true
     setBusy(true); setErr('')
     try {
-      const profile = await createEmployee(supabase, input, { demo: isDemoMode })
+      let profile = await createEmployee(supabase, input, { demo: isDemoMode })
+      // El vendedor queda asignado al local elegido
+      if (loc?.multi && localId != null && profile?.id && profile.local_id !== localId) {
+        const r = isDemoMode ? await supabase.rpc('guardar_empleado_demo', { id: profile.id, datos: { local_id: localId }, permisos: input.permisos || [] }) : await supabase.from('perfiles').update({ local_id: localId }).eq('id', profile.id)
+        if (!r.error) profile = { ...profile, local_id: localId }
+      }
       if (mounted.current) { toast('Empleado creado'); onSaved(profile) }
     } catch (error) {
       if (mounted.current) setErr(error.message)
@@ -122,12 +136,14 @@ function Nuevo({ onClose, onSaved }) {
       <ErrorBox text={err} />
       <FormSection number="01" title="Identidad"><div className="admin-form-grid"><div className="admin-span"><Input required label="Nombre completo" value={f.nombre} onChange={set('nombre')}/></div>{isDemoMode&&<Input label="Documento empleado" value={f.documento||''} onChange={set('documento')}/>}<Input label="Teléfono" value={f.telefono} onChange={set('telefono')} inputMode="tel"/></div></FormSection>
       <FormSection number="02" title="Acceso"><Input label="Correo (con él inicia sesión)" type="email" value={f.correo} onChange={set('correo')}/>{isDemoMode&&<RoleField label="Rol" value={f.rol||'vendedor'} onChange={set('rol')}/>}<PasswordField value={f.password} onChange={set('password')} generate={isDemoMode}/></FormSection>
-      <FormSection number="03" title="Permisos" collapsible detail={`${permisos.length} activos`}><Permisos value={permisos} onChange={setPermisos}/></FormSection>
+      {loc?.multi && <FormSection number="03" title="Local donde trabaja"><Select label="Local" value={localId || ''} onChange={e => setLocalId(Number(e.target.value))}>{loc.locales.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</Select><p className="admin-hint">Vende en este local. Puede ver el stock del otro local y vender desde allá.</p></FormSection>}
+      <FormSection number={loc?.multi ? '04' : '03'} title="Permisos" collapsible detail={`${permisos.length} activos`}><Permisos value={permisos} onChange={setPermisos}/></FormSection>
     </Modal>
   )
 }
 
-function Detalle({ p, onClose, onCambio }) {
+function Detalle({ p, loc, onClose, onCambio }) {
+  const [localId, setLocalId] = useState(p.local_id ?? '')
   const [permisos, setPermisos] = useState(null)
   const [act, setAct] = useState(null)
   const [name,setName] = useState(p.nombre), [documento,setDocumento] = useState(p.documento||''), [rol,setRol] = useState(p.rol), [confirm,setConfirm] = useState(false), [sales,setSales] = useState([])
@@ -160,8 +176,8 @@ function Detalle({ p, onClose, onCambio }) {
   const [guardar, pendingSave] = useAction(guardarImpl)
   async function guardarImpl() {
     setErr('')
-    if(isDemoMode){ const {error}=await supabase.rpc('guardar_empleado_demo',{id:p.id,datos:{nombre:name.trim(),documento:documento.trim()||null,telefono:tel.trim()||null,rol,comision_pct:null},permisos:permisos||[]});if(error)return setErr(mensajeError(error));toast('Cambios guardados');onCambio();return }
-    const { error } = await supabase.from('perfiles').update({ telefono: tel.trim() || null, comision_pct: null }).eq('id', p.id)
+    if(isDemoMode){ const {error}=await supabase.rpc('guardar_empleado_demo',{id:p.id,datos:{nombre:name.trim(),documento:documento.trim()||null,telefono:tel.trim()||null,rol,comision_pct:null,...(loc?.multi?{local_id:localId===''?null:Number(localId)}:{})},permisos:permisos||[]});if(error)return setErr(mensajeError(error));toast('Cambios guardados');onCambio();return }
+    const { error } = await supabase.from('perfiles').update({ telefono: tel.trim() || null, comision_pct: null, ...(loc?.multi ? { local_id: localId === '' ? null : Number(localId) } : {}) }).eq('id', p.id)
     if (error) return setErr(mensajeError(error))
     if (!esAdmin) {
       const d = await supabase.from('perfil_permisos').delete().eq('perfil_id', p.id)
@@ -184,6 +200,7 @@ function Detalle({ p, onClose, onCambio }) {
       <ErrorBox text={err} />
       <div className="employee-detail-identity"><span className="entity-avatar">{p.nombre.slice(0,1)}</span><div className="flex-1 min-w-0"><b>{p.nombre}</b><p>{p.rol==='admin'?'Administrador':'Vendedor'}</p><p>{p.correo}</p></div><Badge tone={p.activo?'good':'bad'}>{p.activo?'Activo':'Inactivo'}</Badge></div>
       <FormSection title="Datos personales"><div className="admin-form-grid">{isDemoMode&&<><div className="admin-span"><Input required label="Nombre empleado" value={name} onChange={e=>setName(e.target.value)}/></div><Input label="Documento empleado" value={documento} onChange={e=>setDocumento(e.target.value)}/></>}<Input label="Teléfono" value={tel} onChange={e=>setTel(e.target.value)}/></div></FormSection>
+      {loc?.multi && <FormSection title="Local"><Select label="Local donde trabaja" value={localId} onChange={e => setLocalId(e.target.value)}>{esAdmin && <option value="">Todos los locales</option>}{loc.locales.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</Select><p className="admin-hint">{esAdmin ? 'Un administrador sin local ve y vende en todos.' : 'Sus ventas quedan en este local. Puede vender productos del otro local y se descuentan de allá.'}</p></FormSection>}
       {isDemoMode&&<FormSection title="Rol"><RoleField label="Rol empleado" value={rol} onChange={e=>setRol(e.target.value)}/></FormSection>}
       {!esAdmin && !isDemoMode && <FormSection title="Acceso del vendedor">
         <p className="admin-hint">Si el vendedor olvidó su correo o contraseña, asígnale unos nuevos aquí. Sus sesiones abiertas se cerrarán.</p>

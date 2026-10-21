@@ -1,4 +1,5 @@
-import { invoiceBrand, isAngieBrand, brandSlug } from './invoice-brand.js'
+import { invoiceBrand, isAngieBrand, brandSlug, camposEmpresa } from './invoice-brand.js'
+import { businessNit, validateBusinessLogo } from './business-settings.js'
 const money = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO')
 const numFactura = f => f.prefijo + '-' + String(f.numero).padStart(4, '0')
 const invoiceBusiness = (f, store) => f?.tienda_snapshot || store
@@ -11,6 +12,7 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   invoice = invoiceIdentity(invoice)
   tienda = invoiceBusiness(invoice, tienda) || {}
   if (!isAngieBrand(tienda)) LOGO = null
+  if (tienda.logo_data_url) { try { LOGO = validateBusinessLogo(tienda.logo_data_url) } catch { /* Keep this business' own branding if a historical image is invalid. */ } }
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const number = numFactura(invoice)
   const filename = `${brandSlug(tienda)}-${number.replace(/[^a-zA-Z0-9-]/g, '')}.pdf`
@@ -32,8 +34,9 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   // 1. Banda negra superior
   doc.setFillColor(14, 13, 11).rect(0, 0, W, 50, 'F')
   doc.setFillColor(...GOLD).rect(0, 50, W, 1.1, 'F')
-  if (LOGO) { try { doc.addImage(LOGO, 'PNG', M, 10.5, 42, 29.1) } catch { /* sin logo */ } }
-  else T(marca, M, 28, { size: 22, bold: true, color: GOLD_L })
+  let logoDrawn = false
+  if (LOGO) { try { const image=doc.getImageProperties(LOGO),scale=Math.min(42/image.width,29.1/image.height),width=image.width*scale,height=image.height*scale; doc.addImage(LOGO, LOGO.startsWith('data:image/jpeg;')?'JPEG':'PNG', M+(42-width)/2, 10.5+(29.1-height)/2, width, height); logoDrawn=true } catch { /* Invalid images keep the business name visible. */ } }
+  if (!logoDrawn) T(marca, M, 28, { size: 22, bold: true, color: GOLD_L })
   T('FACTURA DE VENTA', R, 16, { size: 8, bold: true, color: GOLD, align: 'right' })
   doc.setDrawColor(...GOLD).setLineWidth(.3).line(R - 34, 18.5, R, 18.5)
   T(number, R, 31, { size: 24, bold: true, color: [255, 255, 255], align: 'right' })
@@ -44,9 +47,32 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
 
   // 2. Datos de la tienda
   let y = 60
-  const tiendaDatos = [tienda.nit && `NIT ${tienda.nit}`, tienda.direccion, tienda.telefono && `Tel. ${tienda.telefono}`, tienda.correo].filter(Boolean)
-  T(marca, M, y, { size: 10, bold: true }); T(tiendaDatos.length ? tiendaDatos.join('   ·   ') : 'Tecnología, celulares y accesorios', M, y + 5, { size: 8, color: MUTED })
-  y += 13
+  const tiendaDatos = [
+    ...(tienda.razon_social ? [['Razón social', tienda.razon_social]] : []),
+    ...camposEmpresa({ ...tienda, nit:businessNit(tienda), direccion:[tienda.direccion,tienda.ciudad].filter(Boolean).join(', ') }),
+    ...(tienda.whatsapp ? [['WhatsApp', tienda.whatsapp]] : []),
+  ]
+  T('EMPRESA', M, y - 1, { size: 6.5, bold: true, color: GOLD })
+  T(marca, M, y + 4, { size: 11, bold: true })
+  y += 9
+  if (!tiendaDatos.length) { T('Tecnología, celulares y accesorios', M, y, { size: 8, color: MUTED }); y += 7 }
+  else {
+    // Rótulo dorado arriba y valor abajo, en 3 columnas (la dirección ocupa dos)
+    const colE = (R - M) / 3
+    let col = 0, fila = y, alto = 0
+    for (const [k, val] of tiendaDatos) {
+      const ancho = k === 'Dirección' ? 2 : 1
+      if (col + ancho > 3) { col = 0; fila += alto + 3; alto = 0 }
+      const x = M + col * colE, lines = split(val, colE * ancho - 4, 8.5).slice(0, 2)
+      T(k.toUpperCase(), x, fila + 3, { size: 6.5, bold: true, color: MUTED })
+      T(lines, x, fila + 7.5, { size: 8.5 })
+      alto = Math.max(alto, 7.5 + lines.length * 3.8)
+      col += ancho
+    }
+    y = fila + alto + 3
+  }
+  doc.setDrawColor(...LINE).setLineWidth(.2).line(M, y - 1, R, y - 1)
+  y += 3
 
   // 3. Panel Cliente | Atendido por (rótulo arriba, valor abajo)
   const c = invoice.clientes || {}, v = invoice.perfiles || {}
@@ -68,7 +94,8 @@ export function renderInvoicePdf(invoice, items, tienda, options) {
   }
   // medir alto con una pasada "en seco" usando las mismas reglas
   const datosC = [['Documento', c.documento && `${c.tipo_documento || 'CC'} ${c.documento}`], ['Teléfono', c.telefono], ['Correo', c.correo], ['Dirección', c.direccion]]
-  const datosV = [['Correo', v.correo], ['Teléfono', v.telefono], ['Método de pago', invoice.metodo_pago && invoice.metodo_pago.charAt(0).toUpperCase() + invoice.metodo_pago.slice(1)]]
+  const datosV = [['Correo', tienda.correo], // correo del negocio, no el del vendedor
+    ['Teléfono', v.telefono], ['Método de pago', invoice.metodo_pago && invoice.metodo_pago.charAt(0).toUpperCase() + invoice.metodo_pago.slice(1)]]
   const finC = lado(x1, '', c.nombre || 'Consumidor final', c.nombre ? datosC : [], 'Venta de mostrador · sin datos de contacto', false)
   const finV = lado(x2, '', v.nombre || 'Vendedor', datosV, undefined, false)
   const panelH = Math.max(finC - y + 3, finV - y + 3, 34)

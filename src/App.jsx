@@ -2,9 +2,13 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import { PageSkeleton } from './components/ui'
+import CajaAutomatica from './components/CajaAutomatica'
 import Login from './pages/Login'
 import Inicio from './pages/Inicio'
 
+const Reportes = lazy(() => import('./pages/Reportes'))
+const Caja = lazy(() => import('./pages/Caja'))
+const Actividad = lazy(() => import('./pages/Actividad'))
 const Configuracion = lazy(() => import('./pages/Configuracion'))
 const Vender = lazy(() => import('./pages/Vender'))
 const Inventario = lazy(() => import('./pages/Inventario'))
@@ -21,7 +25,7 @@ const Registro = lazy(() => import('./pages/Registro'))
 const FacturaPublica = lazy(() => import('./pages/FacturaPublica'))
 
 function Privada({ children, ...p }) {
-  return <ProtectedRoute {...p}><Suspense fallback={<PageSkeleton />}>{children}</Suspense></ProtectedRoute>
+  return <ProtectedRoute {...p}><CajaAutomatica /><Suspense fallback={<PageSkeleton />}>{children}</Suspense></ProtectedRoute>
 }
 
 export default function App() {
@@ -38,6 +42,9 @@ export default function App() {
       <Route path="/facturas/historial" element={<Privada><FacturasHistorial /></Privada>} />
       <Route path="/clientes" element={<Privada><Clientes /></Privada>} />
       <Route path="/configuracion" element={<Privada><Configuracion /></Privada>} />
+      <Route path="/reportes" element={<Privada soloAdmin><Reportes /></Privada>} />
+      <Route path="/caja" element={<Privada permiso="vender"><Caja /></Privada>} />
+      <Route path="/actividad" element={<Privada><Actividad /></Privada>} />
       <Route path="/mas" element={<Privada><Mas /></Privada>} />
       <Route path="/empleados" element={<Privada soloAdmin><Empleados /></Privada>} />
       <Route path="/proveedores" element={<Privada permiso="registrar_compras"><Proveedores /></Privada>} />

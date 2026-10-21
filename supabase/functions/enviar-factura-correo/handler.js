@@ -1,16 +1,16 @@
+import {renderInvoiceMessages} from '../_shared/invoice-messages.js'
 import { invoiceBrand } from '../_shared/invoice-brand.js'
 const cors = { 'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods':'POST, OPTIONS' }
 const number = f => f.prefijo + '-' + String(f.numero).padStart(4,'0')
 const validEmail = value => typeof value==='string' && value.length<=254 && /^[^\s@<>;,]+@[^\s@<>;,]+\.[^\s@<>;,]+$/.test(value)
 const escape = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
 export function emailTemplate(document) {
- const f=document.invoice, brand=invoiceBrand(document.tienda), name=(f.clientes?.nombre||'').trim().split(/\s+/)[0]
- const amount='$'+Math.round(Number(f.total)).toLocaleString('es-CO')+' COP', invoice=number(f)
- const text=[name?'Hola, '+name+'.':'Hola.','', 'Gracias por tu compra en '+brand+'.','Adjuntamos la factura '+invoice+' correspondiente a tu compra.','', 'Total de la compra: '+amount+'.','Puedes consultar el detalle completo en el archivo PDF adjunto.','', 'Gracias por confiar en nosotros.','', 'Atentamente,','Equipo '+brand].join('\n')
- const html='<html><body style="margin:0;background:#f4f1eb;font-family:Arial,sans-serif;color:#24211c"><div style="max-width:580px;margin:24px auto;background:#fff;border-radius:16px;overflow:hidden"><div style="background:#11100e;padding:28px;color:#e9cd92"><b style="font-size:22px">'+escape(brand)+'</b><p>Factura '+escape(invoice)+'</p></div><div style="padding:28px;line-height:1.65"><p>'+escape(name?'Hola, '+name+'.':'Hola.')+'</p><p>Gracias por tu compra en '+escape(brand)+'.</p><p>Adjuntamos la factura <b>'+escape(invoice)+'</b> correspondiente a tu compra.</p><div style="background:#f8f4eb;padding:18px;border-radius:10px">Total de la compra<br><b style="font-size:24px">'+escape(amount)+'</b></div><p>Puedes consultar el detalle completo en el archivo PDF adjunto.</p><p>Gracias por confiar en nosotros.</p><p>Atentamente,<br>Equipo '+escape(brand)+'</p></div></div></body></html>'
- return {subject:'Factura '+invoice+' | '+brand,text,html}
+ const f=document.invoice,brand=invoiceBrand(document.tienda)
+ const message=renderInvoiceMessages({invoice:f,items:document.items,tienda:document.tienda,templates:document.plantillas})
+ return{subject:message.asunto,text:message.correo,html:'<html><body style="font-family:Arial,sans-serif;color:#24211c"><div style="max-width:580px;margin:auto;border:1px solid #d8ad62;border-radius:16px;overflow:hidden"><header style="background:#11100e;color:#e9cd92;padding:24px"><b>'+escape(brand)+'</b><p>Factura '+escape(number(f))+'</p></header><div style="padding:24px;line-height:1.65">'+escape(message.correo).replace(/\n/g,'<br>')+'</div></div></body></html>'}
 }
-const messages={UNAUTHENTICATED:'Inicia sesión para enviar la factura.',FORBIDDEN:'No tienes permiso para enviar esta factura.',INVOICE_NOT_FOUND:'La factura no está disponible.',INVOICE_NOT_ISSUED:'Solo se pueden enviar facturas emitidas.',INVALID_EMAIL:'Revisa el correo del destinatario.',MISSING_CONFIG:'Falta configurar el servicio de correo de la tienda.',MIGRATION_REQUIRED:'Falta activar el servicio de correo en el servidor.',RATE_LIMIT:'Alcanzaste el límite de envíos. Espera antes de reintentar.',SEND_IN_PROGRESS:'Esta factura se está enviando. Espera y vuelve a comprobar.',MANUAL_REVIEW_REQUIRED:'El resultado anterior requiere revisión antes de otro envío.',ATTACHMENT_TOO_LARGE:'El PDF supera el tamaño permitido.',PROVIDER_REJECTED:'El proveedor rechazó el envío. Puedes reintentar sin duplicar la factura.',RESULT_UNKNOWN:'No se pudo confirmar el envío. Reintenta para consultar el mismo intento.',PDF_FAILED:'No se pudo preparar el PDF. La factura sigue disponible.',DATABASE_FAILED:'No se pudo registrar el envío. Inténtalo de nuevo.',INVALID_REQUEST:'Revisa los datos del envío.'}
+const messageVersion=async message=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([message.subject,message.text])))),n=>n.toString(16).padStart(2,'0')).join('')
+const messages={PREVIEW_CHANGED:'El mensaje cambió. Revisa la nueva vista previa y confirma otra vez.',UNAUTHENTICATED:'Inicia sesión para enviar la factura.',FORBIDDEN:'No tienes permiso para enviar esta factura.',INVOICE_NOT_FOUND:'La factura no está disponible.',INVOICE_NOT_ISSUED:'Solo se pueden enviar facturas emitidas.',INVALID_EMAIL:'Revisa el correo del destinatario.',MISSING_CONFIG:'Falta configurar el servicio de correo de la tienda.',MIGRATION_REQUIRED:'Falta activar el servicio de correo en el servidor.',RATE_LIMIT:'Alcanzaste el límite de envíos. Espera antes de reintentar.',SEND_IN_PROGRESS:'Esta factura se está enviando. Espera y vuelve a comprobar.',MANUAL_REVIEW_REQUIRED:'El resultado anterior requiere revisión antes de otro envío.',ATTACHMENT_TOO_LARGE:'El PDF supera el tamaño permitido.',PROVIDER_REJECTED:'El proveedor rechazó el envío. Puedes reintentar sin duplicar la factura.',RESULT_UNKNOWN:'No se pudo confirmar el envío. Reintenta para consultar el mismo intento.',PDF_FAILED:'No se pudo preparar el PDF. La factura sigue disponible.',DATABASE_FAILED:'No se pudo registrar el envío. Inténtalo de nuevo.',INVALID_REQUEST:'Revisa los datos del envío.'}
 class MailFailure extends Error { constructor(code,status=400){super(messages[code]||messages.DATABASE_FAILED);this.code=code;this.status=status} }
 export function createInvoiceEmailHandler({ authenticate,rpc,renderPdf,env,fetchImpl=fetch,logger=console }) {
  return async req => {
@@ -31,7 +31,7 @@ export function createInvoiceEmailHandler({ authenticate,rpc,renderPdf,env,fetch
    const from=env('INVOICE_EMAIL_FROM')?.trim(),key=env('RESEND_API_KEY')?.trim()
    const configured=!!(from&&key)
    const meta={numero:number(f),total:f.total,destinatario:f.clientes?.correo||'',nombreComercial:invoiceBrand(document.tienda),pdf:'Factura-'+number(f).replace(/[^a-zA-Z0-9-]/g,'')+'-Angie-Tech.pdf',identidadHistorica:document.identidad_historica!==false}
-   if(body.action==='preview')return response({ok:true,...meta,configured})
+   if(body.action==='preview'){const message=emailTemplate(document);return response({ok:true,...meta,configured,asunto:message.subject,mensaje:message.text,version:await messageVersion(message)})}
    if(!configured)throw new MailFailure('MISSING_CONFIG',503)
    const recipient=String(body.destinatario||'').trim().toLowerCase()
    if(!validEmail(recipient))throw new MailFailure('INVALID_EMAIL')
@@ -39,13 +39,16 @@ export function createInvoiceEmailHandler({ authenticate,rpc,renderPdf,env,fetch
    if(reserved.estado==='aceptado'&&reserved.proveedor_id)return response({ok:true,estado:'aceptado',accepted:true,envioId:reserved.id,proveedorId:reserved.proveedor_id,alreadyAccepted:true})
    record=await call('correo_factura_tomar',{p_actor:actor,p_envio:reserved.id})
    if(record.estado==='aceptado'&&record.proveedor_id)return response({ok:true,estado:'aceptado',accepted:true,envioId:record.id,proveedorId:record.proveedor_id,alreadyAccepted:true})
+   const message=record.payload?{subject:record.payload.subject,text:record.payload.text}:emailTemplate(document)
+   const version=await messageVersion(message)
+   if(body.version!==undefined&&body.version!==version){const error=new MailFailure('PREVIEW_CHANGED',409);error.preview={asunto:message.subject,mensaje:message.text,version};throw error}
    let payload=record.payload
    if(!payload){
     let pdf;try{pdf=await renderPdf(document)}catch{throw new MailFailure('PDF_FAILED',500)}
     if(!pdf?.bytes||pdf.bytes.length>3*1024*1024)throw new MailFailure('ATTACHMENT_TOO_LARGE',413)
     if(new TextDecoder().decode(pdf.bytes.slice(0,5))!=='%PDF-')throw new MailFailure('PDF_FAILED',500)
     let binary='';for(let i=0;i<pdf.bytes.length;i+=8192)binary+=String.fromCharCode(...pdf.bytes.slice(i,i+8192))
-    payload={from,to:[recipient],...emailTemplate(document),attachments:[{filename:meta.pdf,content:btoa(binary)}]}
+    payload={from,to:[recipient],...message,attachments:[{filename:meta.pdf,content:btoa(binary)}]}
     payload=await call('correo_factura_payload',{p_envio:record.id,p_lock:record.lock_token,p_payload:payload})
    }
    await call('correo_factura_iniciar',{p_envio:record.id,p_lock:record.lock_token});providerStarted=true
@@ -59,7 +62,7 @@ export function createInvoiceEmailHandler({ authenticate,rpc,renderPdf,env,fetch
    const failure=error instanceof MailFailure?error:new MailFailure(providerStarted?'RESULT_UNKNOWN':'DATABASE_FAILED',502)
    if(record?.lock_token){try{await finish(providerStarted?'incierto':'error',null,failure.code)}catch{logger.error({trace,code:'SEND_LOG_PENDING',envioId:record.id})}}
    logger.error({trace,code:failure.code})
-   return response({ok:false,accepted:false,code:failure.code,error:failure.message,trace},failure.status)
+   return response({ok:false,accepted:false,code:failure.code,error:failure.message,trace,...(failure.preview?{preview:failure.preview}:{})},failure.status)
   }
  }
 }

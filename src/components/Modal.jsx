@@ -1,3 +1,4 @@
+import {isNativeShareProtected} from '../lib/nativeShareContext'
 import { useId, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -72,12 +73,14 @@ export default function Modal({ title, onClose, footer, children, expanded = fal
   useLayoutEffect(() => {
     const dialog = dialogRef.current
     const previous = document.activeElement
+    const previousDialogs=[...document.querySelectorAll('[data-app-dialog]')].filter(d=>d!==dialog).map(d=>({element:d,inert:d.inert,hidden:d.getAttribute('aria-hidden')}))
+    previousDialogs.forEach(({element})=>{element.inert=true;element.setAttribute('aria-hidden','true')})
     const unlockBackground = lockBackground()
     dialog.focus()
     const keys = (event) => {
       const dialogs = document.querySelectorAll('[data-app-dialog]')
       if (dialogs[dialogs.length - 1] !== dialog) return
-      if (event.key === 'Escape') { event.preventDefault(); closeRef.current() }
+      if (event.key === 'Escape') { event.preventDefault(); if(!isNativeShareProtected(dialog))closeRef.current() }
       if (event.key !== 'Tab') return
       const elements = [...dialog.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]')]
         .filter((element) => element.getClientRects().length)
@@ -90,6 +93,7 @@ export default function Modal({ title, onClose, footer, children, expanded = fal
     return () => {
       document.removeEventListener('keydown', keys)
       unlockBackground()
+      previousDialogs.forEach(({element,inert,hidden})=>{if(element.isConnected){element.inert=inert;if(hidden===null)element.removeAttribute('aria-hidden');else element.setAttribute('aria-hidden',hidden)}})
       if (previous?.isConnected && (restoreInputFocus || !previous.matches?.('input,textarea,select'))) {
         // Returning focus after a dialog is not a new request to open search.
         // Safari can finish its closing resize before this cleanup runs.
@@ -109,7 +113,7 @@ export default function Modal({ title, onClose, footer, children, expanded = fal
   </div>
 
   return createPortal(
-    <div ref={overlayRef} className={'overlay' + (keyboardAware ? ' keyboard-aware-overlay' : '')} onClick={(e) => { if (e.target === e.currentTarget) onClose() }} onClickCapture={e => {
+    <div ref={overlayRef} className={'overlay' + (keyboardAware ? ' keyboard-aware-overlay' : '')} onClick={(e) => { if (e.target === e.currentTarget && !isNativeShareProtected(dialogRef.current)) onClose() }} onClickCapture={e => {
       if (!validateFooter) return
       const button = e.target.closest('button')
       if (!button || !button.closest('.sheet-foot') || button.closest('.sheet') !== dialogRef.current || button.classList.contains('sec')) return

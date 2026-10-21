@@ -15,3 +15,34 @@
 .sale-inline-control output { min-width:22px; text-align:center; font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
 .sale-product-main:focus-visible,.sale-inline-control button:focus-visible { outline:2px solid var(--gold); outline-offset:-3px; border-radius:10px; }
 @media(min-width:380px) { .inline-sale-product .sale-product-main { grid-template-columns:60px minmax(0,1fr) 112px; gap:10px; } .inline-sale-product .sale-product-main .product-thumbnail { width:60px; height:78px; } .inline-sale-product .sale-product-main .font-semibold { font-size:12px; } }
+/* Precio especial en la venta */
+.pos-line-price{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:5px;color:var(--muted);border-bottom:1px dashed color-mix(in srgb,var(--gold,#c79a52) 55%,transparent);min-height:28px}
+.pos-line-price svg{width:13px;height:13px;color:var(--gold,#c79a52)}
+.pos-line-price s{opacity:.6;margin-right:2px}
+.pos-line-price.special{color:var(--gold,#c79a52);font-weight:600}
+.pos-line-price:disabled{cursor:default;border-bottom-color:transparent}
+.pos-price-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:46px;margin-top:4px;border-radius:14px;border:1px dashed color-mix(in srgb,var(--gold,#c79a52) 60%,transparent);background:color-mix(in srgb,var(--gold,#c79a52) 8%,transparent);color:var(--gold,#c79a52);font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+.pos-price-btn svg{width:16px;height:16px}
+.pos-old-price{opacity:.55;font-weight:500;margin-right:4px;font-size:.85em}
+.pos-price-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 14px}
+.pos-price-chips button{min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+.pos-price-info{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.pos-price-info span{color:var(--muted)}
+.pos-price-info b.good{color:var(--good)}
+.pos-price-note{margin:12px 2px 0;font-size:12.5px;color:var(--muted);line-height:1.45}
+/* Venta rápida sin datos del cliente */
+.pos-who2 .pos-who2-quick{grid-column:1/-1;border-style:solid!important;border-color:var(--line)!important;background:var(--surface)!important}
+.pos-who2 .pos-who2-quick .pos-who2-ic{background:color-mix(in srgb,var(--gold,#c79a52) 16%,transparent)!important;color:var(--gold,#c79a52)!important}
+/* Casilla «Cliente sin datos» (marcada por defecto) */
+.pos-sin-datos{display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;border:1px solid var(--line);background:var(--surface);cursor:pointer;min-height:64px}
+.pos-sin-datos.on{border-color:color-mix(in srgb,var(--gold,#c79a52) 70%,transparent);background:color-mix(in srgb,var(--gold,#c79a52) 9%,var(--surface))}
+.pos-sin-datos input{position:absolute;opacity:0;width:1px;height:1px}
+.pos-sin-check{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:8px;border:2px solid color-mix(in srgb,var(--gold,#c79a52) 60%,transparent);color:transparent}
+.pos-sin-check svg{width:16px;height:16px}
+.pos-sin-datos.on .pos-sin-check{background:linear-gradient(135deg,#e9cf98,#c79a52);border-color:transparent;color:#1b150b}
+.pos-sin-datos input:focus-visible+.pos-sin-check{outline:2px solid var(--gold,#c79a52);outline-offset:2px}
+.pos-sin-txt b{display:block;font-size:15px}
+.pos-sin-txt small{display:block;margin-top:2px;font-size:12.5px;color:var(--muted)}
+.pos-sin-hint{margin:12px 2px 8px;font-size:12.5px;color:var(--muted)}
+.pos-total-edit{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;margin-top:10px;border-radius:12px;border:1px dashed color-mix(in srgb,var(--gold,#c79a52) 60%,transparent);background:none;color:var(--gold,#c79a52);font:inherit;font-weight:600;font-size:13.5px;cursor:pointer}
+.pos-total-edit svg{width:15px;height:15px}

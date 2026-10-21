@@ -1,3 +1,4 @@
+import BrandStrip from '../components/BrandStrip'
 import { createSaleAttempt, readSaleAttempt, saveSaleAttempt, clearSaleAttempt, submitSale, reconcileSale } from '../lib/saleCompletion'
 import { invoiceTable, invoiceItemsTable } from '../lib/invoiceQueries'
 import { quitarFocoEntrada } from '../lib/invoiceDelivery'
@@ -22,6 +23,52 @@ import { supabase, isDemoMode } from '../lib/supabase'
 import { money, limpiarBusqueda, mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
 import '../styles/sale-quantity.css'
+import MoneyInput from '../components/MoneyInput'
+import { obtenerConsumidorFinal, esConsumidorFinal, notaVenta } from '../lib/consumidorFinal'
+import { useLocales, cargarStockLocales } from '../lib/locales'
+import { LocalTag } from '../components/LocalSelector'
+import '../styles/locales.css'
+
+const precioDe = i => i.precio ?? i.producto.precio_venta
+
+// Precio especial al vender: no cambia el precio del inventario, se registra como descuento en la factura
+function PrecioEspecial({ producto, actual, onGuardar, onClose }) {
+  const lista = Number(producto.precio_venta) || 0
+  const [valor, setValor] = useState(String(actual ?? lista)), [err, setErr] = useState('')
+  const n = Number(valor) || 0, rebaja = lista - n
+  const pct = p => setValor(String(Math.max(1, Math.round(lista * (1 - p / 100) / 100) * 100)))
+  function guardar() {
+    if (!n || n <= 0) return setErr('Escribe el precio de venta.')
+    if (n > lista) return setErr('El precio especial no puede ser mayor que el precio normal (' + money(lista) + ').')
+    onGuardar(n)
+  }
+  return <Modal title="Precio especial" subtitle={producto.nombre} className="experience-sheet pos-price-sheet" keyboardAware onClose={onClose} footer={<div className="pos-detail-foot"><button type="button" className="inv-btn-outline" onClick={() => onGuardar(lista)}>Precio normal</button><button type="button" className="inv-btn-gold" onClick={guardar}>Usar {money(n)}</button></div>}>
+    <ErrorBox text={err} />
+    <MoneyInput label="Precio de venta por unidad" value={valor} onValueChange={v => { setValor(v); setErr('') }} autoFocus />
+    <div className="pos-price-chips">{[5, 10, 15, 20].map(p => <button key={p} type="button" onClick={() => { pct(p); setErr('') }}>−{p}%</button>)}</div>
+    <div className="pos-price-info"><span>Precio normal</span><b>{money(lista)}</b></div>
+    <div className="pos-price-info"><span>Descuento por unidad</span><b className={rebaja > 0 ? 'good' : ''}>{rebaja > 0 ? '−' + money(rebaja) + ' (' + Math.round(rebaja / lista * 100) + '%)' : 'Sin descuento'}</b></div>
+    <p className="pos-price-note">El precio del producto en el inventario no cambia. El descuento queda registrado en la factura.</p>
+  </Modal>
+}
+
+// Valor final de la venta escrito a mano: la diferencia queda como «Descuento» en la factura
+function EditarTotal({ base, actual, onGuardar, onClose }) {
+  const [valor, setValor] = useState(String(actual)), [err, setErr] = useState('')
+  const n = Number(valor) || 0, rebaja = base - n
+  function guardar() {
+    if (!n || n <= 0) return setErr('Escribe el valor total de la venta.')
+    if (n > base) return setErr('El total no puede ser mayor que ' + money(base) + '. Para cobrar más, cambia el precio del producto en el inventario.')
+    onGuardar(n)
+  }
+  return <Modal title="Valor total de la venta" subtitle="Escribe cuánto va a pagar el cliente" className="experience-sheet pos-price-sheet" keyboardAware onClose={onClose} footer={<div className="pos-detail-foot"><button type="button" className="inv-btn-outline" onClick={() => onGuardar(base)}>Sin descuento</button><button type="button" className="inv-btn-gold" onClick={guardar}>Cobrar {money(n)}</button></div>}>
+    <ErrorBox text={err} />
+    <MoneyInput label="Total a pagar" value={valor} onValueChange={v => { setValor(v); setErr('') }} autoFocus />
+    <div className="pos-price-info"><span>Valor sin descuento</span><b>{money(base)}</b></div>
+    <div className="pos-price-info"><span>Descuento</span><b className={rebaja > 0 ? 'good' : ''}>{rebaja > 0 ? '−' + money(rebaja) + ' (' + Math.round(rebaja / base * 100) + '%)' : 'Sin descuento'}</b></div>
+    <p className="pos-price-note">La diferencia queda registrada como descuento en la factura. El precio de los productos en el inventario no cambia.</p>
+  </Modal>
+}
 
 export default function Vender() {
   const { perfil, esAdmin, can } = useAuth()
@@ -42,7 +89,12 @@ export default function Vender() {
   const [categoria, setCategoriaRaw] = useState('Todos'); const [marca, setMarca] = useState('Todas'); const [hojaMarca, setHojaMarca] = useState(false); const [hojaCat, setHojaCat] = useState(false)
   const setCategoria = (c) => { setCategoriaRaw(c); setMarca('Todas') }; const [refresh, setRefresh] = useState(0)
   const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get('q') || '')
-  const [res, setRes] = useState([])
+  const [resRaw, setRes] = useState([])
+  // Locales: el vendedor vende en su local; si allí no hay, puede vender del otro local
+  const loc = useLocales(perfil)
+  const [localElegido, setLocalElegido] = useState(draft.localVenta || null)
+  const ventaLocal = loc.multi ? (esAdmin && loc.locales.some(l => l.id === localElegido) ? localElegido : loc.localVenta) : null
+  const [stockLoc, setStockLoc] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [verCatalogo, setVerCatalogo] = useState(false)
   const [extras, setExtras] = useState(false)
@@ -77,8 +129,14 @@ export default function Vender() {
   }, [refresh]) // eslint-disable-line
   const [detalle, setDetalle] = useState(null)
   const [cantDet, setCantDet] = useState(1)
+  const [precioDet, setPrecioDet] = useState(null)   // precio especial elegido en «Detalle del producto»
+  const [precioEdit, setPrecioEdit] = useState(null) // { linea } o { detalle: producto }
+  const [editTotal, setEditTotal] = useState(false)    // escribir directamente el valor final de la venta
   const [carrito, setCarrito] = useState(draft.carrito || []) // Temporary per-user tab draft.
   const [cliente, setCliente] = useState(draft.cliente || null)
+  // Por defecto la venta va sin datos del cliente («Consumidor final»); si el cliente da sus datos, se elige o registra debajo
+  const [sinDatos, setSinDatos] = useState(draft.sinDatos ?? true)
+  const listoCliente = !!cliente || sinDatos
   const [metodo, setMetodo] = useState(draft.metodo || 'efectivo')
   const [descuento, setDescuento] = useState(draft.descuento || '')
   const [notas, setNotas] = useState(draft.notas || '')
@@ -89,7 +147,15 @@ export default function Vender() {
   const [verCarrito, setVerCarrito] = useState(false)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [facturaId, setFacturaId] = useState(null)
+  // La venta recién hecha queda «abierta» hasta tocar Finalizar: si el celular recarga la app
+  // al volver de WhatsApp, se reabre la pantalla de la venta para poder finalizarla.
+  const ventaKey = 'angie:venta-abierta:' + perfil.id
+  const [facturaId, setFacturaId] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem(ventaKey) || 'null'); return v && Date.now() - v.t < 6 * 3600e3 ? v.id : null } catch { return null }
+  })
+  useEffect(() => {
+    try { if (facturaId) localStorage.setItem(ventaKey, JSON.stringify({ id: facturaId, t: Date.now() })); else localStorage.removeItem(ventaKey) } catch { /* opcional */ }
+  }, [facturaId, ventaKey])
   const [verFacturaVenta, setVerFacturaVenta] = useState(false)
   const cerrarVenta = () => { quitarFocoEntrada(); setFacturaId(null); setVerFacturaVenta(false) }
 
@@ -99,18 +165,36 @@ export default function Vender() {
       let qq = supabase.from('productos_venta').select('*').order('nombre').limit(200)
       if (s) qq = qq.or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,codigo_barras.ilike.%${s}%,marca.ilike.%${s}%`)
       const { data } = await qq
-      setRes(data || []); setCargando(false)
+      const sl = loc.multi ? await cargarStockLocales(supabase, (data || []).map(p => p.id)) : null
+      setStockLoc(sl); setRes(data || []); setCargando(false)
     }, 250)
     return () => clearTimeout(t)
-  }, [q, refresh])
+  }, [q, refresh, loc.multi])
+  // Stock que se puede vender: el de este local o, si aquí no hay, el del local que más tenga
+  const decorar = p => {
+    if (!loc.multi || !stockLoc) return p
+    const stocks = stockLoc[p.id] || {}, aqui = stocks[ventaLocal] || 0
+    const otro = loc.locales.filter(l => l.id !== ventaLocal).map(l => [l.id, stocks[l.id] || 0]).sort((a, b) => b[1] - a[1])[0] || [null, 0]
+    const base = { ...p, _stocks: stocks, _total: p.stock }
+    if (p.maneja_serial) return { ...base, _origen: aqui > 0 || !otro[1] ? ventaLocal : otro[0] }
+    if (aqui > 0 || !otro[1]) return { ...base, stock: aqui, _origen: ventaLocal }
+    return { ...base, stock: otro[1], _origen: otro[0] }
+  }
+  const res = useMemo(() => resRaw.map(decorar), [resRaw, stockLoc, ventaLocal, loc]) // eslint-disable-line react-hooks/exhaustive-deps
+  const origenDe = i => i.unidad?.local_id ?? i.producto._origen ?? ventaLocal
+  const esOtroLocal = i => loc.multi && origenDe(i) != null && origenDe(i) !== ventaLocal
+  function cambiarLocalVenta(id) {
+    if (carrito.length) return toast('Vacía el carrito para cambiar el local de la venta')
+    setLocalElegido(Number(id))
+  }
 
-  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({carrito,cliente,metodo,descuento,notas,seller,requestId})) } catch { /* Draft does not block checkout. */ } }, [carrito,cliente,metodo,descuento,notas,seller,requestId,draftKey])
+  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({carrito,cliente,sinDatos,metodo,descuento,notas,seller,requestId,localVenta:localElegido})) } catch { /* Draft does not block checkout. */ } }, [carrito,cliente,sinDatos,metodo,descuento,notas,seller,requestId,localElegido,draftKey])
   useEffect(() => {
     if (!draft.carrito?.length) return
     let live = true
     supabase.from('productos_venta').select('*').in('id', draft.carrito.map(i=>i.producto.id)).then(({data,error})=>{
       if (!live || error) return
-      setCarrito(items=>items.map(i=>({...i,producto:(data||[]).find(p=>p.id===i.producto.id)||{...i.producto,activo:false,stock:0}})))
+      setCarrito(items=>items.map(i=>{const f=(data||[]).find(p=>p.id===i.producto.id);return {...i,producto:f?(i.producto._origen!=null?{...f,_origen:i.producto._origen,_stocks:i.producto._stocks,stock:Math.min(f.stock,i.producto.stock)}:f):{...i.producto,activo:false,stock:0}}}))
     })
     return () => { live=false }
   }, [draft])
@@ -119,9 +203,10 @@ export default function Vender() {
   async function agregar(p) {
     if (!cartEditable()) return
     if (p.maneja_serial) {
-      const { data } = await supabase.from('unidades_serializadas').select('id,serial').eq('producto_id', p.id).eq('estado', 'disponible').order('id')
+      const { data } = await supabase.from('unidades_serializadas').select(loc.multi ? 'id,serial,local_id' : 'id,serial').eq('producto_id', p.id).eq('estado', 'disponible').order('id')
       const usadas = carrito.map((i) => i.unidad?.id)
-      const libres = (data || []).filter((u) => !usadas.includes(u.id))
+      // Primero las unidades de este local
+      const libres = (data || []).filter((u) => !usadas.includes(u.id)).sort((a, b) => (a.local_id === ventaLocal ? 0 : 1) - (b.local_id === ventaLocal ? 0 : 1))
       if (libres.length === 0) return toast('No hay unidades disponibles')
       setUnidades(libres); setSerialDe(p); return
     }
@@ -135,15 +220,16 @@ export default function Vender() {
   }
   function agregarUnidad(u) {
     if (!cartEditable()) return
-    setCarrito((c) => c.some(i=>i.unidad?.id===u.id) ? c : [...c, { key: 'u' + u.id, producto: serialDe, cantidad: 1, unidad: u }])
+    const especial = precioDet != null && precioDet !== serialDe.precio_venta ? { precio: precioDet } : {}
+    setCarrito((c) => c.some(i=>i.unidad?.id===u.id) ? c : [...c, { key: 'u' + u.id, producto: { ...serialDe, _origen: u.local_id ?? serialDe._origen }, cantidad: 1, unidad: u, ...especial }])
     setSerialDe(null); toast('Agregado con serial ' + u.serial)
   }
   async function alEscanear(codigo) {
     setScan(false)
     const { data } = await supabase.from('productos_venta').select('*').or(`codigo_barras.eq.${limpiarBusqueda(codigo)},codigo.eq.${limpiarBusqueda(codigo)}`).limit(1)
-    if (data?.[0]) return agregar(data[0])
+    if (data?.[0]) return agregar(res.find(x => x.id === data[0].id) || decorar(data[0]))
     // ¿es un serial?
-    const { data: u } = await supabase.from('unidades_serializadas').select('id,serial,estado,producto_id').eq('serial', codigo.trim()).maybeSingle()
+    const { data: u } = await supabase.from('unidades_serializadas').select(loc.multi ? 'id,serial,estado,producto_id,local_id' : 'id,serial,estado,producto_id').eq('serial', codigo.trim()).maybeSingle()
     if (u && u.estado === 'disponible') {
       const { data: p } = await supabase.from('productos_venta').select('*').eq('id', u.producto_id).maybeSingle()
       if (p) { setSerialDe(p); return agregarUnidadDirecto(p, u) }
@@ -153,12 +239,14 @@ export default function Vender() {
   function agregarUnidadDirecto(p, u) {
     if (!cartEditable()) return
     if (carrito.some((i) => i.unidad?.id === u.id)) return
-    setCarrito((c) => [...c, { key: 'u' + u.id, producto: p, cantidad: 1, unidad: u }]); setSerialDe(null)
+    setCarrito((c) => [...c, { key: 'u' + u.id, producto: { ...decorar(p), _origen: u.local_id ?? decorar(p)._origen }, cantidad: 1, unidad: u }]); setSerialDe(null)
   }
 
   const subtotal = useMemo(() => carrito.reduce((a, i) => a + i.producto.precio_venta * i.cantidad, 0), [carrito])
-  const desc = Math.min(Number(descuento) || 0, subtotal)
-  const total = subtotal - desc
+  // Precio especial por producto (descuento al cliente). El precio del inventario no cambia.
+  const descLineas = carrito.reduce((a, i) => a + (i.producto.precio_venta - precioDe(i)) * i.cantidad, 0)
+  const desc = Math.min(Number(descuento) || 0, subtotal - descLineas)
+  const total = subtotal - descLineas - desc
   const unidadesTotal = carrito.reduce((a, i) => a + i.cantidad, 0)
 
   function cambiarCant(i, n) { if (!cartEditable()) return; setCarrito((c) => c.map((x) => (x === i ? { ...x, cantidad: Math.min(n, i.producto.stock) } : x))) }
@@ -178,7 +266,7 @@ export default function Vender() {
     clearSaleAttempt(sessionStorage, perfil.id, attempt.id)
     attemptRef.current = null; setSaleAttempt(null)
     quitarFocoEntrada(); setVerFacturaVenta(false)
-    setCarrito([]); setCliente(null); setDescuento(''); setNotas(''); setVerCarrito(false); setQ('')
+    setCarrito([]); setCliente(null); setSinDatos(true); setDescuento(''); setNotas(''); setVerCarrito(false); setQ('')
     setRequestId(imageKey()); setRefresh(n => n + 1); setFacturaId(result.invoiceId); toast('Venta registrada')
   }
   function rememberAttempt(attempt) {
@@ -198,12 +286,17 @@ export default function Vender() {
         return setErr(checked.message)
       }
     } else {
-      if (!cliente) return setErr('Elige un cliente registrado o registra uno nuevo para continuar.')
+      let clienteVenta = cliente
+      if (!clienteVenta) {
+        if (!sinDatos) return setErr('Elige un cliente registrado, registra uno nuevo o marca «Cliente sin datos».')
+        try { clienteVenta = await obtenerConsumidorFinal(supabase) }
+        catch (e) { return setErr(e.message || mensajeError(e)) }
+      }
       for (const value of [descuento,subtotal,total,...carrito.flatMap(i => [i.producto.precio_venta,i.producto.precio_compra ?? 0])]) if (monetaryError(value)) return setErr(monetaryError(value))
       if (carrito.some(i => !Number.isInteger(i.cantidad) || i.cantidad <= 0 || i.cantidad > i.producto.stock || i.producto.activo === false)) return setErr('Revisa el carrito: un producto está desactivado o no tiene stock suficiente. Reduce su cantidad o quítalo.')
-      const items = carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.unidad ? 1 : i.cantidad, ...(i.unidad ? { unidad_id: i.unidad.id } : { descuento: 0 }), ...(isDemoMode ? { precio_unitario: i.producto.precio_venta } : {}) }))
+      const items = carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.unidad ? 1 : i.cantidad, ...(i.unidad ? { unidad_id: i.unidad.id } : {}), ...(loc.multi ? { local_id: origenDe(i) } : {}), descuento: (i.producto.precio_venta - precioDe(i)) * (i.unidad ? 1 : i.cantidad), ...(isDemoMode ? { precio_unitario: i.producto.precio_venta } : {}) }))
       attempt = createSaleAttempt({ id: requestId, actorId: perfil.id, admin: esAdmin, mode: isDemoMode ? 'demo' : supabase.idempotentSales ? 'secure' : 'legacy', total,
-        args: { p_cliente_id: cliente?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notas.trim() || null, ...(isDemoMode ? { p_total_confirmado: total, p_vendedor_id: esAdmin ? seller : undefined } : {}) } })
+        args: { p_cliente_id: clienteVenta?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notaVenta(clienteVenta, notas), ...(loc.multi ? { p_local_id: ventaLocal } : {}), ...(isDemoMode ? { p_total_confirmado: total, p_vendedor_id: esAdmin ? seller : undefined } : {}) } })
       try { rememberAttempt(attempt) }
       catch { return setErr('No se pudo proteger el estado de esta venta. Habilita el almacenamiento del navegador y reintenta; no se envió ningún cobro.') }
     }
@@ -238,26 +331,34 @@ export default function Vender() {
   const nombreCorto = (perfil?.nombre || '').split(' ')[0]
   const METODOS_PAGO = [['efectivo', 'Efectivo', 'cash'], ['tarjeta', 'Tarjeta', 'card'], ['transferencia', 'Transferencia', 'bank']]
 
-  function agregarVarios(p, k) {
+  function agregarVarios(p, k, precio) {
     if (!cartEditable()) return
     if (p.maneja_serial) return agregar(p)
     const libre = p.stock - enCarrito(p.id), add = Math.min(k, libre)
     if (add <= 0) return toast('No hay más stock de este producto')
-    setCarrito((c) => { const i = c.find((x) => x.producto.id === p.id && !x.unidad); return i ? c.map((x) => (x === i ? { ...x, cantidad: x.cantidad + add } : x)) : [...c, { key: 'p' + p.id, producto: p, cantidad: add }] })
+    const especial = precio != null && precio !== p.precio_venta ? { precio } : {}
+    setCarrito((c) => { const i = c.find((x) => x.producto.id === p.id && !x.unidad); return i ? c.map((x) => (x === i ? { ...x, cantidad: x.cantidad + add, ...especial } : x)) : [...c, { key: 'p' + p.id, producto: p, cantidad: add, ...especial }] })
     toast(`${add} × ${p.nombre} agregado`)
   }
-  const abrir = (p) => { setCantDet(1); setDetalle(p) }
+  const abrir = (p) => { setCantDet(1); setPrecioDet(null); setDetalle(p) }
+  function guardarPrecio(valor) {
+    const destino = precioEdit
+    setPrecioEdit(null)
+    if (destino?.detalle) return setPrecioDet(valor === destino.detalle.precio_venta ? null : valor)
+    if (!cartEditable()) return
+    setCarrito(c => c.map(x => x.key === destino.linea.key ? { ...x, precio: valor === x.producto.precio_venta ? undefined : valor } : x))
+  }
   const tile = (p, index) => {
     const n = enCarrito(p.id), libre = p.stock - n, agotado = p.stock === 0
     return <AnimatedCard index={index} key={p.id} className={'pos-tile' + (n ? ' in' : '') + (agotado ? ' out' : '')}>
       <button type="button" className="pos-tile-img" aria-label={`Ver ${p.nombre}`} onClick={() => abrir(p)}>
         <ProductThumbnail product={p} />
-        {agotado ? <span className="pos-flag out">Agotado</span> : libre <= p.stock_min ? <span className="pos-flag low">Últimas {libre}</span> : null}
+        {agotado ? <span className="pos-flag out">Agotado</span> : loc.multi && p._origen !== ventaLocal && !p.maneja_serial ? <span className="pos-flag otro">En {loc.nombre(p._origen)}</span> : libre <= p.stock_min ? <span className="pos-flag low">Últimas {libre}</span> : null}
         {n > 0 && <span key={n} className="pos-qty-badge">{n}</span>}
       </button>
       <div className="pos-tile-body" onClick={() => abrir(p)}>
         <b className="pos-name">{p.nombre ? p.nombre.charAt(0).toUpperCase() + p.nombre.slice(1) : ''}</b>
-        <span className="pos-meta">{p.marca || 'Genérica'}{!agotado && <> · {libre} disp.</>}</span>
+        <span className="pos-meta">{p.marca || 'Genérica'}{!agotado && <> · {libre} disp.{loc.multi && p._origen !== ventaLocal && !p.maneja_serial ? ' allá' : ''}</>}</span>
         <span className="pos-price">{money(p.precio_venta)}</span>
         {agotado ? <span className="pos-add off">Sin stock</span> : n > 0 ? <div className="pos-step" role="group" aria-label={`Cantidad de ${p.nombre}`} onClick={e => e.stopPropagation()}>
           <button type="button" aria-label={`Disminuir ${p.nombre}`} onClick={() => disminuir(p)}>−</button>
@@ -288,6 +389,7 @@ export default function Vender() {
         </button>
       )}>
       {vipCard}
+      {loc.multi && <div className="loc-venta"><I n="store" /><span>Vendiendo en <b>{loc.nombre(ventaLocal)}</b></span>{esAdmin && <select aria-label="Local de la venta" value={ventaLocal || ''} onChange={e => cambiarLocalVenta(e.target.value)}>{loc.locales.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</select>}</div>}
 
       <div className="inv-search">
         <label className="inv-search-box"><I n="search" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="¿Qué vas a vender hoy?" aria-label="Buscar producto" />{q && <button type="button" className="inv-scan" aria-label="Limpiar búsqueda" onClick={() => setQ('')}>✕</button>}</label>
@@ -305,6 +407,7 @@ export default function Vender() {
           {marca !== 'Todas' ? <span className="pos-dd-x" role="button" aria-label="Quitar marca" onClick={(e) => { e.stopPropagation(); setMarca('Todas') }}>✕</span> : <I n="chevDown" className="pos-dd-chev" />}
         </button>
       </div>
+      {marcas.length>1&&<BrandStrip brands={[["Todas",enCategoria.length],...marcas]} value={marca} onChange={setMarca}/>}
       {hojaCat && <Modal title="Categoría" className="flt-sheet" onClose={() => setHojaCat(false)}>
         <div className="pos-cat-grid">
           {catsVisibles.map(([nombre, n]) => <button key={nombre} type="button" className={categoria === nombre ? 'on' : ''} aria-pressed={categoria === nombre} onClick={() => { setCategoria(nombre); setHojaCat(false) }}>
@@ -345,21 +448,26 @@ export default function Vender() {
         const p = res.find(x => x.id === detalle.id) || detalle, n = enCarrito(p.id), libre = p.stock - n
         return <Modal title="Detalle del producto" className="experience-sheet pos-detail" onClose={() => setDetalle(null)} footer={libre > 0 && !p.maneja_serial ? <div className="pos-detail-foot">
             <div className="pos-step"><button type="button" aria-label="Menos" disabled={cantDet <= 1} onClick={() => setCantDet(c => Math.max(1, c - 1))}>−</button><output>{cantDet}</output><button type="button" aria-label="Más" disabled={cantDet >= libre} onClick={() => setCantDet(c => Math.min(libre, c + 1))}>+</button></div>
-            <button type="button" className="inv-btn-gold" onClick={() => { agregarVarios(p, cantDet); setDetalle(null) }}>Agregar · {money(p.precio_venta * cantDet)}</button>
+            <button type="button" className="inv-btn-gold" onClick={() => { agregarVarios(p, cantDet, precioDet ?? undefined); setDetalle(null) }}>Agregar · {money((precioDet ?? p.precio_venta) * cantDet)}</button>
           </div> : p.maneja_serial && libre > 0 ? <button type="button" className="inv-btn-gold full" onClick={() => { setDetalle(null); agregar(p) }}>Elegir unidad</button> : <button type="button" className="inv-btn-outline full" disabled>Sin unidades disponibles</button>}>
           <div className="pos-detail-img"><ProductThumbnail product={p} /></div>
           <span className="pos-detail-eyebrow">{[p.categoria, p.marca || 'Genérica'].filter(Boolean).join(' · ')}</span>
           <h2 className="pos-detail-name">{p.nombre ? p.nombre.charAt(0).toUpperCase() + p.nombre.slice(1) : ''}</h2>
           {p.descripcion && <p className="pos-detail-desc">{p.descripcion}</p>}
           <div className="pos-detail-box">
-            <div><span>Precio</span><b className="gold">{money(p.precio_venta)}</b></div>
-            <div><span>Disponibles</span><b className={libre <= 0 ? 'bad' : libre <= p.stock_min ? 'warn' : 'good'}>{libre} {libre === 1 ? 'unidad' : 'unidades'}</b></div>
+            <div><span>Precio</span><b className="gold">{precioDet != null ? <><s className="pos-old-price">{money(p.precio_venta)}</s> {money(precioDet)}</> : money(p.precio_venta)}</b></div>
+            {libre > 0 && <button type="button" className="pos-price-btn" onClick={() => setPrecioEdit({ detalle: p, actual: precioDet ?? p.precio_venta })}><I n="tag" />{precioDet != null ? 'Cambiar precio especial' : 'Dar precio especial o descuento'}</button>}
+            <div><span>Disponibles{loc.multi && !p.maneja_serial && p._origen != null ? ' en ' + loc.nombre(p._origen) : ''}</span><b className={libre <= 0 ? 'bad' : libre <= p.stock_min ? 'warn' : 'good'}>{libre} {libre === 1 ? 'unidad' : 'unidades'}</b></div>
             {n > 0 && <div><span>Ya en la venta</span><b>{n}</b></div>}
             <div><span>Código</span><b className="mono">{p.codigo}</b></div>
           </div>
+          {loc.multi && <div className="loc-stock" aria-label="Stock por local">{loc.locales.map(l => { const n2 = p._stocks?.[l.id] || 0; return <div key={l.id} className={'loc-stock-cell' + (l.id === ventaLocal ? ' mio' : '')}><small>{l.nombre}{l.id === ventaLocal ? ' · aquí' : ''}</small><b className={n2 ? '' : 'cero'}>{n2} {n2 === 1 ? 'unidad' : 'unidades'}</b></div> })}</div>}
+          {loc.multi && libre > 0 && !p.maneja_serial && p._origen !== ventaLocal && <p className="loc-aviso"><I n="store" /><span>No hay en {loc.nombre(ventaLocal)}. Puedes venderlo: se descuenta del inventario de <b>{loc.nombre(p._origen)}</b>. Coordina la entrega con ese local.</span></p>}
           {libre > 0 && libre <= p.stock_min && <p className="pos-detail-note warn"><I n="warn" />Quedan pocas unidades de este producto.</p>}
         </Modal>
       })()}
+      {editTotal && <EditarTotal base={subtotal - descLineas} actual={total} onGuardar={v => { setDescuento(String(subtotal - descLineas - v)); setExtras(true); setEditTotal(false) }} onClose={() => setEditTotal(false)} />}
+      {precioEdit && <PrecioEspecial producto={precioEdit.detalle || precioEdit.linea.producto} actual={precioEdit.actual} onGuardar={guardarPrecio} onClose={() => setPrecioEdit(null)} />}
       {remove && <ConfirmAction title={remove==='all'?'Vaciar carrito':'Quitar producto'} label="Quitar" onClose={()=>setRemove(null)} onConfirm={()=>{if(cartEditable())setCarrito(c=>remove==='all'?[]:c.filter(i=>i.key!==remove.key))}}>Se quitarán {remove==='all'?'todos los productos':remove.producto.nombre} del carrito. No cambia el inventario.</ConfirmAction>}
       {verCliente === 'nuevo' && <ClienteForm onClose={() => setVerCliente(false)} onSaved={(c) => { setCliente(c); setVerCliente(false) }} />}
       {verCliente && verCliente !== 'nuevo' && <ClientePicker sinConsumidor onClose={() => setVerCliente(false)} onPick={(c) => { setCliente(c); setVerCliente(false) }} />}
@@ -369,16 +477,16 @@ export default function Vender() {
       {serialDe && (
         <Modal title={`Serial · ${serialDe.nombre}`} subtitle="Selecciona una unidad disponible" className="experience-sheet serial-picker-sheet" keyboardAware onClose={() => setSerialDe(null)}>
           <div className="serial-product"><ProductThumbnail product={serialDe}/><span><b>{serialDe.nombre}</b><small>{unidades.length} unidades disponibles</small></span></div>
-          <div className="serial-list">{unidades.map((u) => <button type="button" key={u.id} className="row serial-option" onClick={() => agregarUnidad(u)}><span className="serial-mark"><Icon name="scan"/></span><span className="flex-1"><small>SERIAL / IMEI</small><b>{u.serial}</b><Badge tone="good">Disponible</Badge></span><span className="serial-select">Elegir <span aria-hidden="true">›</span></span></button>)}</div>
+          <div className="serial-list">{unidades.map((u) => <button type="button" key={u.id} className="row serial-option" onClick={() => agregarUnidad(u)}><span className="serial-mark"><Icon name="scan"/></span><span className="flex-1"><small>SERIAL / IMEI</small><b>{u.serial}</b><Badge tone="good">Disponible</Badge>{loc.multi && u.local_id != null && <LocalTag nombre={u.local_id === ventaLocal ? loc.nombre(u.local_id) + ' · aquí' : 'En ' + loc.nombre(u.local_id)} tono={u.local_id === ventaLocal ? '' : 'otro'} />}</span><span className="serial-select">Elegir <span aria-hidden="true">›</span></span></button>)}</div>
         </Modal>
       )}
 
       {verCarrito && (() => {
         const mp = METODOS_PAGO.find(m => m[0] === metodo) || METODOS_PAGO[0]
         return <Modal expanded={expand} title="Tu venta" subtitle="Revisa y cobra" className="experience-sheet checkout-sheet pos-checkout pos-ck" keyboardAware restoreInputFocus={false} onClose={() => setVerCarrito(false)} footer={
-          <button className={'pos-pay2' + (cliente ? '' : ' locked')} disabled={busy || pendingSale || (!carrito.length && !saleAttempt)} onClick={() => { if (!cliente && !saleAttempt) { setFaltaCliente(true); setTimeout(() => setFaltaCliente(false), 600); return toast('Elige o registra el cliente para continuar') } facturar() }}>
-            <span className="pos-pay2-ic"><I n={cliente ? mp[2] : 'user'} /></span>
-            <span className="pos-pay2-txt"><small>{busy ? 'Procesando…' : saleAttempt ? saleAttempt.status === 'retryable' ? 'Reintentar esta venta' : 'Comprobar venta' : cliente ? 'Cobrar en ' + mp[1].toLowerCase() : 'Falta el cliente'}</small><b>{busy ? 'Facturando' : money(saleAttempt?.total ?? total)}</b></span>
+          <button className={'pos-pay2' + (listoCliente ? '' : ' locked')} disabled={busy || pendingSale || (!carrito.length && !saleAttempt)} onClick={() => { if (!listoCliente && !saleAttempt) { setFaltaCliente(true); setTimeout(() => setFaltaCliente(false), 600); return toast('Elige o registra el cliente para continuar') } facturar() }}>
+            <span className="pos-pay2-ic"><I n={listoCliente ? mp[2] : 'user'} /></span>
+            <span className="pos-pay2-txt"><small>{busy ? 'Procesando…' : saleAttempt ? saleAttempt.status === 'retryable' ? 'Reintentar esta venta' : 'Comprobar venta' : listoCliente ? 'Cobrar en ' + mp[1].toLowerCase() : 'Falta el cliente'}</small><b>{busy ? 'Facturando' : money(saleAttempt?.total ?? total)}</b></span>
             <span className="pos-pay2-go"><I n="back" className="flip" /></span>
           </button>}>
           <ErrorBox text={err} />
@@ -390,23 +498,27 @@ export default function Vender() {
           {carrito.map((i) => (
             <div key={i.key} className="pos-line">
               <ProductThumbnail product={i.producto} />
-              <div className="pos-line-txt"><b>{i.producto.nombre}</b><small>{i.unidad ? 'Serial ' + i.unidad.serial : money(i.producto.precio_venta) + ' c/u'}</small>
-                <div className="pos-line-ctrl">{!i.unidad ? <div className="pos-step sm"><button type="button" aria-label="Disminuir" onClick={() => i.cantidad <= 1 ? quitar(i) : cambiarCant(i, i.cantidad - 1)}>−</button><output>{i.cantidad}</output><button type="button" aria-label="Aumentar" disabled={i.cantidad >= i.producto.stock} onClick={() => cambiarCant(i, i.cantidad + 1)}>+</button></div> : <span />}<b className="pos-line-total">{money(i.producto.precio_venta*i.cantidad)}</b></div>
+              <div className="pos-line-txt"><b>{i.producto.nombre}</b>{esOtroLocal(i) && <LocalTag nombre={'Sale de ' + loc.nombre(origenDe(i))} tono="otro" />}<small>{i.unidad && <>Serial {i.unidad.serial} · </>}<button type="button" className={'pos-line-price' + (i.precio != null ? ' special' : '')} disabled={!!saleAttempt} aria-label={'Cambiar precio de ' + i.producto.nombre} onClick={() => setPrecioEdit({ linea: i, actual: precioDe(i) })}>{i.precio != null && <s>{money(i.producto.precio_venta)}</s>}{money(precioDe(i))} c/u<I n="pencil" /></button></small>
+                <div className="pos-line-ctrl">{!i.unidad ? <div className="pos-step sm"><button type="button" aria-label="Disminuir" onClick={() => i.cantidad <= 1 ? quitar(i) : cambiarCant(i, i.cantidad - 1)}>−</button><output>{i.cantidad}</output><button type="button" aria-label="Aumentar" disabled={i.cantidad >= i.producto.stock} onClick={() => cambiarCant(i, i.cantidad + 1)}>+</button></div> : <span />}<b className="pos-line-total">{money(precioDe(i)*i.cantidad)}</b></div>
               </div>
               <button className="pos-line-x" aria-label={`Quitar ${i.producto.nombre}`} onClick={() => quitar(i)}><I n="trash" /></button>
             </div>
           ))}
           </div>
 
-          <div className="pos-step-head"><span className="pos-step-n">2</span><h4>Datos del cliente</h4>{!cliente && <span className="pos-req">Obligatorio</span>}</div>
+          {carrito.some(esOtroLocal) && <p className="loc-aviso"><I n="store" /><span>Esta venta lleva productos de otro local. Se descuentan del inventario de <b>{[...new Set(carrito.filter(esOtroLocal).map(i => loc.nombre(origenDe(i))))].join(' y ')}</b> y la venta queda en {loc.nombre(ventaLocal)}.</span></p>}
+          <div className="pos-step-head"><span className="pos-step-n">2</span><h4>Datos del cliente</h4>{!listoCliente && <span className="pos-req">Obligatorio</span>}</div>
           {cliente ? <div className="pos-client in-sheet sel">
             <span className="pos-client-av">{cliente.nombre.split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</span>
-            <span className="pos-client-txt"><small>{[cliente.tipo_documento, cliente.documento].filter(Boolean).join(' ') || 'Cliente'}{cliente.telefono ? ' · ' + cliente.telefono : ''}</small><b>{cliente.nombre}</b></span>
+            <span className="pos-client-txt"><small>{esConsumidorFinal(cliente) ? 'Venta sin datos del cliente' : <>{[cliente.tipo_documento, cliente.documento].filter(Boolean).join(' ') || 'Cliente'}{cliente.telefono ? ' · ' + cliente.telefono : ''}</>}</small><b>{cliente.nombre}</b></span>
             <button type="button" className="pos-client-act" onClick={() => { if (cartEditable()) setCliente(null) }}>Cambiar</button>
-          </div> : <div className={'pos-who2' + (faltaCliente ? ' shake' : '')}>
+          </div> : <>
+            <label className={'pos-sin-datos' + (sinDatos ? ' on' : '')}><input type="checkbox" checked={sinDatos} disabled={!!saleAttempt} onChange={e => setSinDatos(e.target.checked)} /><span className="pos-sin-check" aria-hidden="true"><I n="check" /></span><span className="pos-sin-txt"><b>Cliente sin datos</b><small>{sinDatos ? 'La factura sale como «Consumidor final»' : 'Márcalo si el cliente no da sus datos'}</small></span></label>
+            <p className="pos-sin-hint">{sinDatos ? '¿El cliente quiere dar sus datos? Búscalo o regístralo:' : 'Elige o registra el cliente:'}</p>
+            <div className={'pos-who2' + (faltaCliente ? ' shake' : '')}>
             <button type="button" onClick={() => setVerCliente('buscar')}><span className="pos-who2-ic"><I n="search" /></span><span><b>Cliente registrado</b><small>Buscar por nombre o documento</small></span></button>
             {can('crear_clientes') && <button type="button" onClick={() => setVerCliente('nuevo')}><span className="pos-who2-ic"><I n="plus" /></span><span><b>Cliente nuevo</b><small>Registrar sus datos</small></span></button>}
-          </div>}
+          </div></>}
           {isDemoMode && esAdmin && <Select disabled={!!saleAttempt} label="Vendedor" value={seller} onChange={e=>setSeller(e.target.value)}>{sellers.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</Select>}
 
           <div className="pos-step-head"><span className="pos-step-n">3</span><h4>Forma de pago</h4></div>
@@ -414,13 +526,15 @@ export default function Vender() {
 
           {!extras && !desc && !notas ? <button type="button" className="pos-more" onClick={() => setExtras(true)}><I n="plus" />Agregar descuento o nota</button>
           : <div className="pos-extra">
-            <Input disabled={!can('editar_precios') || !!saleAttempt} title={!can('editar_precios')?'Tu perfil no puede aplicar descuentos':undefined} label="Descuento ($)" inputMode="numeric" value={descuento} onChange={(e) => setDescuento(e.target.value.replace(/\D/g, ''))} />
+            <Input disabled={!!saleAttempt} label="Descuento al total ($)" inputMode="numeric" value={descuento} onChange={(e) => setDescuento(e.target.value.replace(/\D/g, ''))} />
             <Input disabled={!!saleAttempt} label="Nota (opcional)" value={notas} onChange={(e) => setNotas(e.target.value)} />
           </div>}
           <div className="pos-sum">
             <div><span>Subtotal · {unidadesTotal} {unidadesTotal === 1 ? 'producto' : 'productos'}</span><b>{money(subtotal)}</b></div>
+            {descLineas > 0 && <div className="disc"><span>Precio especial</span><b>−{money(descLineas)}</b></div>}
             {desc > 0 && <div className="disc"><span>Descuento</span><b>−{money(desc)}</b></div>}
             <div className="grand"><span>Total</span><b>{money(total)}</b></div>
+            {carrito.length > 0 && !saleAttempt && <button type="button" className="pos-total-edit" onClick={() => setEditTotal(true)}><I n="pencil" />Cambiar el valor total de la venta</button>}
           </div>
         </Modal>
       })()}

@@ -1,7 +1,9 @@
 import { useAuth } from '../context/AuthContext'
+import { useLocales } from '../lib/locales'
+import LocalSelector from '../components/LocalSelector'
 import { consultarFacturasVisibles } from '../lib/sellerHome'
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { I } from '../components/InvIcons'
 import FacturaDetalle from '../components/FacturaDetalle'
@@ -26,10 +28,12 @@ function Selector({ label, value, onChange, options }) {
 export default function FacturasHistorial() {
   const navigate = useNavigate()
   const { esAdmin, perfil } = useAuth()
+  const [params]=useSearchParams()
+  const requested=params.get('fecha'),chosen=/^\d{4}-\d{2}-\d{2}$/.test(requested||'')?requested:null
   const hoy = hoyYm()
-  const [anio, setAnio] = useState(hoy.slice(0, 4))
-  const [mes, setMes] = useState(hoy.slice(5)) // '01'..'12' | 'todos'
-  const [dia, setDia] = useState('todos')
+  const [anio, setAnio] = useState(chosen?.slice(0,4)||hoy.slice(0,4))
+  const [mes, setMes] = useState(chosen?.slice(5,7)||hoy.slice(5)) // '01'..'12' | 'todos'
+  const [dia, setDia] = useState(chosen?.slice(8)||'todos')
   const [q, setQ] = useState('')
   const [estado, setEstado] = useState('todas')
   const [metodo, setMetodo] = useState('todos')
@@ -38,8 +42,12 @@ export default function FacturasHistorial() {
   const [limite, setLimite] = useState(PASO)
   const [ver, setVer] = useState(null)
   const [tick, setTick] = useState(0)
+  const loc = useLocales(perfil)
+  const local = esAdmin ? loc.filtro : null
+  const etiquetaLocal = f => loc.habilitado && local == null && f.local_id != null ? { ...f, _local: loc.nombre(f.local_id) } : f
 
-  useEffect(() => { setDia('todos') }, [anio, mes])
+  const previousDates=useRef({anio,mes})
+  useEffect(() => { if(previousDates.current.anio!==anio||previousDates.current.mes!==mes)setDia('todos');previousDates.current={anio,mes} }, [anio, mes])
   useEffect(() => {
     let vivo = true
     setDatos(null); setLimite(PASO)
@@ -48,12 +56,12 @@ export default function FacturasHistorial() {
       if (mes === 'todos') { ini = `${anio}-01-01`; fin = `${Number(anio) + 1}-01-01` }
       else if (dia === 'todos') { ini = `${anio}-${mes}-01`; const [y, m] = [Number(anio), Number(mes)]; fin = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10) }
       else { ini = `${anio}-${mes}-${dia}`; const d = new Date(`${ini}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); fin = d.toISOString().slice(0, 10) }
-      const { data } = await consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, SELECT_FACTURA + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)')).gte('fecha', ini + 'T00:00:00-05:00').order('fecha', { ascending: false }).limit(3000)
+      const { data } = await consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, local }, SELECT_FACTURA + (loc.habilitado ? 'local_id,' : '') + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)')).gte('fecha', ini + 'T00:00:00-05:00').order('fecha', { ascending: false }).limit(3000)
       const tope = new Date(fin + 'T00:00:00-05:00')
       if (vivo) setDatos((data || []).filter((f) => new Date(f.fecha) < tope))
     })()
     return () => { vivo = false }
-  }, [anio, mes, dia, tick, esAdmin, perfil.id])
+  }, [anio, mes, dia, tick, esAdmin, perfil.id, local, loc.habilitado])
 
   const lista = useMemo(() => {
     if (!datos) return null
@@ -75,6 +83,8 @@ export default function FacturasHistorial() {
 
   return (
     <div className="admin-premium admin-invoices"><AppShell title="Historial" sub="Todas tus facturas" onBack={() => navigate('/facturas')}>
+      <button type="button" className="btn sec full mb-3" onClick={()=>navigate('/actividad')}>Ver actividad del negocio</button>
+      {esAdmin && <LocalSelector loc={loc} />}
       <section className="fh-dates">
         <Selector label="Año" value={anio} onChange={(v) => { setAnio(v); if (`${v}-${mes}` > hoy) setMes(hoy.slice(5)) }} options={anios} />
         <Selector label="Mes" value={mes} onChange={setMes} options={meses} />
@@ -100,7 +110,7 @@ export default function FacturasHistorial() {
         <div className="fv-groups">
           {grupos.map((g) => <section key={g.key} className="fv-group">
             <header className="fv-day"><span>{tituloDia(g.key)}</span><i aria-hidden="true" /><small>{g.items.length} {g.items.length === 1 ? 'venta' : 'ventas'}</small><b>{money(g.total)}</b></header>
-            <div className="fv-list">{g.items.map((f, i) => <FacturaCard key={f.id} f={f} index={i} onClick={() => setVer(f.id)} />)}</div>
+            <div className="fv-list">{g.items.map((f, i) => <FacturaCard key={f.id} f={etiquetaLocal(f)} index={i} onClick={() => setVer(f.id)} />)}</div>
           </section>)}
         </div>
         {lista.length > limite && <button type="button" className="inv-btn-outline fh-more" onClick={() => setLimite((l) => l + PASO)}>Ver {Math.min(PASO, lista.length - limite)} más · quedan {lista.length - limite}</button>}

@@ -62,8 +62,8 @@ test('PDF contains actual logo, persisted number/amounts/customer/product and se
 })
 test('Business legacy branding defaults normalize; custom and third-party names remain; HTML escapes customer',async()=>{
  for(const nombre of ['', 'TechZone','TechStore',' ANGIE TECH '])assert.ok(/Angie Tech/i.test(invoiceBrand({nombre})))
- assert.equal(invoiceBrand({nombre:'Negocio personalizado'}),'Negocio personalizado');assert.ok(prepararEnvioFactura({canal:'whatsapp',invoice:{prefijo:'FV',numero:29,total:690000},telefono:'3001234567',tienda:{nombre:'Negocio personalizado'}}).cuerpo.includes('NEGOCIO PERSONALIZADO'));assert.equal(invoiceBrand({nombre:'TechStore',nombre_personalizado:true}),'TechStore');assert.equal((await doc(1)).items[0].nombre,'TechStore cable legítimo')
- const d=await doc();d.invoice.clientes.nombre='<script>José</script>';const template=emailTemplate(d);assert.ok(template.text.includes('$690.000 COP'));assert.ok(template.subject.includes('Angie Tech'));assert.ok(template.html.includes('&lt;script&gt;'));assert.ok(!template.html.includes('<script>'))
+ assert.equal(invoiceBrand({nombre:'Negocio personalizado'}),'Negocio personalizado');assert.ok(prepararEnvioFactura({canal:'whatsapp',invoice:{prefijo:'FV',numero:29,total:690000},telefono:'3001234567',tienda:{nombre:'Negocio personalizado'}}).cuerpo.includes('Negocio personalizado'));assert.equal(invoiceBrand({nombre:'TechStore',nombre_personalizado:true}),'TechStore');assert.equal((await doc(1)).items[0].nombre,'TechStore cable legítimo')
+ const d=await doc();d.invoice.clientes.nombre='<script>José</script>';d.invoice.cliente_snapshot=d.invoice.clientes;const template=emailTemplate(d);assert.ok(template.text.includes('$690.000 COP'));assert.ok(template.subject.includes('Angie Tech'));assert.ok(template.html.includes('&lt;script&gt;'));assert.ok(!template.html.includes('<script>'))
 })
 test('Preview verifies invoice data and makes no provider call',async()=>{
  let calls=0;const response=await make(async()=>{calls++;return success()})(req({action:'preview',facturaId:3,total:1,invoice:{prefijo:'EVIL'}}));const r=await response.json();assert.equal(r.numero,'FV-0029');assert.equal(r.total,690000);assert.equal(r.destinatario,'jose@example.test');assert.equal(calls,0);assert.equal(r.accepted,undefined)
@@ -94,3 +94,34 @@ test('Database limits reject fourth recipient and sixth rapid retry',async()=>{
 test('Frontend rejects false success or unavailable service and requires provider id',async()=>{
  await assert.rejects(()=>requestInvoiceEmail({functions:{invoke:async()=>({data:{ok:true,accepted:false,estado:'aceptado'}})}},sendBody),/confirmar/);await assert.rejects(()=>requestInvoiceEmail({},sendBody),/configurar/);assert.equal((await requestInvoiceEmail({functions:{invoke:async()=>({data:{ok:true,accepted:true,estado:'aceptado',proveedorId:'confirmed'}})}},sendBody)).proveedorId,'confirmed')
 })
+
+test('Configured server templates drive preview and real PDF payload; retries preserve the original message',async()=>{
+ await db.exec("create or replace function es_admin() returns boolean language sql as $$select false$$;create or replace function es_activo() returns boolean language sql as $$select false$$;")
+ await db.exec(readFileSync('supabase/12_plantillas_mensajes.sql','utf8')).catch(e=>{throw Error(e.message+' at '+e.position)})
+ const templates={asunto_correo:'Documento {numero_factura} · {cliente}',mensaje_correo:'Hola {cliente}\nCompra por {total} en {nombre_negocio}\n{productos}\n<script>literal</script>',mensaje_whatsapp:'Factura {numero_factura} · {total}'}
+ const before=(await db.query('select to_jsonb(f) as value from facturas f order by id')).rows
+ await db.query('update tienda set plantillas_factura=$1::jsonb',[JSON.stringify(templates)])
+ let fail=true;const sent=[];const handler=make(async(_,options)=>{sent.push(options);return fail?new Response('{}',{status:403}):success()})
+ const preview=await (await handler(req({action:'preview',facturaId:3}))).json()
+ assert.equal(preview.asunto,'Documento FV-0029 · José Pérez');assert.ok(preview.mensaje.includes('$690.000 COP'));assert.ok(preview.mensaje.includes('2 × Nombre guardado al vender'));assert.equal(sent.length,0)
+ const first=await handler(req({...sendBody,asunto:'FORGED',mensaje:'FORGED',plantillas:{asunto_correo:'FORGED'}}));assert.equal((await first.json()).code,'PROVIDER_REJECTED')
+ const payload=JSON.parse(sent[0].body);assert.equal(payload.subject,preview.asunto);assert.equal(payload.text,preview.mensaje);assert.ok(payload.html.includes('&lt;script&gt;'));assert.ok(!payload.html.includes('<script>'));assert.ok(Buffer.from(payload.attachments[0].content,'base64').toString('latin1').startsWith('%PDF-'))
+ await db.query('update tienda set plantillas_factura=$1::jsonb',[JSON.stringify({...templates,asunto_correo:'Otra plantilla {numero_factura}'})]);fail=false
+ assert.equal((await (await handler(req(sendBody))).json()).accepted,true);assert.equal(sent[0].body,sent[1].body);assert.equal(sent[0].headers['Idempotency-Key'],sent[1].headers['Idempotency-Key'])
+ assert.deepEqual((await db.query('select to_jsonb(f) as value from facturas f order by id')).rows,before)
+ await db.exec('update tienda set plantillas_factura=null')
+})
+
+
+test('Changed template requires a fresh confirmation; sending uses exactly the confirmed version',async()=>{
+ const handler=make(success);const preview=await (await handler(req({action:'preview',facturaId:3}))).json();assert.match(preview.version,/^[a-f0-9]{64}$/)
+ let calls=0;const h=make(async(...args)=>{calls++;return success(...args)});const mismatch=await (await h(req({...sendBody,version:'0'.repeat(64)}))).json();assert.equal(mismatch.code,'PREVIEW_CHANGED');assert.equal(calls,0);assert.equal(mismatch.preview.asunto,preview.asunto);assert.equal(mismatch.preview.mensaje,preview.mensaje)
+ const accepted=await (await h(req({...sendBody,version:mismatch.preview.version}))).json();assert.equal(accepted.accepted,true);assert.equal(calls,1)
+})
+test('Retry after administrator edits template shows the reserved message before provider retry',async()=>{
+ const templates={asunto_correo:'Mensaje original {numero_factura}',mensaje_correo:'Gracias por elegir Angie tech, {cliente}. {total}',mensaje_whatsapp:'Factura {numero_factura}'};await db.query('update tienda set plantillas_factura=$1::jsonb',[JSON.stringify(templates)])
+ let fail=true,calls=0;const handler=make(async()=>{calls++;return fail?new Response(JSON.stringify({message:'Rejected'}),{status:422}):success()});const p1=await(await handler(req({action:'preview',facturaId:3}))).json();assert.equal((await(await handler(req({...sendBody,version:p1.version}))).json()).code,'PROVIDER_REJECTED')
+ await db.query('update tienda set plantillas_factura=$1::jsonb',[JSON.stringify({...templates,mensaje_correo:'Nuevo texto {cliente}'})]);const p2=await(await handler(req({action:'preview',facturaId:3}))).json();assert.notEqual(p1.version,p2.version);const changed=await(await handler(req({...sendBody,version:p2.version}))).json();assert.equal(changed.code,'PREVIEW_CHANGED');assert.equal(changed.preview.mensaje,p1.mensaje);assert.equal(changed.preview.version,p1.version);assert.equal(calls,1);fail=false;assert.equal((await(await handler(req({...sendBody,version:changed.preview.version}))).json()).accepted,true);assert.equal(calls,2);await db.exec('update tienda set plantillas_factura=null')
+})
+
+test('Servicio de correo rechaza otra empresa incluso con rol administrador',async()=>{await db.exec("alter table perfiles add column negocio_id int default 1;alter table facturas add column negocio_id int default 1;alter table tienda add column activo boolean default true;insert into tienda(id,nombre,activo)values(2,'Empresa B',true);insert into perfiles(id,nombre,rol,activo,negocio_id)values('55555555-5555-4555-8555-555555555555','Admin B','admin',true,2);insert into facturas(id,prefijo,numero,vendedor_id,total,estado,fecha,metodo_pago,negocio_id)values(100,'FV',100,'55555555-5555-4555-8555-555555555555',100,'emitida',now(),'efectivo',2)");await assert.rejects(doc(100,admin),/FORBIDDEN/);const owned=await doc(100,'55555555-5555-4555-8555-555555555555');assert.equal(owned.tienda.nombre,'Empresa B')})

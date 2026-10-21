@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { useLocales } from '../lib/locales'
+import LocalSelector from './LocalSelector'
 import Modal from './Modal'
 import { monetaryError } from '../lib/money'
 import Scanner from './Scanner'
@@ -14,7 +17,11 @@ import { toast } from '../lib/toast'
 import { I } from './InvIcons'
 
 // Ingreso de mercancía = registrar compra a un proveedor
-export default function CompraForm({ proveedorId, productoInicial, cantidadInicial, onClose, onSaved }) {
+export default function CompraForm({ proveedorId, productoInicial, cantidadInicial, localInicial = null, onClose, onSaved }) {
+  const { perfil } = useAuth()
+  const loc = useLocales(perfil)
+  const [localId, setLocalId] = useState(localInicial)
+  const destino = loc.multi ? (loc.locales.some(l => l.id === localId) ? localId : (loc.filtro || loc.miLocal || loc.locales[0]?.id)) : null
   const [provs, setProvs] = useState([])
   const [prov, setProv] = useState(proveedorId || '')
   const requestId = useRef(imageKey())
@@ -63,11 +70,11 @@ export default function CompraForm({ proveedorId, productoInicial, cantidadInici
     const { error } = await supabase.rpc('registrar_compra', {
       p_proveedor_id: Number(prov), p_numero_documento: doc.trim() || null, p_forma_pago: forma,
       ...(isDemoMode?{p_fecha:date,p_notas:notes.trim(),p_request_id:requestId.current}:{}),
-      p_vence_el: forma === 'credito' ? vence : null, p_items, p_seriales, p_metodo_pago: metodo,
+      p_vence_el: forma === 'credito' ? vence : null, p_items, p_seriales, p_metodo_pago: metodo, ...(destino != null ? { p_local_id: destino } : {}),
     })
     setBusy(false)
     if (error) return setErr(mensajeError(error))
-    toast('Mercancía registrada'); onSaved?.()
+    toast(destino != null ? 'Mercancía registrada en ' + loc.nombre(destino) : 'Mercancía registrada'); onSaved?.()
   }
 
   const provSel = provs.find((x) => String(x.id) === String(prov))
@@ -93,6 +100,7 @@ export default function CompraForm({ proveedorId, productoInicial, cantidadInici
       </div>
       <button type="button" className="pos-more" onClick={() => setBuscar(true)}><I n="plus" />{items.length ? 'Agregar otro producto' : 'Agregar producto'}</button>
 
+      {loc.multi && <><h4 className="cf-sec"><span><I n="store" /></span>¿A qué local llegó?</h4><LocalSelector loc={loc} conTodos={false} value={destino} onChange={v => setLocalId(Number(v))} etiqueta="Local de destino" /></>}
       <h4 className="cf-sec"><span>2</span>¿A quién se lo compraste?</h4>
       {provs.length === 0 ? <p className="cu-note"><I n="warn" />Aún no tienes proveedores. Créalo en Más › Proveedores y vuelve aquí.</p> : <label className={'cf-field' + (prov ? ' filled' : '')}>
         <span className="cf-box"><span className="cf-ic"><I n="truck" /></span><select className="cp-select" value={prov} onChange={(e) => setProv(e.target.value)}><option value="">Elegir proveedor…</option>{provs.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select><I n="chevDown" className="pos-dd-chev" /></span>

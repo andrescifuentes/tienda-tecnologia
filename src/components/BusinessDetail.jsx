@@ -1,3 +1,4 @@
+import FitAmount from './FitAmount'
 import { Icon } from './Icons'
 import { Badge, Empty } from './ui'
 import { money, fechaHora, numFactura } from '../lib/format'
@@ -7,7 +8,7 @@ function Metric({ label, value, note, icon = 'chart', variant = '', onClick }) {
   const Tag = onClick ? 'button' : 'div'
   return <Tag {...(onClick ? { type: 'button', onClick, 'aria-label': label + ': ' + value + '. Ver detalle' } : {})} className={'stat-card executive-metric ' + variant + (onClick ? ' is-link' : '')}>
     <div className="stat-heading"><p>{label}</p><span className="executive-icon"><Icon name={icon}/></span></div>
-    <p className="stat-value">{value}</p>
+    <p className="stat-value"><FitAmount>{value}</FitAmount></p>
     {note && <small>{note}</small>}
     {variant === 'headline' && <svg className="executive-pattern" viewBox="0 0 160 120" aria-hidden="true"><circle cx="140" cy="100" r="90"/><circle cx="140" cy="100" r="65"/><circle cx="140" cy="100" r="40"/></svg>}
     {onClick && <span className="executive-metric-go" aria-hidden="true">Ver ›</span>}
@@ -28,7 +29,7 @@ export default function BusinessDetail({ data: d, costos, agotados, empleados, b
     <Section number="01" title="Resumen ejecutivo" subtitle="Tu negocio, en una mirada">
       <Metric label="Ventas del mes" value={money(d.ventas_mes)} note="Acumulado del mes en curso · COP" icon="chart" variant="headline" onClick={ir('/facturas')}/>
       <div className="executive-grid">
-        <Metric label="Ingresos del mes" value={money(d.ingresos_mes)} note="Facturas e ingresos registrados" icon="cash" variant="income" onClick={ir('/finanzas')}/>
+        <Metric label="Ingresos del mes" value={money(d.ingresos_mes)} note="Facturas e ingresos registrados" icon="cash" variant="income" onClick={ir('/finanzas?detalle=ingreso')}/>
         {costos && <Metric label="Utilidad del mes" value={money(d.utilidad_mes)} note="Resultado neto del mes" icon="chart" variant={d.utilidad_mes < 0 ? 'negative' : 'profit'} onClick={ir('/finanzas')}/>}
       </div>
     </Section>
@@ -39,11 +40,11 @@ export default function BusinessDetail({ data: d, costos, agotados, empleados, b
         {balance.map(item => <div key={item.label} className={'executive-bar ' + item.tone}><div><span>{item.label}</span><b>{money(item.value)}</b></div><div className="executive-track"><span style={{width:Math.abs(item.value)/scale*100+'%'}}/></div></div>)}
         <p>Importes comparados en una misma escala. No representa una tendencia.</p>
       </div>
-      <Metric label="Gastos del mes" value={money(d.gastos_mes)} note="Egresos registrados en el período" icon="cash" variant="expense" onClick={ir('/finanzas/movimientos')}/>
+      <Metric label="Gastos del mes" value={money(d.gastos_mes)} note="Egresos registrados en el período" icon="cash" variant="expense" onClick={ir('/finanzas?detalle=gasto')}/>
     </Section>
     <Section number="03" title="Inventario" subtitle="Capital en productos y alertas de reposición">
       {costos && <Metric label="Valor inventario" value={money(d.valor_inventario)} note="Valoración actual de las existencias" icon="box" variant="inventory-value" onClick={ir('/inventario')}/>}
-      <div className="executive-grid"><Metric label="Stock bajo" value={d.productos_stock_bajo} note="Productos por reponer" icon="box" variant="stock" onClick={ir('/inventario?filtro=bajo')}/><Metric label="Agotados" value={agotados} note="Productos sin existencias" icon="box" variant="stock empty-stock" onClick={ir('/inventario?filtro=bajo')}/></div>
+      <div className="executive-grid"><Metric label="Stock bajo" value={d.productos_stock_bajo} note="Productos por reponer" icon="box" variant="stock" onClick={ir('/inventario?filtro=bajo')}/><Metric label="Agotados" value={agotados} note="Productos sin existencias" icon="box" variant="stock empty-stock" onClick={ir('/inventario?filtro=agotado')}/></div>
       <div className="executive-records"><h3>Prioridad de reposición</h3>{bajo.length ? bajo.map(p => <button type="button" className="executive-stock-row" key={p.id} onClick={ir('/inventario?q=' + encodeURIComponent(p.codigo))} aria-label={'Ver ' + p.nombre + ' en inventario'}><span className="executive-stock-dot" data-empty={p.stock===0}/><div><b>{p.nombre}</b><small>{p.codigo}</small></div><Badge tone={p.stock===0?'bad':'warn'}>{p.stock} / mín {p.stock_min}</Badge></button>) : <Empty text="Todo el inventario está en orden"/>}</div>
     </Section>
     <Section number="04" title="Ventas por empleado (mes)" subtitle="Barras relativas a la mayor venta del equipo">

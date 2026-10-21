@@ -5,34 +5,42 @@ import { ProductThumbnail } from './TechVisuals'
 import { I } from './InvIcons'
 import { supabase } from '../lib/supabase'
 import { money, fecha, mensajeError } from '../lib/format'
+import { withDeadline, cancellableQuery, requireData } from '../lib/asyncResult'
 
 export default function CompraDetalle({ id, onClose }) {
   const [purchase, setPurchase] = useState(null), [items, setItems] = useState([]), [payments, setPayments] = useState([]), [prov, setProv] = useState(null), [error, setError] = useState('')
   useEffect(() => {
     let live = true
-    ;(async () => {
+    const controller = new AbortController()
+    setPurchase(null); setItems([]); setPayments([]); setProv(null); setError('')
+    withDeadline(async signal => {
+      const query = builder => cancellableQuery(builder, signal)
       const [c, it, p] = await Promise.all([
-        supabase.from('compras_saldo').select('*').eq('id', id).single(),
-        supabase.from('compra_items').select('*').eq('compra_id', id),
-        supabase.from('pagos_proveedor').select('*').eq('compra_id', id).order('fecha', { ascending: true }),
+        query(supabase.from('compras_saldo').select('*').eq('id', id).single()),
+        query(supabase.from('compra_items').select('*').eq('compra_id', id)),
+        query(supabase.from('pagos_proveedor').select('*').eq('compra_id', id).order('fecha', { ascending: true })),
       ])
-      if (!live) return
-      if (c.error) return setError(mensajeError(c.error))
-      const ids = [...new Set((it.data || []).map((i) => i.producto_id))]
+      const compra = requireData(c), rows = requireData(it), pagos = requireData(p)
+      if (!compra || !Array.isArray(rows) || !Array.isArray(pagos)) throw Error('No se pudo consultar el detalle completo de la compra.')
+      const ids = [...new Set(rows.map(i => i.producto_id).filter(value => value != null))]
       const [prods, pv] = await Promise.all([
-        ids.length ? supabase.from('productos').select('*').in('id', ids) : Promise.resolve({ data: [] }),
-        supabase.from('proveedores').select('nombre,telefono').eq('id', c.data.proveedor_id).maybeSingle(),
+        ids.length ? query(supabase.from('productos').select('*').in('id', ids)) : Promise.resolve({ data: [] }),
+        query(supabase.from('proveedores').select('nombre,telefono').eq('id', compra.proveedor_id).maybeSingle()),
       ])
+      const productos = requireData(prods), proveedor = requireData(pv)
+      if (!Array.isArray(productos)) throw Error('No se pudieron consultar los productos de la compra.')
+      return { compra, proveedor, pagos, rows: rows.map(i => ({ ...i, producto: productos.find(p => p.id === i.producto_id) || { nombre: 'Producto no disponible' } })) }
+    }, { signal: controller.signal }).then(data => {
       if (!live) return
-      setPurchase(c.data); setProv(pv.data)
-      setItems((it.data || []).map((i) => ({ ...i, producto: (prods.data || []).find((p) => p.id === i.producto_id) || { nombre: 'Producto' } })))
-      setPayments(p.data || [])
-    })()
-    return () => { live = false }
+      setPurchase(data.compra); setProv(data.proveedor); setItems(data.rows); setPayments(data.pagos)
+    }).catch(failure => { if (live) setError(mensajeError(failure)) })
+    return () => { live = false; controller.abort() }
   }, [id])
   const unidades = items.reduce((a, i) => a + Number(i.cantidad || 0), 0)
   const pagado = payments.reduce((a, p) => a + Number(p.monto || 0), 0)
   const credito = purchase?.forma_pago === 'credito'
+  const saldoDisponible = ['number', 'string'].includes(typeof purchase?.saldo) && String(purchase.saldo).trim() !== '' && Number.isFinite(Number(purchase.saldo))
+  const saldo = saldoDisponible ? Number(purchase.saldo) : null
   return <Modal title="Detalle de compra" className="experience-sheet fd-sheet cd-sheet" onClose={onClose}>
     <ErrorBox text={error} />
     {!purchase && !error ? <Loader filas={3} /> : purchase && <>
@@ -42,15 +50,16 @@ export default function CompraDetalle({ id, onClose }) {
         <b className="fd-hero-total">{money(purchase.total)}</b>
         <div className="fd-hero-chips">
           <span className="fd-num">{purchase.numero_documento || 'Compra #' + id}</span>
-          <span className={'fd-state ' + (purchase.saldo > 0 ? 'bad' : 'good')}>{purchase.saldo > 0 ? 'Debe ' + money(purchase.saldo) : 'Pagada'}</span>
-          <span className="fd-pay">{credito ? 'A crédito' : 'De contado'}</span>
+          <span className={'fd-state ' + (saldoDisponible ? saldo > 0 ? 'bad' : saldo === 0 ? 'good' : '' : '')}>{!saldoDisponible ? 'Saldo no disponible' : saldo > 0 ? 'Debe ' + money(saldo) : saldo === 0 ? 'Pagada' : 'Saldo ' + money(saldo)}</span>
+          {purchase.estado && <span className="fd-state">{purchase.estado}</span>}
+          <span className="fd-pay">{credito ? 'A crédito' : purchase.forma_pago === 'contado' ? 'De contado' : purchase.forma_pago || 'Forma de pago no disponible'}</span>
         </div>
         <small className="fd-hero-meta">{fecha(purchase.fecha)}{credito && purchase.vence_el ? ' · vence ' + fecha(purchase.vence_el) : ''}</small>
       </section>
 
       <div className="fd-client">
         <span className="fd-client-av"><I n="truck" /></span>
-        <span className="fd-client-txt"><small>Proveedor</small><b>{prov?.nombre || 'Proveedor'}</b>{prov?.telefono && <em>{prov.telefono}</em>}</span>
+        <span className="fd-client-txt"><small>Proveedor</small><b>{prov?.nombre || 'Proveedor no disponible'}</b>{prov?.telefono && <em>{prov.telefono}</em>}</span>
       </div>
 
       <h4 className="fd-sec">Qué se compró <span>{unidades} {unidades === 1 ? 'unidad' : 'unidades'}</span></h4>
@@ -64,10 +73,10 @@ export default function CompraDetalle({ id, onClose }) {
       </div>
 
       <h4 className="fd-sec">Pagos <span>{payments.length}</span></h4>
-      {payments.length === 0 ? <p className="cl-empty">{credito ? 'Aún no se ha abonado a esta compra.' : 'Pagada al momento de la compra.'}</p> : <div className="fd-items">
+      {payments.length === 0 ? <p className="cl-empty">Sin registros de pagos disponibles</p> : <div className="fd-items">
         {payments.map((p) => <div key={p.id} className="fd-item"><span className="fd-item-q cd-pay-ic"><I n="cash" /></span><span className="fd-item-txt"><b>{credito ? "Abono" : "Pago"}</b><small>{fecha(p.fecha)}{p.metodo_pago ? ' · ' + p.metodo_pago : ''}</small></span><b className="fd-item-total">{money(p.monto)}</b></div>)}
         <div className="fd-line"><span>Pagado</span><b>{money(pagado)}</b></div>
-        {purchase.saldo > 0 && <div className="fd-line grand"><span>Pendiente</span><b className="cd-due">{money(purchase.saldo)}</b></div>}
+        {saldoDisponible && saldo > 0 && <div className="fd-line grand"><span>Pendiente</span><b className="cd-due">{money(purchase.saldo)}</b></div>}
       </div>}
     </>}
   </Modal>

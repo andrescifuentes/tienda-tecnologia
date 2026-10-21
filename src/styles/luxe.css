@@ -2302,3 +2302,28 @@ html,body{overflow-x:hidden;max-width:100%}
 /* Correo en pausa: botón visible pero bloqueado */
 .fd-act.mail.is-off{opacity:.45;cursor:not-allowed;filter:grayscale(.6)}
 .fd-act.mail.is-off small{color:var(--gold,#c79a52)}
+/* Configuración › Datos de la empresa */
+.empresa-hint{margin:-4px 2px 10px!important}
+.empresa-edit-btn{display:block;width:100%;min-height:50px;margin-top:10px;border-radius:14px;border:0;background:linear-gradient(135deg,#e9cf98,#c79a52);color:#1b150b;font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+.empresa-sheet .field,.empresa-sheet label{margin-bottom:10px}
+.empresa-preview{padding:14px 16px;border-radius:14px;background:#fffdf7;color:#1b150b;border:1px solid #e8dcc2}
+.empresa-preview b{display:block;font-size:15px}
+.empresa-preview span{display:block;margin-top:4px;font-size:12.5px;color:#6b604f;line-height:1.45}
+.empresa-sheet .msg-label{margin:14px 2px 6px;font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--muted)}
+.empresa-extra-hint{margin:-2px 2px 8px!important}
+.empresa-extra{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) 40px;gap:8px;margin-bottom:8px;align-items:center}
+.empresa-extra .inp{min-height:46px;padding:0 12px;font-size:14px}
+.empresa-extra button{height:40px;border-radius:12px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
+.empresa-extra-add{display:block;width:100%;min-height:46px;border-radius:12px;border:1px dashed color-mix(in srgb,var(--gold,#c79a52) 60%,transparent);background:none;color:var(--gold,#c79a52);font:inherit;font-weight:600;cursor:pointer}
+/* Factura › datos de la empresa ordenados (rótulo dorado + valor) */
+.print-invoice.fx .fx-store{padding:14px 16px 12px;border-bottom:1px solid #eadfca}
+.fx-store-head{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+.fx-store-eyebrow{font-size:8px!important;letter-spacing:.22em;font-weight:700;color:#b08a47!important}
+.print-invoice.fx .fx-store b{font-size:15px;font-weight:700;color:#181613;letter-spacing:.01em}
+.fx-store-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px;margin:0}
+.fx-store-grid>div{min-width:0}
+.fx-store-grid>div.wide{grid-column:span 2}
+.fx-store-grid dt{font-size:8px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:#9a8e7c;margin:0 0 2px}
+.fx-store-grid dd{margin:0;font-size:11px;line-height:1.35;color:#2a251e;overflow-wrap:anywhere}
+.print-invoice.fx .fx-store .fx-store-empty{font-size:10px!important;color:#7a7064}
+@media (max-width:380px){.fx-store-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fx-store-grid>div.wide{grid-column:1/-1}}

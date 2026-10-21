@@ -1,3 +1,9 @@
+import { nombreNegocio } from '../lib/marca'
+import SalesPeriodDetail from '../components/SalesPeriodDetail'
+import {readFinancialRows} from '../lib/financeQueries'
+import '../styles/invoice-message-settings.css'
+import FitAmount from '../components/FitAmount'
+import '../styles/team-observations.css'
 import InicioVendedor from './InicioVendedor'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -9,9 +15,18 @@ import { Icon } from '../components/Icons'
 import bannerPhoto from '../assets/photography/banner-phone.jpg'
 import { Loader, ErrorBox, Empty } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
-import { nombreNegocio } from '../lib/marca'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { money, hoyBogota, rangoMes, fechaHora, numFactura, mensajeError } from '../lib/format'
+import { useLocales, cargarStockLocales } from '../lib/locales'
+import LocalSelector from '../components/LocalSelector'
+
+// Productos con stock bajo: del local elegido (filas de ese local) o del total
+async function stockBajoDe(prods, local) {
+  if (local == null) return prods.filter(p => p.stock <= p.stock_min)
+  const sl = await cargarStockLocales(supabase, null)
+  if (!sl) return prods.filter(p => p.stock <= p.stock_min)
+  return prods.filter(p => sl[p.id]?.[local] != null && sl[p.id][local] <= p.stock_min).map(p => ({ ...p, stock: sl[p.id][local] }))
+}
 
 export default function Inicio() {
   const { esAdmin } = useAuth()
@@ -124,12 +139,14 @@ function ActivityRow({ a, onOpen }) {
 }
 
 // Ventas del mes de un empleado (desde «Detalle del negocio»)
-function VentasEmpleado({ e, onVolver, onFactura }) {
+function VentasEmpleado({ e, local = null, onVolver, onFactura }) {
   const [facturas, setFacturas] = useState(null), [error, setError] = useState('')
   useEffect(() => {
     let active = true
     const mes = rangoMes()
-    supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,clientes(nombre)').eq('vendedor_id', e.vendedor_id)
+    let qf = supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,clientes(nombre)').eq('vendedor_id', e.vendedor_id)
+    if (local != null) qf = qf.eq('local_id', local)
+    qf
       .gte('fecha', mes.ini + 'T00:00:00-05:00').lte('fecha', mes.fin + 'T23:59:59-05:00').order('fecha', { ascending: false })
       .then(r => { if (!active) return; if (r.error) setError(mensajeError(r.error)); else setFacturas(r.data || []) })
     return () => { active = false }
@@ -144,7 +161,7 @@ function VentasEmpleado({ e, onVolver, onFactura }) {
   </div>
 }
 
-function DetalleNegocio({ onClose }) {
+function DetalleNegocio({ onClose, local = null, nombreLocal = '' }) {
   const { can, tienda } = useAuth()
   const navigate = useNavigate()
   const irA = to => { onClose(); navigate(to) }
@@ -156,45 +173,52 @@ function DetalleNegocio({ onClose }) {
     setError('')
     const mes = rangoMes()
     Promise.all([
-      supabase.rpc('resumen_dashboard'),
-      supabase.rpc('ventas_por_empleado', { p_desde: mes.ini, p_hasta: mes.fin }),
+      supabase.rpc('resumen_dashboard', local != null ? { p_local_id: local } : undefined),
+      supabase.rpc('ventas_por_empleado', { p_desde: mes.ini, p_hasta: mes.fin, ...(local != null ? { p_local_id: local } : {}) }),
       supabase.from('productos_venta').select('id,codigo,nombre,stock,stock_min'),
-      supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,' + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)')).order('fecha', { ascending: false }).limit(6),
-    ]).then(([summary, team, products, invoices]) => {
+      (local != null ? q => q.eq('local_id', local) : q => q)(supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,' + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)'))).order('fecha', { ascending: false }).limit(6),
+    ]).then(async ([summary, team, products, invoices]) => {
       for (const result of [summary, team, products, invoices]) if (result.error) throw result.error
       if (!summary.data?.[0]) throw new Error('No se pudo cargar el resumen del negocio.')
-      if (active) setDatos({ summary: summary.data[0], team: team.data || [], products: products.data || [], invoices: invoices.data || [] })
+      const bajo = await stockBajoDe(products.data || [], local)
+      if (active) setDatos({ summary: summary.data[0], team: team.data || [], products: products.data || [], bajo, invoices: invoices.data || [] })
     }).catch(e => { if (active) setError(mensajeError(e)) })
     return () => { active = false }
-  }, [revision])
-  return <Modal title="Detalle del negocio" subtitle={'Resumen ejecutivo de ' + nombreNegocio(tienda).toUpperCase()} className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
+  }, [revision, local])
+  return <Modal title="Detalle del negocio" subtitle={'Resumen ejecutivo de ' + nombreNegocio(tienda).toUpperCase() + (nombreLocal ? ' · ' + nombreLocal : '')} className="business-detail-sheet" keyboardAware onClose={onClose} footer={<button type="button" className="btn full" onClick={onClose}>Listo</button>}>
     <ErrorBox text={error} />
-    {empleado ? <VentasEmpleado e={empleado} onVolver={() => setEmpleado(null)} onFactura={id => irA('/facturas?factura=' + id)} /> : !datos && !error ? <Loader /> : datos && <BusinessDetail onEmpleado={setEmpleado} onIr={irA} data={datos.summary} costos={can('ver_costos')} agotados={datos.products.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.products.filter(p => p.stock <= p.stock_min)} facturas={datos.invoices} onFactura={id => irA('/facturas?factura=' + id)} onVerFacturas={() => irA('/facturas')} />}
+    {empleado ? <VentasEmpleado local={local} e={empleado} onVolver={() => setEmpleado(null)} onFactura={id => irA('/facturas?factura=' + id)} /> : !datos && !error ? <Loader /> : datos && <BusinessDetail onEmpleado={setEmpleado} onIr={irA} data={datos.summary} costos={can('ver_costos')} agotados={datos.bajo.filter(p => p.stock === 0).length} empleados={datos.team} bajo={datos.bajo} facturas={datos.invoices} onFactura={id => irA('/facturas?factura=' + id)} onVerFacturas={() => irA('/facturas')} />}
   </Modal>
 }
 
 function DashboardAdmin() {
   const navigate = useNavigate()
+  const { perfil } = useAuth()
+  const loc = useLocales(perfil)
+  const local = loc.filtro
+  const porLocal = q => local != null ? q.eq('local_id', local) : q
   const revision = useDemoRevision()
   const [ym, setYm] = useState(() => hoyBogota().slice(0,7))
   const [period, setPeriod] = useState('mes')
   const [data, setData] = useState(null), [err, setErr] = useState(''), [verTodo, setVerTodo] = useState(false)
   const [detalleNegocio, setDetalleNegocio] = useState(false)
+  const [salesOpen,setSalesOpen]=useState(false)
 
   useEffect(() => {
     ;(async () => {
       const [netas, movs, fac, cli, com, prov, aj, prods, compTot] = await Promise.all([
-        supabase.from('facturas_netas').select('id,fecha,estado,total_neto'),
-        supabase.from('movimientos').select('tipo,monto,fecha'),
-        supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,cliente_id,anulada_en').order('fecha', { ascending:false }).limit(30),
+        readFinancialRows(()=>porLocal(supabase.from('facturas_netas').select('id,fecha,estado,total_neto')).order('id')).then(data=>({data}),error=>({error})),
+        readFinancialRows(()=>porLocal(supabase.from('movimientos').select('id,tipo,monto,fecha')).order('id')).then(data=>({data}),error=>({error})),
+        porLocal(supabase.from('facturas').select('id,prefijo,numero,total,estado,fecha,cliente_id,anulada_en')).order('fecha', { ascending:false }).limit(30),
         supabase.from('clientes').select('id,nombre'),
-        supabase.from('compras').select('id,proveedor_id,total,estado,creado_en,numero_documento').order('creado_en', { ascending:false }).limit(15),
+        porLocal(supabase.from('compras').select('id,proveedor_id,total,estado,creado_en,numero_documento')).order('creado_en', { ascending:false }).limit(15),
         supabase.from('proveedores').select('id,nombre'),
-        supabase.from('movimientos_inventario').select('id,producto_id,tipo,cantidad,fecha,motivo').in('tipo', ['ajuste_entrada','ajuste_salida','devolucion_proveedor']).order('fecha', { ascending:false }).limit(15),
+        porLocal(supabase.from('movimientos_inventario').select('id,producto_id,tipo,cantidad,fecha,motivo')).in('tipo', ['ajuste_entrada','ajuste_salida','devolucion_proveedor']).order('fecha', { ascending:false }).limit(15),
         supabase.from('productos_venta').select('id,nombre,stock,stock_min'),
-        supabase.from('compras').select('fecha,total,estado').eq('estado','recibida'),
+        readFinancialRows(()=>porLocal(supabase.from('compras').select('id,fecha,total,estado')).eq('estado','recibida').order('id')).then(data=>({data}),error=>({error})),
       ])
-      if (netas.error) return setErr(mensajeError(netas.error))
+      const financialError=[netas,movs,compTot].find(result=>result.error)?.error
+      if (financialError) return setErr(mensajeError(financialError))
       const nCli = Object.fromEntries((cli.data || []).map(x => [x.id, x.nombre]))
       const nProv = Object.fromEntries((prov.data || []).map(x => [x.id, x.nombre]))
       const nProd = Object.fromEntries((prods.data || []).map(x => [x.id, x.nombre]))
@@ -205,9 +229,9 @@ function DashboardAdmin() {
         ...(com.data || []).filter(c => c.estado !== 'anulada').map(c => ({ key:'c' + c.id, fecha:c.creado_en, tone:'green', icon:<Icon name="plus" />, title:'Ingreso de mercancía', sub:'Proveedor: ' + (nProv[c.proveedor_id] || '—'), amount:money(c.total), to:'/proveedores?compra=' + c.id })),
         ...(aj.data || []).map(m => ({ key:'m' + m.id, fecha:m.fecha, tone:'gold', icon:<Icon name="box" />, title:m.tipo === 'devolucion_proveedor' ? 'Devolución a proveedor' : 'Ajuste de inventario', sub:nProd[m.producto_id] || m.motivo || 'Producto', amount:`${m.cantidad > 0 ? '+ ' : '- '}${Math.abs(m.cantidad)} ${Math.abs(m.cantidad) === 1 ? 'unidad' : 'unidades'}`, amountTone:m.cantidad > 0 ? 'pos' : 'neg', to:'/inventario?producto=' + m.producto_id })),
       ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
-      setData({ netas:netas.data || [], movs:[...(movs.data || []), ...(compTot.data || []).map(c => ({ tipo:'gasto', monto:c.total, fecha:c.fecha }))], feed, stockBajo:(prods.data || []).filter(p => p.stock <= p.stock_min).length })
+      setData({ netas:netas.data || [], movs:[...(movs.data || []), ...(compTot.data || []).map(c => ({ tipo:'gasto', monto:c.total, fecha:c.fecha }))], feed, stockBajo:(await stockBajoDe(prods.data || [], local)).length })
     })()
-  }, [revision])
+  }, [revision, local])
 
   const p = data && buildPeriod(period, ym, data.netas, data.movs)
   const titulo = 'VENTAS'
@@ -216,6 +240,7 @@ function DashboardAdmin() {
       {[{ to:'/inventario', t:'Inventario', i:'box' }, { to:'/facturas', t:'Facturación', i:'doc' }, { to:'/clientes', t:'Clientes', i:'users' }].map(x =>
         <button key={x.to} type="button" onClick={() => navigate(x.to)}><span className="ah-quick-icon"><Icon name={x.i} /></span><span className="ah-quick-label">{x.t}</span><Chevron /></button>)}
     </div>
+    <LocalSelector loc={loc} />
     <ErrorBox text={err} />
     {!p && !err ? <Loader /> : p && <>
       <section className="ah-sales">
@@ -226,18 +251,18 @@ function DashboardAdmin() {
           </div>
         </div>
         <div className="ah-sales-row">
-          <div><p className="ah-amount">{money(p.ventas)}</p><p className="ah-count">{p.facturas} {p.facturas === 1 ? 'factura' : 'facturas'} · <MonthPicker value={ym} onChange={setYm} period={period} /></p></div>
+          <div><button type="button" className="ah-sales-open" aria-label="Ver movimientos de ventas" onClick={()=>setSalesOpen(true)}><FitAmount className="ah-amount" minSize={18}>{money(p.ventas)}</FitAmount><small>Ver movimientos ›</small></button><p className="ah-count">{p.facturas} {p.facturas === 1 ? 'factura' : 'facturas'} · <MonthPicker value={ym} onChange={setYm} period={period} /></p></div>
           <Delta value={p.dVentas} label={p.vsLabel} />
         </div>
         <SalesChart values={p.values} labels={p.labels} current={p.current} />
       </section>
 
       <div className="ah-duo">
-        <button type="button" className="ah-mini" onClick={() => navigate('/finanzas')}>
-          <span className="ah-mini-body"><span className="ah-mini-top"><span className="ah-mini-label"><span className="ah-mini-icon gold"><Coins /></span>Ingresos</span><Chevron /></span><b>{money(p.ingresos)}</b><Delta value={p.dIngresos} label={p.vsLabel} /></span>
+        <button type="button" className="ah-mini" onClick={() => navigate('/finanzas?detalle=ingreso&mes='+ym)}>
+          <span className="ah-mini-body"><span className="ah-mini-top"><span className="ah-mini-label"><span className="ah-mini-icon gold"><Coins /></span>Ingresos</span><Chevron /></span><b><FitAmount>{money(p.ingresos)}</FitAmount></b><Delta value={p.dIngresos} label={p.vsLabel} /></span>
         </button>
-        <button type="button" className="ah-mini" onClick={() => navigate('/finanzas')}>
-          <span className="ah-mini-body"><span className="ah-mini-top"><span className="ah-mini-label"><span className="ah-mini-icon red"><Wallet /></span>Gastos</span><Chevron /></span><b>{money(p.gastos)}</b><Delta value={p.dGastos} label={p.vsLabel} inverse /></span>
+        <button type="button" className="ah-mini" onClick={() => navigate('/finanzas?detalle=gasto&mes='+ym)}>
+          <span className="ah-mini-body"><span className="ah-mini-top"><span className="ah-mini-label"><span className="ah-mini-icon red"><Wallet /></span>Gastos</span><Chevron /></span><b><FitAmount>{money(p.gastos)}</FitAmount></b><Delta value={p.dGastos} label={p.vsLabel} inverse /></span>
         </button>
       </div>
 
@@ -248,12 +273,13 @@ function DashboardAdmin() {
         <Chevron />
       </button>
 
-      <button type="button" className="ah-detail-cta" onClick={() => setDetalleNegocio(true)}><span className="ah-detail-ic"><Icon name="chart" /></span><span className="ah-detail-txt"><b>Detalle del negocio</b><small>Ventas, utilidad, inventario y tu equipo</small></span><Chevron /></button>
+      <button type="button" className="btn sec full mt-4" onClick={() => setDetalleNegocio(true)}>Detalle del negocio <Chevron /></button>
       <div className="ah-section"><h2>Actividad reciente</h2>{data.feed.length > 4 && <button type="button" onClick={() => setVerTodo(true)}>Ver todas <Chevron /></button>}</div>
       <div className="ah-acts activity-list">
         {data.feed.length ? data.feed.slice(0, 4).map(a => <ActivityRow key={a.key} a={a} onOpen={() => navigate(a.to)} />) : <Empty text="Sin actividad reciente" description="Aquí verás tus ventas, compras y movimientos apenas ocurran." />}
       </div>
-      {detalleNegocio && <DetalleNegocio onClose={() => setDetalleNegocio(false)} />}
+      {salesOpen && <SalesPeriodDetail local={local} range={{desde:p.ini,hasta:p.fin}} expectedTotal={p.ventas} onClose={()=>setSalesOpen(false)}/>}
+      {detalleNegocio && <DetalleNegocio local={local} nombreLocal={local != null ? loc.nombre(local) : ''} onClose={() => setDetalleNegocio(false)} />}
       {verTodo && <Modal title="Actividad reciente" onClose={() => setVerTodo(false)}><div className="ah-acts in-modal">{data.feed.map(a => <ActivityRow key={a.key} a={a} onOpen={() => navigate(a.to)} />)}</div></Modal>}
     </>}
   </AppShell>
