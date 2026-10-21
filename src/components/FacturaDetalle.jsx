@@ -145,7 +145,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
         <div className="fd-hero-chips">
           <span className="fd-num">{numFactura(f)}</span>
           <span className={'fd-state ' + (anulada ? 'bad' : 'good')}>{anulada ? 'Anulada' : 'Emitida'}</span>
-          <span className={'fd-pay m-' + f.metodo_pago}><I n={{ efectivo: 'cash', tarjeta: 'card', transferencia: 'bank' }[f.metodo_pago] || 'cash'} />{String(f.metodo_pago || '').charAt(0).toUpperCase() + String(f.metodo_pago || '').slice(1)}</span>
+          <span className={'fd-pay m-' + f.metodo_pago}><I n={{ efectivo: 'cash', tarjeta: 'card', transferencia: 'bank' }[f.metodo_pago] || 'cash'} />{String(f.metodo_pago || '').charAt(0).toUpperCase() + String(f.metodo_pago || '').slice(1)}{f.medio_transferencia?.nombre ? ' · ' + f.medio_transferencia.nombre : ''}</span>
         </div>
         <small className="fd-hero-meta">{fechaHora(f.fecha)} · {f.perfiles?.nombre}{loc.habilitado && f.local_id != null ? ' · ' + loc.nombre(f.local_id) : ''}</small>
       </section>

@@ -6,6 +6,9 @@ import { I } from './InvIcons'
 import { supabase } from '../lib/supabase'
 import { money, fecha, mensajeError } from '../lib/format'
 import { withDeadline, cancellableQuery, requireData } from '../lib/asyncResult'
+import '../styles/supplier-history.css'
+
+const METODO = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' }
 
 export default function CompraDetalle({ id, onClose }) {
   const [purchase, setPurchase] = useState(null), [items, setItems] = useState([]), [payments, setPayments] = useState([]), [prov, setProv] = useState(null), [error, setError] = useState('')
@@ -29,7 +32,14 @@ export default function CompraDetalle({ id, onClose }) {
       ])
       const productos = requireData(prods), proveedor = requireData(pv)
       if (!Array.isArray(productos)) throw Error('No se pudieron consultar los productos de la compra.')
-      return { compra, proveedor, pagos, rows: rows.map(i => ({ ...i, producto: productos.find(p => p.id === i.producto_id) || { nombre: 'Producto no disponible' } })) }
+      // Optional: serials and who registered it. Hidden when the role cannot read them.
+      const optional = builder => query(builder).then(requireData).then(data => data || null).catch(() => null)
+      const responsableId = compra.registrado_por ?? compra.creado_por
+      const [units, persona] = await Promise.all([
+        rows.length ? optional(supabase.from('unidades_serializadas').select('serial,compra_item_id').in('compra_item_id', rows.map(i => i.id))) : null,
+        responsableId ? optional(supabase.from('perfiles').select('nombre').eq('id', responsableId).maybeSingle()) : null,
+      ])
+      return { compra: { ...compra, responsable: persona?.nombre || null }, proveedor, pagos, rows: rows.map(i => ({ ...i, seriales: (units || []).filter(u => u.compra_item_id === i.id).map(u => u.serial), producto: productos.find(p => p.id === i.producto_id) || { nombre: 'Producto no disponible' } })) }
     }, { signal: controller.signal }).then(data => {
       if (!live) return
       setPurchase(data.compra); setProv(data.proveedor); setItems(data.rows); setPayments(data.pagos)
@@ -41,6 +51,7 @@ export default function CompraDetalle({ id, onClose }) {
   const credito = purchase?.forma_pago === 'credito'
   const saldoDisponible = ['number', 'string'].includes(typeof purchase?.saldo) && String(purchase.saldo).trim() !== '' && Number.isFinite(Number(purchase.saldo))
   const saldo = saldoDisponible ? Number(purchase.saldo) : null
+  const medios = [...new Set(payments.map(p => METODO[p.metodo_pago] || p.metodo_pago).filter(Boolean))]
   return <Modal title="Detalle de compra" className="experience-sheet fd-sheet cd-sheet" onClose={onClose}>
     <ErrorBox text={error} />
     {!purchase && !error ? <Loader filas={3} /> : purchase && <>
@@ -53,8 +64,9 @@ export default function CompraDetalle({ id, onClose }) {
           <span className={'fd-state ' + (saldoDisponible ? saldo > 0 ? 'bad' : saldo === 0 ? 'good' : '' : '')}>{!saldoDisponible ? 'Saldo no disponible' : saldo > 0 ? 'Debe ' + money(saldo) : saldo === 0 ? 'Pagada' : 'Saldo ' + money(saldo)}</span>
           {purchase.estado && <span className="fd-state">{purchase.estado}</span>}
           <span className="fd-pay">{credito ? 'A crédito' : purchase.forma_pago === 'contado' ? 'De contado' : purchase.forma_pago || 'Forma de pago no disponible'}</span>
+          {medios.length > 0 && <span className="fd-pay">{medios.join(', ')}</span>}
         </div>
-        <small className="fd-hero-meta">{fecha(purchase.fecha)}{credito && purchase.vence_el ? ' · vence ' + fecha(purchase.vence_el) : ''}</small>
+        <small className="fd-hero-meta">{fecha(purchase.fecha)}{credito && purchase.vence_el ? ' · vence ' + fecha(purchase.vence_el) : ''}{purchase.responsable ? ' · registró ' + purchase.responsable : ''}</small>
       </section>
 
       <div className="fd-client">
@@ -66,7 +78,7 @@ export default function CompraDetalle({ id, onClose }) {
       <div className="fd-items cd-items">
         {items.map((i) => <div key={i.id} className="fd-item cd-item">
           <ProductThumbnail product={i.producto} />
-          <span className="fd-item-txt"><b>{i.producto.nombre}</b><small>{i.cantidad} {Number(i.cantidad) === 1 ? 'unidad' : 'unidades'} × {money(i.costo_unitario)}</small></span>
+          <span className="fd-item-txt"><b>{i.producto.nombre}</b><small>{i.cantidad} {Number(i.cantidad) === 1 ? 'unidad' : 'unidades'} × {money(i.costo_unitario)}</small>{i.seriales?.length > 0 && <span className="cd-serials" aria-label="IMEI o seriales">{i.seriales.map(s => <code key={s}>{s}</code>)}</span>}</span>
           <b className="fd-item-total">{money(Number(i.cantidad) * Number(i.costo_unitario))}</b>
         </div>)}
         <div className="fd-line grand"><span>Total</span><b>{money(purchase.total)}</b></div>

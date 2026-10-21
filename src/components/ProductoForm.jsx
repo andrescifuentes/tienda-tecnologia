@@ -12,6 +12,8 @@ import { useAuth } from '../context/AuthContext'
 import { mensajeError } from '../lib/format'
 import { generarSku, limpiarSku, inferirMarca } from '../lib/sku'
 import OptionPicker from './OptionPicker'
+import { suggestSerialType, validateProductAttributes, PRODUCT_ATTRIBUTE_LIMIT } from '../lib/imei'
+import '../styles/inventory-units.css'
 
 const MARCAS = ['Genérica', 'Apple', 'Samsung', 'Xiaomi', 'Motorola', 'Huawei', 'Honor', 'Oppo', 'Realme', 'Vivo', 'Infinix', 'Tecno', 'JBL', 'Sony', 'Lenovo', 'HP', 'Anker', 'Baseus']
 const COLORES = ['Negro', 'Blanco', 'Transparente', 'Gris', 'Plateado', 'Dorado', 'Azul', 'Rojo', 'Rosado', 'Morado', 'Verde', 'Amarillo', 'Naranja', 'Multicolor']
@@ -35,7 +37,18 @@ export default function ProductoForm({ inicial, onClose, onSaved, localId = null
   const [f, setF] = useState({ nombre: '', categoria_id: '', marca: '', modelo: '', color: '', precio_compra: '', precio_venta: '', stock_min: '3', stock_max: '', codigo: '', codigo_barras: '', proveedor_id: '', garantia_meses: '0', descripcion: '', maneja_serial: false,
     ...(inicial ? { ...inicial, precio_compra: String(inicial.precio_compra ?? ''), precio_venta: String(inicial.precio_venta ?? ''), stock_min: String(inicial.stock_min ?? 0), stock_max: inicial.stock_max == null ? '' : String(inicial.stock_max), garantia_meses: String(inicial.garantia_meses ?? 0), categoria_id: inicial.categoria_id ?? '', proveedor_id: inicial.proveedor_id ?? '' } : {}) })
   const [stock, setStock] = useState(editando ? String(stockBase ?? 0) : '0')
-  const bloqueaCantidad = !!inicial?.maneja_serial
+  // Control por unidad (IMEI o serial) reutiliza maneja_serial; las unidades entran con «Cargar unidades».
+  const bloqueaControl = editando && Number(inicial.stock) > 0
+  const [serialTocado, setSerialTocado] = useState(editando)
+  const control = f.maneja_serial ? (f.tipo_serial || 'serie') : 'no'
+  const bloqueaCantidad = !!f.maneja_serial
+  const [extras, setExtras] = useState(Array.isArray(inicial?.atributos) ? inicial.atributos : [])
+  const [verExtras, setVerExtras] = useState(!!(inicial?.modelo || inicial?.atributos?.length))
+  const cambiarControl = v => {
+    setSerialTocado(true)
+    setF(prev => ({ ...prev, maneja_serial: v !== 'no', tipo_serial: v === 'no' ? null : v }))
+    if (v !== 'no' && !editando) setStock('0')
+  }
   const [cats, setCats] = useState([]), [provs, setProvs] = useState([])
   const [colores, setColores] = useState(COLORES)
   const [marcas, setMarcas] = useState(MARCAS_BASE)
@@ -75,6 +88,13 @@ export default function ProductoForm({ inicial, onClose, onSaved, localId = null
   const marcaFinal = (f.marca || '').trim() || inferirMarca(f.nombre)
   const skuAuto = useMemo(() => generarSku({ categoria: categoria?.nombre, marca: marcaFinal, modelo: f.modelo, nombre: f.nombre, color: f.color }), [categoria, marcaFinal, f.modelo, f.nombre, f.color])
   const skuVista = skuManual ? f.codigo : (f.nombre || f.modelo ? skuAuto : '')
+  // Sugerencia al crear: celulares y tablets con IMEI; el administrador puede cambiarlo.
+  useEffect(() => {
+    if (serialTocado || editando || !categoria) return
+    const imei = suggestSerialType(categoria.nombre) === 'imei'
+    setF(prev => ({ ...prev, maneja_serial: imei, tipo_serial: imei ? 'imei' : null }))
+    if (imei) setStock('0')
+  }, [categoria?.nombre]) // eslint-disable-line
 
   async function elegirFoto(e) {
     const file = e.target.files?.[0]; e.target.value = ''
@@ -110,6 +130,14 @@ export default function ProductoForm({ inicial, onClose, onSaved, localId = null
       stock_min: Number(f.stock_min) || 0, stock_max: max,
     }
     if (precios) { d.precio_venta = Number(soloDigitos(f.precio_venta)) || 0; if (costos) d.precio_compra = Number(soloDigitos(f.precio_compra)) || 0 }
+    // Columns from SQL 03/18 are sent only when they change, so older databases keep working.
+    let atributos
+    try { atributos = validateProductAttributes(extras) } catch (e) { return setErr(e.message) }
+    if (JSON.stringify(atributos) !== JSON.stringify(Array.isArray(inicial?.atributos) ? inicial.atributos : [])) d.atributos = atributos
+    if ((f.modelo || '').trim() !== (inicial?.modelo || '')) d.modelo = f.modelo.trim() || null
+    if (!!f.maneja_serial !== !!inicial?.maneja_serial) d.maneja_serial = !!f.maneja_serial
+    if (f.maneja_serial && (f.tipo_serial || null) !== (inicial?.tipo_serial || null)) d.tipo_serial = f.tipo_serial || 'serie'
+    if (f.maneja_serial && !editando && Number(stock) > 0) return setErr('Los productos con IMEI o serial se crean sin stock; luego registra cada unidad con «Cargar unidades».')
     const base = limpiarSku(skuManual ? f.codigo : skuAuto)
     if (!base) return setErr('Escribe el código del producto o deja que se genere automáticamente.')
     if (skuManual) {
@@ -155,6 +183,7 @@ export default function ProductoForm({ inicial, onClose, onSaved, localId = null
       if (nuevaRef && !recordSaved) await removeImage(nuevaRef).catch(() => {})
       if (nuevaRuta && !recordSaved) await supabase.storage.from('productos').remove([nuevaRuta]).catch(() => {})
       const m = mensajeError(error)
+      if (/tipo_serial|atributos/i.test(m)) return setErr('Falta activar IMEI y datos adicionales: ejecuta supabase/18_imei_unidades.sql en Supabase. No se guardaron esos campos.')
       return setErr(/modelo|color|descripcion|foto_url|stock_max/i.test(m) && /column|columna/i.test(m) ? 'Falta actualizar la base de datos: ejecuta supabase/03_productos_detalle.sql en Supabase.' : m)
     }
     if (foto && inicial?.image_ref) await removeImage(inicial.image_ref).catch(() => {})
@@ -214,7 +243,22 @@ export default function ProductoForm({ inicial, onClose, onSaved, localId = null
       <Field label="Stock mínimo"><input className="pf-input" inputMode="numeric" value={f.stock_min} onChange={e => set('stock_min')(soloDigitos(e.target.value) || '0')} /></Field>
       <Field label="Stock máximo"><input className="pf-input" inputMode="numeric" placeholder="—" value={f.stock_max} onChange={e => set('stock_max')(soloDigitos(e.target.value))} /></Field>
     </div>
-    <p className="pf-hint" style={{ marginTop: '-4px', marginBottom: '12px' }}>{bloqueaCantidad ? 'Este producto maneja IMEI: las unidades se cargan con Ingreso de mercancía.' : 'Cantidad: unidades que tienes hoy. Mínimo: te avisa cuándo reponer. Máximo: hasta cuántas conviene tener.'}</p>
+    <p className="pf-hint" style={{ marginTop: '-4px', marginBottom: '12px' }}>{bloqueaCantidad ? (editando ? 'Este producto se controla por unidad: las unidades se cargan con Ingreso de mercancía.' : 'Guarda el producto y luego toca «Cargar unidades» para registrar cada ' + (control === 'imei' ? 'IMEI' : 'serial') + ' con su compra.') : 'Cantidad: unidades que tienes hoy. Mínimo: te avisa cuándo reponer. Máximo: hasta cuántas conviene tener.'}</p>
+    <Field label="Control por unidad" hint={control === 'imei' ? 'Cada equipo guarda su IMEI (15 dígitos, se valida). La factura muestra el IMEI vendido.' : control === 'serie' ? 'Cada unidad guarda su número de serie. Útil para computadores, relojes o consolas.' : 'Para accesorios: se cuentan por cantidad, sin IMEI.'}>
+      <div className="pf-seg" role="radiogroup" aria-label="Control por unidad">{[['no', 'Sin IMEI'], ['imei', 'IMEI'], ['serie', 'N.º de serie']].map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={control === k} className={control === k ? 'on' : ''} disabled={bloqueaControl && (k === 'no') !== !inicial?.maneja_serial} onClick={() => cambiarControl(k)}>{l}</button>)}</div>
+    </Field>
+    {bloqueaControl && <p className="pf-hint">Con unidades en stock solo puedes cambiar entre IMEI y número de serie (aplica a las próximas unidades).</p>}
+    {!verExtras ? <button type="button" className="pos-more" onClick={() => setVerExtras(true)}><I n="plus" />Datos adicionales (modelo, capacidad…)</button> : <>
+      <h3 className="pf-section">Datos adicionales</h3>
+      <Field label="Modelo (opcional)"><input className="pf-input" placeholder="Ej. A3102" maxLength={80} value={f.modelo || ''} onChange={set('modelo')} /></Field>
+      {extras.map((x, i) => <div key={i} className="pf-attr">
+        <input className="pf-input" placeholder="Dato (ej. Capacidad)" maxLength={40} value={x.etiqueta} onChange={e => setExtras(l => l.map((y, j) => j === i ? { ...y, etiqueta: e.target.value } : y))} aria-label={'Nombre del dato ' + (i + 1)} />
+        <input className="pf-input" placeholder="Valor (ej. 256 GB)" maxLength={120} value={x.valor} onChange={e => setExtras(l => l.map((y, j) => j === i ? { ...y, valor: e.target.value } : y))} aria-label={'Valor del dato ' + (i + 1)} />
+        <button type="button" className="pf-attr-x" aria-label={'Quitar dato ' + (i + 1)} onClick={() => setExtras(l => l.filter((_, j) => j !== i))}><I n="trash" /></button>
+      </div>)}
+      {extras.length < PRODUCT_ATTRIBUTE_LIMIT && <button type="button" className="pos-more" onClick={() => setExtras(l => [...l, { etiqueta: l.length ? '' : 'Capacidad', valor: '' }])}><I n="plus" />Agregar dato</button>}
+      <p className="pf-hint">Color, capacidad o IMEI 2 de cada equipo se anotan en su unidad desde el detalle del producto.</p>
+    </>}
     <Field label="Código SKU" hint={skuManual ? (editando ? 'Cambiar el código no afecta el historial de ventas.' : 'Código escrito a mano. Toca "Generar" para volver al automático.') : 'Se arma solo con el nombre, la categoría y el color. Puedes editarlo.'}>
       <div className="pf-sku">
         <input className="pf-input" value={skuVista} placeholder="Automático" autoCapitalize="characters" spellCheck="false"

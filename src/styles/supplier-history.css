@@ -1,0 +1,39 @@
+/* Proveedores → historial de mercancía */
+.sh-chips{margin-bottom:10px}
+.sh-range{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.sh-filter{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.sh-filter>span{font-size:12px;color:var(--muted)}
+.sh-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.sh-totals span{display:flex;flex-direction:column;gap:2px;padding:10px;border-radius:14px;background:var(--inv-card);border:1px solid var(--inv-line);min-width:0}
+.sh-totals small{font-size:11px;color:var(--muted)}
+.sh-totals b{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.sh-totals .due b{color:#e0a43a}
+.sh-list{display:grid;gap:10px}
+/* Toda la tarjeta abre el detalle: cursor:pointer también habilita el toque en Safari iOS. */
+.sh-buy{border-radius:16px;background:var(--inv-card);border:1px solid var(--inv-line);overflow:hidden;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:border-color .2s,transform .12s,box-shadow .2s}
+.sh-buy:hover{border-color:rgba(212,168,92,.55)}
+.sh-buy:active{transform:scale(.985);border-color:#d4a85c;box-shadow:0 10px 24px -16px rgba(212,168,92,.9)}
+.sh-buy:focus-visible{outline:2px solid #d4a85c;outline-offset:2px}
+.sh-buy.late{border-color:rgba(229,72,77,.45)}
+.sh-buy.void{opacity:.65}
+.sh-buy-head{display:flex;justify-content:space-between;gap:12px;padding:12px 14px 6px}
+.sh-date,.sh-amount{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sh-amount{align-items:flex-end;text-align:right}
+.sh-date b,.sh-amount b{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
+.sh-date small,.sh-amount small{font-size:12px;color:var(--muted)}
+.sh-amount small.good{color:var(--success,#2fa36b)}.sh-amount small.warn{color:#e0a43a}.sh-amount small.bad{color:#e5484d}
+.sh-lines{list-style:none;margin:0;padding:0 14px}
+.sh-lines li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--inv-line)}
+.sh-lines li span{display:flex;flex-direction:column;min-width:0}
+.sh-lines b{font-size:13.5px;color:var(--ink);font-weight:600;overflow-wrap:anywhere}
+.sh-lines small{font-size:12px;color:var(--muted)}
+.sh-lines em{font-style:normal;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.sh-meta{margin:0;padding:8px 14px;font-size:12px;color:var(--muted);border-top:1px solid var(--inv-line)}
+.sh-actions{display:flex;border-top:1px solid var(--inv-line)}
+.sh-actions>button{flex:1;border-radius:0!important;min-height:44px}
+.sh-open{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;font-size:13.5px;font-weight:600;color:#d4a85c}
+.sh-open .inv-i{width:16px;height:16px}
+@media (max-width:420px){.sh-totals{grid-template-columns:repeat(2,minmax(0,1fr))}.sh-range{grid-template-columns:1fr}}
+/* Detalle de compra: IMEI/serial por línea */
+.cd-serials{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.cd-serials code{font-size:11px;padding:2px 6px;border-radius:6px;background:var(--inv-tile);color:var(--ink)}

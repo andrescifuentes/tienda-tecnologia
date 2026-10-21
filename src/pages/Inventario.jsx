@@ -12,7 +12,8 @@ import { useAction } from '../lib/useAction'
 import ProductoForm from '../components/ProductoForm'
 import FullPage from '../components/FullPage'
 import CompraForm from '../components/CompraForm'
-import { Empty, Loader, Badge, Input, Select, ErrorBox } from '../components/ui'
+import ProductUnits from '../components/ProductUnits'
+import { Empty, Loader, Input, Select, ErrorBox } from '../components/ui'
 import { supabase, isDemoMode } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { money, fechaHora, limpiarBusqueda, mensajeError } from '../lib/format'
@@ -225,6 +226,7 @@ function ProductoDetalle({ p, loc, filtroLocal, onTraslado, editar, costos, pued
     p.stock_max != null && ['box', 'Stock máximo', unidades(p.stock_max)],
     costos && p.precio_compra != null && ['tag', 'Precio de compra', money(p.precio_compra)],
     p.codigo_barras && ['barcode', 'Código de barras', p.codigo_barras],
+    ...(Array.isArray(p.atributos) ? p.atributos : []).map(a => ['tag', a.etiqueta, a.valor]),
   ].filter(f => f && f[2])
   const menu = <Menu label="Opciones del producto" items={[
     editar && { label: 'Editar', icon: 'pencil', onClick: onEditar },

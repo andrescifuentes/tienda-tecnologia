@@ -62,4 +62,3 @@ export function tiendaConLocal(tienda, local, { mostrarNombre = true } = {}) {
   if (mostrarNombre) t.sede = local.nombre
   return t
 }
-
