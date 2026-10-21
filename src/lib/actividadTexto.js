@@ -10,9 +10,11 @@ export function describirActividad(a) {
   const d = a?.detalle || {}
   const [accion, tipo] = String(a?.accion || '').split('.')
   switch (a?.accion) {
-    case 'factura.emitida': return { titulo: `Venta ${numero(d.numero)}`, detalle: d.total != null ? money(d.total) : '', icono: 'cart', tono: 'good', to: '/facturas?factura=' + a.entidad_id }
+    case 'factura.emitida': return { titulo: `Venta ${numero(d.numero)}`, detalle: [d.total != null ? money(d.total) : '', d.local].filter(Boolean).join(' · '), icono: 'cart', tono: 'good', to: '/facturas?factura=' + a.entidad_id }
     case 'factura.anulada': return { titulo: `Factura anulada ${numero(d.numero)}`, detalle: d.motivo || '', icono: 'doc', tono: 'bad', to: '/facturas?factura=' + a.entidad_id }
     case 'factura.devolucion': return { titulo: `Devolución en ${numero(d.factura)}`, detalle: d.total_devuelto != null ? money(d.total_devuelto) : '', icono: 'back', tono: 'warn' }
+    case 'factura.otro_local': return { titulo: `Venta ${numero(d.numero)} con stock de otro local`, detalle: (d.items || []).map(i => `${i.cantidad} × ${i.producto} desde ${i.local}`).join(' · '), icono: 'cart', tono: 'warn', to: '/facturas?factura=' + a.entidad_id }
+    case 'inventario.traslado': return { titulo: 'Traslado entre locales', detalle: [d.cantidad != null ? `${d.cantidad} × ${d.producto || 'producto'}` : d.producto, d.origen && d.destino ? `${d.origen} → ${d.destino}` : '', d.motivo].filter(Boolean).join(' · '), icono: 'truck', tono: '' }
     case 'compra.registrada': return { titulo: 'Ingreso de mercancía', detalle: d.total != null ? money(d.total) : '', icono: 'truck', tono: '', to: '/proveedores?compra=' + a.entidad_id }
     case 'compra.pago': return { titulo: 'Pago a proveedor', detalle: d.monto != null ? money(d.monto) : '', icono: 'cash', tono: '' }
     case 'inventario.ajuste': return { titulo: 'Ajuste de inventario', detalle: [AJUSTES[d.tipo] || 'Ajuste', d.cantidad != null ? d.cantidad + (Number(d.cantidad) === 1 ? ' unidad' : ' unidades') : '', d.motivo].filter(Boolean).join(' · '), icono: 'box', tono: 'warn' }

@@ -25,14 +25,16 @@ function Field({ label, required, hint, children, className = '' }) {
 
 const MARCAS_BASE = ['Apple', 'Samsung', 'Xiaomi', 'Huawei', 'Motorola', 'Oppo', 'Honor', 'Realme', 'Lenovo', 'HP', 'Dell', 'Asus', 'Acer', 'Sony', 'LG', 'JBL', 'Genérica']
 
-export default function ProductoForm({ inicial, onClose, onSaved }) {
+export default function ProductoForm({ inicial, onClose, onSaved, localId = null, localNombre = '' }) {
+  // Con varios locales, la cantidad es la del local con el que se está trabajando
+  const stockBase = localId != null && inicial?._stocks ? (inicial._stocks[localId] || 0) : inicial?.stock
   const { can, tienda } = useAuth()
   const editando = !!inicial?.id
   const precios = can('editar_precios') || !editando
   const costos = can('ver_costos')
   const [f, setF] = useState({ nombre: '', categoria_id: '', marca: '', modelo: '', color: '', precio_compra: '', precio_venta: '', stock_min: '3', stock_max: '', codigo: '', codigo_barras: '', proveedor_id: '', garantia_meses: '0', descripcion: '', maneja_serial: false,
     ...(inicial ? { ...inicial, precio_compra: String(inicial.precio_compra ?? ''), precio_venta: String(inicial.precio_venta ?? ''), stock_min: String(inicial.stock_min ?? 0), stock_max: inicial.stock_max == null ? '' : String(inicial.stock_max), garantia_meses: String(inicial.garantia_meses ?? 0), categoria_id: inicial.categoria_id ?? '', proveedor_id: inicial.proveedor_id ?? '' } : {}) })
-  const [stock, setStock] = useState(editando ? String(inicial.stock ?? 0) : '0')
+  const [stock, setStock] = useState(editando ? String(stockBase ?? 0) : '0')
   const bloqueaCantidad = !!inicial?.maneja_serial
   const [cats, setCats] = useState([]), [provs, setProvs] = useState([])
   const [colores, setColores] = useState(COLORES)
@@ -132,20 +134,20 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
 
     let error, nuevoId, recordSaved = false
     if (isDemoMode && !editando) {
-      ({ error } = await supabase.rpc('crear_producto_demo', { producto: d, stock: Number(stock), seriales: [] }))
+      ({ error } = await supabase.rpc('crear_producto_demo', { producto: d, stock: Number(stock), seriales: [], ...(localId != null ? { p_local_id: localId } : {}) }))
       recordSaved = !error
     } else if (editando) {
       ({ error } = await supabase.from('productos').update(d).eq('id', inicial.id))
       recordSaved = !error
-      const diff = Number(stock) - Number(inicial.stock || 0)
+      const diff = Number(stock) - Number(stockBase || 0)
       if (!error && diff !== 0 && !bloqueaCantidad) {
-        const a = await supabase.rpc('ajustar_inventario', { p_producto_id: inicial.id, p_cantidad: Math.abs(diff), p_tipo: diff > 0 ? 'ajuste_entrada' : 'ajuste_salida', p_motivo: 'Ajuste desde edición del producto' })
+        const a = await supabase.rpc('ajustar_inventario', { p_producto_id: inicial.id, p_cantidad: Math.abs(diff), p_tipo: diff > 0 ? 'ajuste_entrada' : 'ajuste_salida', p_motivo: 'Ajuste desde edición del producto', ...(localId != null ? { p_local_id: localId } : {}) })
         if (a.error) error = { message: 'Se guardaron los datos, pero no se pudo ajustar la cantidad: ' + mensajeError(a.error) }
       }
     } else {
       const r = await supabase.from('productos').insert(d).select('id').single(); error = r.error; nuevoId = r.data?.id; recordSaved = !error && !!nuevoId
       if (!error && nuevoId && Number(stock) > 0) {
-        const a = await supabase.rpc('ajustar_inventario', { p_producto_id: nuevoId, p_cantidad: Number(stock), p_tipo: 'ajuste_entrada', p_motivo: 'Stock inicial' })
+        const a = await supabase.rpc('ajustar_inventario', { p_producto_id: nuevoId, p_cantidad: Number(stock), p_tipo: 'ajuste_entrada', p_motivo: 'Stock inicial', ...(localId != null ? { p_local_id: localId } : {}) })
         if (a.error) error = { message: 'El producto se creó, pero no se pudo cargar el stock inicial: ' + mensajeError(a.error) }
       }
     }
@@ -208,7 +210,7 @@ export default function ProductoForm({ inicial, onClose, onSaved }) {
     </div>
     {!precios && <p className="pf-hint">Tu perfil no tiene permiso para cambiar precios.</p>}
     <div className="pf-grid pf-grid-3">
-      <Field label="Cantidad" required><input className="pf-input" inputMode="numeric" value={stock} onChange={e => setStock(soloDigitos(e.target.value) || '0')} disabled={bloqueaCantidad} /></Field>
+      <Field label={localNombre ? 'Cantidad en ' + localNombre : 'Cantidad'} required><input className="pf-input" inputMode="numeric" value={stock} onChange={e => setStock(soloDigitos(e.target.value) || '0')} disabled={bloqueaCantidad} /></Field>
       <Field label="Stock mínimo"><input className="pf-input" inputMode="numeric" value={f.stock_min} onChange={e => set('stock_min')(soloDigitos(e.target.value) || '0')} /></Field>
       <Field label="Stock máximo"><input className="pf-input" inputMode="numeric" placeholder="—" value={f.stock_max} onChange={e => set('stock_max')(soloDigitos(e.target.value))} /></Field>
     </div>

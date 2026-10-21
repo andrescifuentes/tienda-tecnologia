@@ -24,9 +24,10 @@ export function periodoVendedor(periodo = 'hoy', now = new Date()) {
 }
 
 // Keep the owner constraint in the query, in addition to existing remote RLS/demo permissions.
-export function consultarFacturasVisibles(client, { esAdmin = false, perfilId, net = false }, columnas) {
+export function consultarFacturasVisibles(client, { esAdmin = false, perfilId, net = false, local = null }, columnas) {
   if (!esAdmin && !perfilId) throw new Error('No se pudo identificar al vendedor.')
   const query = client.from(invoiceTable(client, { esAdmin }, net)).select(columnas)
+  if (esAdmin && local != null) return query.eq('local_id', local)
   return esAdmin ? query : query.eq('vendedor_id', perfilId)
 }
 

@@ -47,6 +47,7 @@ export function FacturaCard({ f, index = 0, onClick, conFecha = false }) {
       <span className="fv-name">{f.clientes?.nombre || 'Consumidor final'}</span>
       <span className="fv-meta"><b className="fv-num">{numFactura(f)}</b><span>{conFecha ? fechaCorta(f.fecha) : hora(f.fecha)}</span></span>
       <span className="fv-seller"><I n="user" />{f.perfiles?.nombre || 'Vendedor'}</span>
+      {f._local && <span className="fv-local"><I n="store" />{f._local}</span>}
     </span>
     <span className="fv-side">
       <b className="fv-amount">{money(f.total)}</b>
