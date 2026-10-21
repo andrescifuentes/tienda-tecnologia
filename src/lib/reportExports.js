@@ -26,11 +26,11 @@ export function salesSummary(invoices){
  return {...result,...Object.fromEntries(Object.entries(cents).map(([key,n])=>[key,pesos(n)]))}
 }
 const chunks=ids=>Array.from({length:Math.ceil(ids.length/100)},(_,n)=>ids.slice(n*100,n*100+100))
-export async function loadSalesReport(client,{auth,range,demo=false,signal}){
+export async function loadSalesReport(client,{auth,range,demo=false,signal,local=null}){
  if(!auth?.perfilId)throw Error('Inicia sesión para consultar ventas.')
  reportRange('rango',range)
  const period={ini:range.desde,fin:range.hasta}
- const invoices=await loadNetInvoices(client,{period,auth,signal})
+ const invoices=await loadNetInvoices(client,{period,auth,signal,local})
  if(invoices.length>10000)throw Error('Hay más de 10.000 facturas. Reduce el rango del reporte.')
  if(!auth.esAdmin&&invoices.some(f=>f.vendedor_id!==auth.perfilId))throw Error('El reporte contiene ventas fuera de tus permisos.')
  const ids=invoices.map(f=>f.id),headers=[],items=[],profiles=[]

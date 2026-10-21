@@ -1,4 +1,6 @@
 import { invoiceFields, invoiceItemFields, invoiceItemsTable } from '../lib/invoiceQueries'
+import { useLocales, tiendaConLocal } from '../lib/locales'
+import '../styles/locales.css'
 import InvoiceDelivery from './InvoiceDelivery'
 import { loadInvoiceBusinessSnapshot } from '../lib/businessSettings'
 import SellerSaleComplete from './SellerSaleComplete'
@@ -17,8 +19,12 @@ import { toast } from '../lib/toast'
 import { I } from './InvIcons'
 
 export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, onViewInvoice, onNewSale }) {
-  const { can, tienda, perfil, esAdmin } = useAuth()
+  const { can, tienda: tiendaNegocio, perfil, esAdmin } = useAuth()
+  const loc = useLocales(perfil)
   const [f, setF] = useState(null)
+  const tienda = loc.habilitado && f?.local_id != null ? tiendaConLocal(tiendaNegocio, loc.local(f.local_id)) : tiendaNegocio
+  // El documento (PDF, vista previa, WhatsApp) lleva la dirección y el teléfono del local que vendió
+  const fDoc = f && loc.habilitado && f.tienda_snapshot && f.local_id != null ? { ...f, tienda_snapshot: tiendaConLocal(f.tienda_snapshot, loc.local(f.local_id)) } : f
   const [items, setItems] = useState([])
   const [devs, setDevs] = useState([])
   const [err, setErr] = useState(''), [businessNotice, setBusinessNotice] = useState('')
@@ -65,7 +71,14 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
           if (!Array.isArray(units)) throw Error('No se pudieron consultar los seriales de esta factura.')
           lineas = lineas.map(line => ({ ...line, serial:line.serial || units.find(unit => unit.id === line.unidad_id)?.serial }))
         }
-        return { data:business.snapshot ? { ...data, tienda_snapshot:business.snapshot } : data, lineas, devoluciones, notice:business.notice }
+        // Locales: en qué local se vendió y de qué local salió cada producto
+        let conLocal = data
+        if (loc.habilitado && data.local_id === undefined) {
+          const [fl, il] = await Promise.all([query(supabase.from('facturas').select('local_id').eq('id', id).maybeSingle()), query(supabase.from('factura_items').select('id,local_id').eq('factura_id', id))])
+          if (!fl.error && fl.data) conLocal = { ...data, local_id: fl.data.local_id }
+          if (!il.error) lineas = lineas.map(line => ({ ...line, local_id: (il.data || []).find(x => x.id === line.id)?.local_id ?? line.local_id }))
+        }
+        return { data:business.snapshot ? { ...conLocal, tienda_snapshot:business.snapshot } : conLocal, lineas, devoluciones, notice:business.notice }
       }, { signal:controller.signal, message:'No se pudo cargar el detalle de la factura a tiempo. Puedes continuar vendiendo y consultarla después en Facturas.' })
       if (generation !== loadGeneration.current) return
       setF(result.data); setItems(result.lineas); setDevs(result.devoluciones); setBusinessNotice(result.notice)
@@ -76,7 +89,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
   useEffect(() => {
     setF(null); setItems([]); setDevs([]); setBusinessNotice(''); setModo(null); setMotivo(''); setAdminCorreo(''); setAdminClave(''); cargar()
     return () => { ++loadGeneration.current; loadController.current?.abort() }
-  }, [id, nueva]) // eslint-disable-line
+  }, [id, nueva, loc.habilitado]) // eslint-disable-line
 
   const devueltos = (itemId) => devs.flatMap((d) => d.devolucion_items).filter((x) => x.factura_item_id === itemId).reduce((a, x) => a + x.cantidad, 0)
   const abrirAnulacion = () => { quitarFocoEntrada(); setErr(''); setMotivo(''); setAdminCorreo(''); setAdminClave(''); setModo('anular') }
@@ -114,10 +127,11 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
 
   if (nueva) return <SellerSaleComplete invoice={f} onClose={cerrar} onViewInvoice={f ? onViewInvoice : undefined} onNewSale={onNewSale || cerrar}>
     {businessNotice && <p className="post-sale-note invoice-business-notice" role="status">{businessNotice}</p>}
-    {f ? <InvoiceDelivery invoice={f} items={items} tienda={tienda} /> : err ? <><ErrorBox text={err}/><button type="button" className="btn sec full post-sale-retry" onClick={cargar}>Reintentar detalle de factura</button></> : <><p className="post-sale-note" role="status">Preparando el comprobante. La venta ya está registrada; puedes cerrar o iniciar otra venta.</p><Loader/></>}
+    {f ? <InvoiceDelivery invoice={fDoc} items={items} tienda={tienda} /> : err ? <><ErrorBox text={err}/><button type="button" className="btn sec full post-sale-retry" onClick={cargar}>Reintentar detalle de factura</button></> : <><p className="post-sale-note" role="status">Preparando el comprobante. La venta ya está registrada; puedes cerrar o iniciar otra venta.</p><Loader/></>}
   </SellerSaleComplete>
   if (!f) return <Modal title="Factura" restoreInputFocus={false} onClose={cerrar}>{err ? <><ErrorBox text={err}/><button type="button" className="btn sec full" onClick={cargar}>Reintentar detalle de factura</button></> : <Loader />}</Modal>
   const anulada = f.estado === 'anulada'
+  const otroLocal = i => loc.multi && i.local_id != null && f.local_id != null && i.local_id !== f.local_id
 
   return (
     <Modal title="Detalle de factura" className="invoice-detail-sheet experience-sheet fd-sheet" keyboardAware restoreInputFocus={false} onClose={cerrar}>
@@ -133,7 +147,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
           <span className={'fd-state ' + (anulada ? 'bad' : 'good')}>{anulada ? 'Anulada' : 'Emitida'}</span>
           <span className={'fd-pay m-' + f.metodo_pago}><I n={{ efectivo: 'cash', tarjeta: 'card', transferencia: 'bank' }[f.metodo_pago] || 'cash'} />{String(f.metodo_pago || '').charAt(0).toUpperCase() + String(f.metodo_pago || '').slice(1)}{f.medio_transferencia?.nombre ? ' · ' + f.medio_transferencia.nombre : ''}</span>
         </div>
-        <small className="fd-hero-meta">{fechaHora(f.fecha)} · {f.perfiles?.nombre}</small>
+        <small className="fd-hero-meta">{fechaHora(f.fecha)} · {f.perfiles?.nombre}{loc.habilitado && f.local_id != null ? ' · ' + loc.nombre(f.local_id) : ''}</small>
       </section>
 
       <div className="fd-client">
@@ -146,7 +160,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
         {items.map((i) => (
           <div key={i.id} className="fd-item">
             <span className="fd-item-q">{i.cantidad}×</span>
-            <span className="fd-item-txt"><b>{i.nombre}</b><small>{i.codigo ? i.codigo + ' · ' : ''}{money(i.precio_unitario)} c/u</small>{i.serial&&<small>Serial/IMEI: {i.serial}</small>}{devueltos(i.id) > 0 && <small className="warn">Devueltos: {devueltos(i.id)}</small>}</span>
+            <span className="fd-item-txt"><b>{i.nombre}</b><small>{i.codigo ? i.codigo + ' · ' : ''}{money(i.precio_unitario)} c/u</small>{i.serial&&<small>Serial/IMEI: {i.serial}</small>}{otroLocal(i) && <small className="fd-desp"><I n="store" />Despachado desde {loc.nombre(i.local_id)}</small>}{devueltos(i.id) > 0 && <small className="warn">Devueltos: {devueltos(i.id)}</small>}</span>
             <b className="fd-item-total">{money(i.precio_unitario * i.cantidad - i.descuento)}</b>
           </div>
         ))}
@@ -157,7 +171,7 @@ export default function FacturaDetalle({ id, onClose, nueva = false, onCambio, o
       {anulada && <p className="fd-void-note"><I n="warn" />Motivo de anulación: {f.motivo_anulacion}</p>}
 
       {!modo && <>
-        <InvoiceDelivery invoice={f} items={items} tienda={tienda} />
+        <InvoiceDelivery invoice={fDoc} items={items} tienda={tienda} />
 
         {!anulada && <div className="fd-after">
           {f.estado === 'emitida' && can('hacer_devoluciones') && <button type="button" onClick={() => { setErr(''); setModo('devolver') }}><I n="history" />Registrar devolución</button>}

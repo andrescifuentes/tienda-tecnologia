@@ -15,11 +15,21 @@ test('La campana muestra stock bajo y lo último del negocio', async () => {
   assert.deepEqual(n.map(x => x.title), ['Producto agotado', 'Stock bajo', 'Venta FV-0028', 'Ingreso de mercancía', 'Factura anulada FV-0027'])
   assert.equal(n[2].to, '/facturas?factura=10')
   assert.ok(n[2].text.includes('Ana') && n[2].text.includes('$55.000'))
-  assert.deepEqual(pedidas, ['productos', 'facturas', 'compras'])
+  assert.deepEqual(pedidas, ['productos', 'facturas', 'compras', 'actividad'])
 })
 
 test('El vendedor no consulta costos ni compras', async () => {
   const pedidas = []
   await cargarNotificaciones(cliente(pedidas), { esAdmin: false, puedeCompras: false })
   assert.deepEqual(pedidas, ['productos_venta', 'facturas'])
+})
+
+test('Venta con stock de otro local avisa al administrador', async () => {
+  const conOtro = { ...datos, actividad: [{ id: 77, accion: 'factura.otro_local', entidad_id: '12', fecha: '2026-10-14T03:00:00Z', detalle: { numero: 'FV30', local: 'Local Centro', items: [{ producto: 'Audífonos JBL', cantidad: 1, local: 'Local 1' }] } }] }
+  const c = { from(t) { const q = { select: () => q, eq: () => q, gte: () => q, order: () => q, limit: () => q, then: (a, b) => Promise.resolve({ data: conOtro[t], error: null }).then(a, b) }; return q } }
+  const n = await cargarNotificaciones(c, { esAdmin: true, puedeCompras: true, ahora: Date.parse('2026-10-14T12:00:00Z') })
+  const aviso = n.find(x => x.id === 'otro-local:77')
+  assert.equal(aviso.title, 'Venta FV-0030 con stock de otro local')
+  assert.ok(aviso.text.includes('1 × Audífonos JBL desde Local 1') && aviso.text.includes('vendida en Local Centro'))
+  assert.equal(aviso.to, '/facturas?factura=12')
 })

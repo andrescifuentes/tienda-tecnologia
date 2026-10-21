@@ -68,11 +68,21 @@ test('demo devolucion explicita y anulacion restante no duplican reembolso',asyn
  await rpc(client,'anular_factura',{p_factura_id:invoice,p_motivo:'Cancelar resto'})
  state=await rpc(client,'caja_estado');assert.equal(state.summary.ajustes_cent,-7980000);assert.equal(state.summary.efectivo_esperado_cent,3990000);assert.equal(state.summary.reembolsos_por_confirmar,1)
 })
-test('demo permisos propios/admin y prohibicion de escrituras directas',async()=>{
+test('demo caja por local: la ve y la opera su local; otro local no',async()=>{
  const {client}=await demo();const id=await rpc(client,'caja_abrir',{p_inicial_cent:0,p_request_id:req('roles')})
+ await client.auth.signInWithPassword({email:'admin@angietech.demo',password:DEMO_PASSWORD})
+ const centro=(await client.from('locales').insert({nombre:'Centro'}).select('*').single()).data.id
+ const carlos=(await client.from('perfiles').select('*')).data.find(p=>p.correo==='carlos@angietech.demo')
+ assert.equal((await client.rpc('guardar_empleado_demo',{id:carlos.id,datos:{local_id:centro},permisos:['vender']})).error,null)
+ assert.equal((await rpc(client,'caja_estado')).locales.length,2)
+ await client.auth.signInWithPassword({email:'maria@angietech.demo',password:DEMO_PASSWORD})
+ const est=await rpc(client,'caja_estado');assert.equal(est.active.id,id);assert.equal(est.history.length,1)
+ assert.ok((await client.rpc('caja_abrir',{p_inicial_cent:0,p_request_id:req('dup')})).error,'una sola caja abierta por local')
  await client.auth.signInWithPassword({email:'carlos@angietech.demo',password:DEMO_PASSWORD})
  assert.equal((await rpc(client,'caja_estado')).history.length,0);assert.ok((await client.rpc('caja_estado',{p_caja_id:id})).error)
  assert.ok((await client.rpc('caja_cerrar',{p_caja_id:id,p_request_id:req('other'),p_revision:0,p_contado_cent:0})).error)
+ await client.auth.signInWithPassword({email:'maria@angietech.demo',password:DEMO_PASSWORD})
+ assert.equal(await rpc(client,'caja_cerrar',{p_caja_id:id,p_request_id:req('close-maria'),p_revision:0,p_contado_cent:0}),id)
  await client.auth.signInWithPassword({email:'admin@angietech.demo',password:DEMO_PASSWORD})
  assert.equal((await rpc(client,'caja_estado',{p_caja_id:id})).session.id,id)
  assert.ok((await client.from('caja_sesiones').update({estado:'cerrada'}).eq('id',id)).error)
@@ -143,3 +153,14 @@ test('SQL RLS y RPC cajero ajeno/admin/inactivo; helpers y escritura no publicos
 })
 
 test('SQL caja separa negocios incluso para administradores',async()=>{const db=await sqlFixture(),adminB='00000000-0000-0000-0000-000000000004';try{await setActor(db,seller);const id=await sqlRpc(db,'caja_abrir',[100,req('scope-a')]);await db.query("insert into perfiles(id,nombre,rol,activo,negocio_id)values($1,'Admin B','admin',true,2)",[adminB]);await setActor(db,adminB);await db.exec('set role authenticated');assert.equal((await sqlRpc(db,'caja_estado',[null])).history.length,0);await assert.rejects(sqlRpc(db,'caja_estado',[id]),/permiso/);await assert.rejects(sqlRpc(db,'caja_cerrar',[id,req('scope-close'),0,100,'']),/permiso/);const otherId=await sqlRpc(db,'caja_abrir',[200,req('scope-b')]);assert.equal((await sqlRpc(db,'caja_estado',[otherId])).session.negocio_id,2);assert.equal((await db.query('select * from caja_sesiones')).rows.length,1)}finally{await db.close()}})
+test('demo novedad y reabrir caja cerrada por error (solo admin, mismo día, recupera ventas)',async()=>{
+ const {client}=await demo()
+ const id=await rpc(client,'caja_abrir',{p_inicial_cent:0,p_request_id:req('nov-open')})
+ await rpc(client,'caja_novedad',{p_caja_id:id,p_request_id:req('nov-1'),p_descripcion:'Datáfono sin señal'})
+ const est=await rpc(client,'caja_estado');assert.equal(est.summary.novedades,1);assert.equal(est.summary.efectivo_esperado_cent,0)
+ await rpc(client,'caja_cerrar',{p_caja_id:id,p_request_id:req('nov-close'),p_revision:est.session.revision,p_contado_cent:0})
+ assert.ok((await client.rpc('caja_reabrir',{p_caja_id:id,p_request_id:req('nov-re1'),p_motivo:'error'})).error,'el vendedor no reabre')
+ await client.auth.signInWithPassword({email:'admin@angietech.demo',password:DEMO_PASSWORD})
+ assert.equal(await rpc(client,'caja_reabrir',{p_caja_id:id,p_request_id:req('nov-re2'),p_motivo:'Se cerró por error'}),id)
+ const after=await rpc(client,'caja_estado',{p_caja_id:id});assert.equal(after.session.estado,'abierta');assert.equal(after.session.cierres_anteriores.length,1);assert.equal(after.summary.novedades,2)
+})

@@ -16,6 +16,7 @@ export const datosEmpresa = (store = {}) => [
 const conLocal = l => { const t = String(l || '').trim(); return !t ? '' : /^\d/.test(t) ? 'Local ' + t : t }
 export const camposEmpresa = (store = {}) => [
   ['NIT', store?.nit],
+  ['Sede', store?.sede],
   ['Dirección', [store?.direccion, conLocal(store?.local)].filter(Boolean).join(' · ')],
   ['Teléfono', store?.telefono],
   ['Correo', store?.correo],

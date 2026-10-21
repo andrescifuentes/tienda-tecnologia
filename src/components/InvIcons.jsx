@@ -21,6 +21,8 @@ const P = {
   history: <><path d="M4 12a8 8 0 102.4-5.7L4 8.5" /><path d="M4 4v4.5h4.5M12 8v4.5l3 2" /></>,
   adjust: <path d="M12 4v16M5 9l7-5 7 5M5 15l7 5 7-5" />,
   shield: <path d="M12 3.5l7 2.8v5.4c0 4.3-3 7.3-7 8.8-4-1.5-7-4.5-7-8.8V6.3l7-2.8z" />,
+  store: <><path d="M4 9.5l1.4-5h13.2L20 9.5" /><path d="M4 9.5h16a2.6 2.6 0 01-5.3 0 2.6 2.6 0 01-5.3 0A2.6 2.6 0 014 9.5z" /><path d="M5.5 12.2V20h13v-7.8M10 20v-4.5h4V20" /></>,
+  swap: <path d="M5 8h13l-3.5-3.5M19 16H6l3.5 3.5" />,
   truckIn: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
   user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0114 0" /></>,
   trash: <path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" />,

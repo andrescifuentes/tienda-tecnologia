@@ -18,6 +18,9 @@ import { supabase, isDemoMode } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { money, fechaHora, limpiarBusqueda, mensajeError } from '../lib/format'
 import { toast } from '../lib/toast'
+import { useLocales, cargarStockLocales, avisarCambioLocales } from '../lib/locales'
+import LocalSelector, { LocalTag } from '../components/LocalSelector'
+import '../styles/locales.css'
 
 const estadoStock = p => p.stock === 0 ? ['bad', 'Agotado'] : p.stock <= p.stock_min ? ['warn', 'Stock bajo'] : ['good', 'En stock']
 const unidades = n => `${n} ${Number(n) === 1 ? 'unidad' : 'unidades'}`
@@ -38,7 +41,13 @@ function Menu({ items, label = 'Más opciones', className = '' }) {
 export default function Inventario() {
   const revision = useDemoRevision()
   const navigate = useNavigate()
-  const { can, esAdmin } = useAuth()
+  const { can, esAdmin, perfil } = useAuth()
+  const loc = useLocales(perfil)
+  // El administrador puede ver un local o todos; el vendedor ve el stock de todos los locales
+  const filtroLocal = esAdmin ? loc.filtro : null
+  const localTrabajo = filtroLocal || loc.miLocal || loc.locales[0]?.id || null
+  const [stockLoc, setStockLoc] = useState(null)
+  const [traslado, setTraslado] = useState(null)
   const editar = esAdmin && can('editar_inventario')
   const costos = esAdmin && can('ver_costos')
   const [params] = useSearchParams()
@@ -76,12 +85,23 @@ export default function Inventario() {
       if (s) qq = qq.or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,codigo_barras.ilike.%${s}%,marca.ilike.%${s}%,modelo.ilike.%${s}%`)
       let { data, error } = await qq
       if (error && s) ({ data } = await supabase.from(tabla).select(tabla === 'productos' ? '*, categorias(nombre)' : '*').order('nombre').limit(150).or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,codigo_barras.ilike.%${s}%,marca.ilike.%${s}%`))
-      const rows = (data || []).map(p => ({ ...p, categoria: p.categoria || p.categorias?.nombre }))
+      const base = (data || []).map(p => ({ ...p, categoria: p.categoria || p.categorias?.nombre }))
+      const sl = loc.habilitado ? await cargarStockLocales(supabase, base.map(p => p.id)) : null
+      setStockLoc(sl)
+      // Con un local elegido solo se listan los productos que ese local maneja
+      // (los que han tenido stock allí); lo del otro local no sale como «Agotado»
+      const rows = base.map(p => decorarLocal(p, sl)).filter(p => !filtroLocal || !sl || sl[p.id]?.[filtroLocal] !== undefined)
       setLista(rows)
       setSel(prev => prev ? rows.find(p => p.id === prev.id) || prev : null)
     }, 220)
     return () => clearTimeout(t)
-  }, [q, tick, tabla, filtro, revision])
+  }, [q, tick, tabla, filtro, revision, loc.habilitado, filtroLocal]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Con un local elegido, el stock que se ve (y los filtros de stock bajo/agotado) son los de ese local
+  function decorarLocal(p, sl = stockLoc) {
+    if (!loc.habilitado || !sl) return p
+    const stocks = sl[p.id] || {}
+    return { ...p, _stocks: stocks, _total: p.stock, stock: filtroLocal ? (stocks[filtroLocal] || 0) : p.stock }
+  }
 
   const marcaDe = (p) => (p.marca || 'Genérica').trim()
   const marcasCat = Object.entries((lista || []).filter(p => categoria === 'Todos' || p.categoria === categoria).reduce((m, p) => { const k = marcaDe(p); m[k] = (m[k] || 0) + 1; return m }, {})).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -99,6 +119,7 @@ export default function Inventario() {
     editar && { label: 'Editar', icon: 'pencil', onClick: () => setForm(p) },
     (editar || (esAdmin && can('registrar_compras'))) && { label: 'Cargar unidades', icon: 'truckIn', onClick: () => setCargar(p) },
     editar && !p.maneja_serial && { label: 'Ajustar stock', icon: 'adjust', onClick: () => setAjuste(p) },
+    editar && loc.multi && { label: 'Trasladar a otro local', icon: 'swap', onClick: () => setTraslado(p) },
     editar && { label: 'Movimientos', icon: 'history', onClick: () => setMovs(p) },
     can('vender') && p.stock > 0 && { label: 'Vender', icon: 'cart', onClick: () => vender(p) },
   ]
@@ -114,6 +135,8 @@ export default function Inventario() {
         <label className="inv-search-box"><I n="search" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por nombre o código" autoCapitalize="none" aria-label="Buscar producto" />{q && <button type="button" className="inv-scan" aria-label="Limpiar búsqueda" onClick={() => setQ('')}>✕</button>}</label>
         <button type="button" className={'inv-filter' + (activos ? ' on' : '')} aria-label={activos ? `Filtros (${activos} activos)` : 'Filtros'} onClick={() => setFiltros(true)}><I n="sliders" />{activos > 0 && <span className="inv-filter-count">{activos}</span>}</button>
       </div>
+      {esAdmin && <LocalSelector loc={loc} />}
+      {esAdmin && loc.habilitado && loc.locales.length === 1 && <div className="loc-aviso"><I n="store" /><span>Todo tu inventario está en <b>{loc.locales[0].nombre}</b>. Para separar el stock por local, crea tu segundo local en <b>Más › Configuración › Locales</b>. <button type="button" className="loc-aviso-btn" onClick={() => navigate('/configuracion#locales')}>Ir a Locales</button></span></div>}
       {marcasCat.length>1&&<BrandStrip brands={[["Todas",marcasCat.reduce((a,[,n])=>a+n,0)],...marcasCat]} value={marca} onChange={setMarca}/>}
       {activos > 0 && <div className="inv-tags">
         {marca !== 'Todas' && <button type="button" onClick={() => setMarca('Todas')}><I n="tag" />{marca}<span aria-hidden="true">✕</span></button>}
@@ -122,7 +145,7 @@ export default function Inventario() {
         <button type="button" className="clear" onClick={() => { setCategoria('Todos'); setFiltro('todos'); setMarca('Todas') }}>Limpiar</button>
       </div>}
 
-      {!lista ? <Loader /> : visible.length === 0 ? <Empty text="No hay productos para mostrar" description="Cambia la categoría o los filtros, o agrega un producto nuevo." action={editar ? () => setForm({}) : undefined} actionLabel="+ Agregar producto" /> : (
+      {!lista ? <Loader /> : visible.length === 0 ? <Empty text={filtroLocal && !(lista || []).length ? loc.nombre(filtroLocal) + " aún no tiene inventario" : "No hay productos para mostrar"} description={filtroLocal && !(lista || []).length ? "Traslada productos desde otro local (en el detalle del producto) o registra una compra que llegue a este local." : "Cambia la categoría o los filtros, o agrega un producto nuevo."} action={editar ? () => setForm({}) : undefined} actionLabel="+ Agregar producto" /> : (
         <><p className="inv-count">{visible.length} {visible.length === 1 ? 'producto' : 'productos'}{categoria !== 'Todos' ? ' · ' + categoria : ''}</p>
         <div className="inv-list">
           {visible.map((p, index) => {
@@ -140,6 +163,7 @@ export default function Inventario() {
                   <span className="inv-stock"><span className="inv-stock-txt"><i />{p.stock === 0 ? 'Agotado' : unidades(p.stock)}</span><span className="inv-meter"><span style={{ width: pct + '%' }} /></span></span>
                   <b className="inv-price">{money(p.precio_venta)}</b>
                 </div>
+                {loc.habilitado && p._stocks && loc.locales.length > 0 && <span className="loc-stock-mini">{loc.locales.map(l => { const n = p._stocks[l.id] || 0; return <span key={l.id} className={n ? '' : 'cero'}>{l.nombre}: <b>{n}</b></span> })}</span>}
               </div>
             </AnimatedCard>
           })}
@@ -174,25 +198,30 @@ export default function Inventario() {
           <BrandStrip brands={[["Todas",marcasCat.reduce((a,[,n])=>a+n,0)],...marcasCat]} value={marca} onChange={setMarca}/>
         </>}
       </Modal>}
-      {sel && !form && <ProductoDetalle p={sel} editar={editar} costos={costos} puedeVender={can('vender')} onClose={() => { setSel(null); if (productoId) navigate('/inventario', { replace: true }) }} onEditar={() => setForm(sel)} onVender={() => vender(sel)} onAjuste={() => setAjuste(sel)} onMovs={() => setMovs(sel)} onIngreso={(esAdmin && can('registrar_compras')) ? () => setCompra(sel) : null} onCargar={editar || (esAdmin && can('registrar_compras')) ? () => setCargar(sel) : null} onCambio={refrescar} />}
-      {form && <ProductoForm inicial={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => { setForm(null); refrescar(); toast('Producto guardado') }} />}
-      {esAdmin && can('registrar_compras') && compra && <CompraForm productoInicial={compra.id ? compra : null} cantidadInicial={compra._cant} proveedorId={compra._prov} onClose={() => setCompra(false)} onSaved={() => { setCompra(false); refrescar() }} />}
-      {esAdmin && (editar || can('registrar_compras')) && cargar && <CargarUnidades p={cargar} puedeComprar={can('registrar_compras')} onClose={() => setCargar(null)} onCompra={(n, provId) => { const p = cargar; setCargar(null); setCompra({ ...p, _cant: n, _prov: provId }) }} onSaved={() => { setCargar(null); refrescar() }} />}
-      {ajuste && <AjusteStock p={ajuste} onClose={() => setAjuste(null)} onSaved={() => { setAjuste(null); refrescar() }} />}
-      {movs && <Movimientos p={movs} onClose={() => setMovs(null)} />}
+      {sel && !form && <ProductoDetalle loc={loc} filtroLocal={filtroLocal} onTraslado={editar && loc.multi ? () => setTraslado(sel) : null} p={sel} editar={editar} costos={costos} puedeVender={can('vender')} onClose={() => { setSel(null); if (productoId) navigate('/inventario', { replace: true }) }} onEditar={() => setForm(sel)} onVender={() => vender(sel)} onAjuste={() => setAjuste(sel)} onMovs={() => setMovs(sel)} onIngreso={(esAdmin && can('registrar_compras')) ? () => setCompra(sel) : null} onCargar={editar || (esAdmin && can('registrar_compras')) ? () => setCargar(sel) : null} onCambio={refrescar} />}
+      {form && <ProductoForm localId={loc.multi ? localTrabajo : null} localNombre={loc.multi ? loc.nombre(localTrabajo) : ''} inicial={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => { setForm(null); refrescar(); toast('Producto guardado') }} />}
+      {esAdmin && can('registrar_compras') && compra && <CompraForm localInicial={compra._local} productoInicial={compra.id ? compra : null} cantidadInicial={compra._cant} proveedorId={compra._prov} onClose={() => setCompra(false)} onSaved={() => { setCompra(false); refrescar() }} />}
+      {esAdmin && (editar || can('registrar_compras')) && cargar && <CargarUnidades p={cargar} loc={loc} localInicial={localTrabajo} puedeComprar={can('registrar_compras')} onClose={() => setCargar(null)} onCompra={(n, provId, localId) => { const p = cargar; setCargar(null); setCompra({ ...p, _cant: n, _prov: provId, _local: localId }) }} onSaved={() => { setCargar(null); refrescar() }} />}
+      {traslado && <TrasladoStock p={traslado} loc={loc} origenInicial={filtroLocal} onClose={() => setTraslado(null)} onSaved={() => { setTraslado(null); avisarCambioLocales(); refrescar() }} />}
+      {ajuste && <AjusteStock loc={loc} localInicial={localTrabajo} p={ajuste} onClose={() => setAjuste(null)} onSaved={() => { setAjuste(null); refrescar() }} />}
+      {movs && <Movimientos loc={loc} p={movs} onClose={() => setMovs(null)} />}
     </AppShell>
   )
 }
 
-function ProductoDetalle({ p, editar, costos, puedeVender, onClose, onEditar, onVender, onAjuste, onMovs, onIngreso, onCargar, onCambio }) {
+function ProductoDetalle({ p, loc, filtroLocal, onTraslado, editar, costos, puedeVender, onClose, onEditar, onVender, onAjuste, onMovs, onIngreso, onCargar, onCambio }) {
+  const [uni, setUni] = useState(null)
   const [tone, label] = estadoStock(p)
+  useEffect(() => {
+    if (p.maneja_serial) supabase.from('unidades_serializadas').select(loc?.habilitado ? 'id,serial,estado,local_id' : 'id,serial,estado').eq('producto_id', p.id).order('id', { ascending: false }).limit(100).then(({ data }) => setUni(data || []))
+  }, [p])
   const copiar = async () => { try { await navigator.clipboard.writeText(p.codigo); toast('Código copiado') } catch { toast(p.codigo) } }
   const filas = [
     ['phone', 'Categoría', p.categoria || 'Sin categoría', <CategoryIcon key="c" categoria={p.categoria} />],
     ['tag', 'Marca', p.marca || 'Genérica'],
     ['phone', 'Modelo compatible', p.modelo],
     ['palette', 'Color', p.color],
-    ['box', 'Stock actual', unidades(p.stock)],
+    ['box', loc?.multi ? (filtroLocal ? 'Stock en ' + loc.nombre(filtroLocal) : 'Stock total (todos los locales)') : loc?.habilitado && loc.locales[0] ? 'Stock en ' + loc.locales[0].nombre : 'Stock actual', unidades(p.stock)],
     ['warn', 'Stock mínimo', unidades(p.stock_min)],
     p.stock_max != null && ['box', 'Stock máximo', unidades(p.stock_max)],
     costos && p.precio_compra != null && ['tag', 'Precio de compra', money(p.precio_compra)],
@@ -202,6 +231,7 @@ function ProductoDetalle({ p, editar, costos, puedeVender, onClose, onEditar, on
   const menu = <Menu label="Opciones del producto" items={[
     editar && { label: 'Editar', icon: 'pencil', onClick: onEditar },
     editar && !p.maneja_serial && { label: 'Ajustar stock', icon: 'adjust', onClick: onAjuste },
+    onTraslado && { label: 'Trasladar a otro local', icon: 'swap', onClick: onTraslado },
     editar && { label: 'Movimientos', icon: 'history', onClick: onMovs },
     onIngreso && { label: 'Ingreso de mercancía', icon: 'truckIn', onClick: onIngreso },
   ]} />
@@ -227,28 +257,38 @@ function ProductoDetalle({ p, editar, costos, puedeVender, onClose, onEditar, on
     <div className="inv-specs">
       {filas.map(([ic, k, v, custom]) => <div key={k} className="inv-spec"><span className="inv-spec-icon">{custom || <I n={ic} />}</span><span><small>{k}</small><b>{v}</b></span></div>)}
     </div>
+    {loc?.habilitado && p._stocks && loc.locales.length > 0 && <div className="inv-desc"><small>Stock por local</small>
+      <div className="loc-stock">{loc.locales.map(l => { const n = p._stocks[l.id] || 0; return <div key={l.id} className={'loc-stock-cell' + (l.id === (filtroLocal || loc.miLocal) ? ' mio' : '')}><small>{l.nombre}</small><b className={n ? '' : 'cero'}>{unidades(n)}</b></div> })}</div>
+      {onTraslado && <button type="button" className="inv-load-btn" style={{ marginTop: 10 }} onClick={onTraslado}><I n="swap" />Trasladar entre locales</button>}
+      {editar && loc.locales.length === 1 && <p className="inv-zero-hint" style={{ marginTop: 10 }}>Cuando crees tu segundo local en <b>Más › Configuración › Locales</b>, aquí verás el stock de cada uno y podrás trasladar unidades.</p>}
+    </div>}
     {p.descripcion && <div className="inv-desc"><small>Descripción</small><p>{p.descripcion}</p></div>}
-    {p.maneja_serial && <ProductUnits producto={p} editar={editar} />}
+    {p.maneja_serial && <div className="inv-desc"><small>IMEI / seriales</small>
+      {!uni ? <Loader /> : uni.length === 0 ? <p>Sin unidades registradas.</p> : uni.map(u => <div key={u.id} className="inv-serial"><span>{u.serial}</span>{loc?.habilitado && u.estado === 'disponible' && <LocalTag nombre={loc.nombre(u.local_id)} />}<Badge tone={u.estado === 'disponible' ? 'good' : ''}>{u.estado}</Badge></div>)}
+    </div>}
     {isDemoMode && editar && <div className="destructive-zone"><RecordStatus table="productos" record={p} onSaved={onCambio} /></div>}
   </FullPage>
 }
 
-function AjusteStock({ p, onClose, onSaved }) {
+function AjusteStock({ p, loc, localInicial, onClose, onSaved }) {
+  const [localId, setLocalId] = useState(localInicial)
+  const stockAqui = loc?.multi && p._stocks ? (p._stocks[localId] || 0) : p.stock
   const [tipo, setTipo] = useState('ajuste_entrada')
   const [cant, setCant] = useState('')
   const [motivo, setMotivo] = useState('')
-  const [fisico, setFisico] = useState(String(p.stock))
+  const [fisico, setFisico] = useState(String(stockAqui))
   const [err, setErr] = useState('')
   const [guardar, pending] = useAction(async () => {
     setErr('')
     if (tipo !== 'fisico' && (!Number.isInteger(Number(cant)) || Number(cant) <= 0)) return setErr('La cantidad debe ser un entero mayor que cero.')
     if (!motivo.trim()) return setErr('Escribe el motivo del ajuste.')
-    const { error } = await (isDemoMode && tipo === 'fisico' ? supabase.rpc('ajustar_stock_fisico_demo', { id: p.id, stock: Number(fisico), motivo }) : supabase.rpc('ajustar_inventario', { p_producto_id: p.id, p_cantidad: Number(cant), p_tipo: tipo, p_motivo: motivo }))
+    const { error } = await (isDemoMode && tipo === 'fisico' ? supabase.rpc('ajustar_stock_fisico_demo', { id: p.id, stock: Number(fisico), motivo, ...(loc?.multi ? { local_id: localId } : {}) }) : supabase.rpc('ajustar_inventario', { p_producto_id: p.id, p_cantidad: Number(cant), p_tipo: tipo, p_motivo: motivo, ...(loc?.multi ? { p_local_id: localId } : {}) }))
     if (error) return setErr(mensajeError(error))
     toast('Inventario actualizado'); onSaved()
   })
-  return <Modal title="Ajustar stock" subtitle={`${p.nombre} · stock actual ${p.stock}`} keyboardAware onClose={onClose} footer={<div className="action-grid"><button className="btn sec" onClick={onClose}>Cancelar</button><button className="btn" disabled={pending} onClick={guardar}>{pending ? 'Guardando…' : 'Guardar'}</button></div>}>
+  return <Modal title="Ajustar stock" subtitle={`${p.nombre} · stock ${loc?.multi ? 'en ' + loc.nombre(localId) : 'actual'} ${stockAqui}`} keyboardAware onClose={onClose} footer={<div className="action-grid"><button className="btn sec" onClick={onClose}>Cancelar</button><button className="btn" disabled={pending} onClick={guardar}>{pending ? 'Guardando…' : 'Guardar'}</button></div>}>
     <ErrorBox text={err} />
+    {loc?.multi && <Select label="Local" value={localId || ''} onChange={e => { setLocalId(Number(e.target.value)); setFisico(String(p._stocks?.[e.target.value] || 0)) }}>{loc.locales.map(l => <option key={l.id} value={l.id}>{l.nombre} · {p._stocks?.[l.id] || 0} en stock</option>)}</Select>}
     <Select label="Tipo de movimiento" value={tipo} onChange={e => setTipo(e.target.value)}>
       {isDemoMode && <option value="fisico">Conciliar stock físico</option>}
       <option value="ajuste_entrada">Entrada (ajuste)</option><option value="ajuste_salida">Salida (pérdida, daño, uso)</option><option value="devolucion_proveedor">Devolución a proveedor</option>
@@ -258,18 +298,20 @@ function AjusteStock({ p, onClose, onSaved }) {
   </Modal>
 }
 
-function Movimientos({ p, onClose }) {
+function Movimientos({ p, loc, onClose }) {
   const [movs, setMovs] = useState(null)
   useEffect(() => { supabase.from('movimientos_inventario').select('*').eq('producto_id', p.id).order('fecha', { ascending: false }).limit(50).then(({ data }) => setMovs(data || [])) }, [p.id])
   return <Modal title="Movimientos" subtitle={p.nombre} onClose={onClose}>
     {!movs ? <Loader /> : movs.length === 0 ? <Empty text="Sin movimientos" description="Aquí verás compras, ventas y ajustes de este producto." /> : movs.map(m => (
-      <div key={m.id} className="row"><div className="flex-1"><p className="m-0 text-sm font-semibold" style={{ textTransform: 'capitalize' }}>{m.tipo.replace(/_/g, ' ')}</p><p className="m-0 text-xs text-muted">{fechaHora(m.fecha)}{m.motivo ? ' · ' + m.motivo : ''}</p></div><div className="text-right"><b className={m.cantidad > 0 ? 'text-good' : 'text-bad'}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</b><p className="m-0 text-xs text-muted">queda {m.stock_despues}</p></div></div>
+      <div key={m.id} className="row"><div className="flex-1"><p className="m-0 text-sm font-semibold" style={{ textTransform: 'capitalize' }}>{m.tipo.replace(/_/g, ' ')}</p><p className="m-0 text-xs text-muted">{fechaHora(m.fecha)}{m.motivo ? ' · ' + m.motivo : ''}</p>{loc?.multi && m.local_id != null && <LocalTag nombre={loc.nombre(m.local_id)} />}</div><div className="text-right"><b className={m.cantidad > 0 ? 'text-good' : 'text-bad'}>{m.cantidad > 0 ? '+' : ''}{m.cantidad}</b><p className="m-0 text-xs text-muted">queda {loc?.multi && m.stock_local_despues != null ? m.stock_local_despues + ' aquí · ' + m.stock_despues + ' total' : m.stock_despues}</p></div></div>
     ))}
   </Modal>
 }
 
-function CargarUnidades({ p, puedeComprar, onClose, onCompra, onSaved }) {
+function CargarUnidades({ p, loc, localInicial, puedeComprar, onClose, onCompra, onSaved }) {
   const { esAdmin, can } = useAuth()
+  const [localId, setLocalId] = useState(localInicial)
+  const stockAqui = loc?.multi && p._stocks ? (p._stocks[localId] || 0) : p.stock
   const [n, setN] = useState(1)
   const [provs, setProvs] = useState(null)
   const [origen, setOrigen] = useState(null) // id de proveedor | 'otro'
@@ -295,13 +337,13 @@ function CargarUnidades({ p, puedeComprar, onClose, onCompra, onSaved }) {
     if (!esAdmin || !(can('editar_inventario') || can('registrar_compras'))) return setErr('No tienes permiso para cargar unidades.')
     if (!Number.isInteger(n) || n < 1) return setErr('Escribe cuántas unidades vas a agregar.')
     if (!origen) return setErr('Elige de dónde vienen las unidades.')
-    if (origen !== 'otro') return onCompra(n, origen)
+    if (origen !== 'otro') return onCompra(n, origen, loc?.multi ? localId : null)
     setBusy(true)
     const motivo = motivoOtro === 'compra_propia' ? 'Compra propia (sin proveedor)' : motivoOtro === 'devolucion' ? 'Devolución o cambio de cliente' : 'Unidades que ya estaban en la tienda'
-    const { error } = await supabase.rpc('ajustar_inventario', { p_producto_id: p.id, p_cantidad: n, p_tipo: 'ajuste_entrada', p_motivo: motivo })
+    const { error } = await supabase.rpc('ajustar_inventario', { p_producto_id: p.id, p_cantidad: n, p_tipo: 'ajuste_entrada', p_motivo: motivo, ...(loc?.multi ? { p_local_id: localId } : {}) })
     setBusy(false)
     if (error) return setErr(mensajeError(error))
-    toast(`${unidades(n)} agregadas a ${p.nombre}`); onSaved()
+    toast(`${unidades(n)} agregadas a ${p.nombre}${loc?.multi ? ' en ' + loc.nombre(localId) : ''}`); onSaved()
   }
   const provSel = (provs || []).find(x => x.id === origen)
   return <Modal title="Agregar unidades" subtitle={p.nombre} className="experience-sheet cu-sheet" keyboardAware onClose={onClose} footer={
@@ -316,8 +358,9 @@ function CargarUnidades({ p, puedeComprar, onClose, onCompra, onSaved }) {
         <input inputMode="numeric" value={n} onChange={e => setN(Math.max(0, Number(e.target.value.replace(/\D/g, '')) || 0))} aria-label="Cantidad" />
         <button type="button" aria-label="Más" onClick={() => setN(x => x + 1)}>+</button>
       </div>
-      <div className="cu-preview"><span>Hoy tienes <b>{p.stock}</b></span><I n="back" className="flip" /><span>Quedarás con <b className="g">{Number(p.stock) + (n || 0)}</b></span></div>
+      <div className="cu-preview"><span>Hoy tienes <b>{stockAqui}</b></span><I n="back" className="flip" /><span>Quedarás con <b className="g">{Number(stockAqui) + (n || 0)}</b></span></div>
     </section>
+    {loc?.multi && <><span className="cu-label">¿A qué local llegaron?</span><LocalSelector loc={loc} conTodos={false} value={localId} onChange={v => setLocalId(Number(v))} etiqueta="Local de destino" /></>}
 
     <span className="cu-label">¿Quién te las vendió?</span>
     {provs === null ? <Loader filas={2} /> : <div className="cu-provs">
@@ -342,5 +385,55 @@ function CargarUnidades({ p, puedeComprar, onClose, onCompra, onSaved }) {
       {[['compra_propia', 'Las compré yo'], ['tienda', 'Ya estaban en la tienda'], ['devolucion', 'Devolución de cliente']].map(([k, l]) => <button key={k} type="button" className={motivoOtro === k ? 'on' : ''} onClick={() => setMotivoOtro(k)}>{l}</button>)}
     </div>}
     {soloCompra && <p className="cu-note"><I n="warn" />Este producto maneja serial/IMEI: las unidades se registran con una compra para anotar cada serial.</p>}
+  </Modal>
+}
+
+// Pasar mercancía de un local a otro (queda en los movimientos de ambos locales)
+function TrasladoStock({ p, loc, origenInicial, onClose, onSaved }) {
+  const stocks = p._stocks || {}
+  const conStock = loc.locales.filter(l => (stocks[l.id] || 0) > 0)
+  const [origen, setOrigen] = useState(origenInicial && stocks[origenInicial] ? origenInicial : conStock[0]?.id || loc.locales[0]?.id)
+  const [destino, setDestino] = useState(() => loc.locales.find(l => l.id !== (origenInicial && stocks[origenInicial] ? origenInicial : conStock[0]?.id))?.id)
+  const [cant, setCant] = useState(1)
+  const [motivo, setMotivo] = useState('')
+  const [units, setUnits] = useState(null), [elegidas, setElegidas] = useState([])
+  const [err, setErr] = useState('')
+  const disponible = stocks[origen] || 0
+  useEffect(() => {
+    if (!p.maneja_serial) return
+    setUnits(null); setElegidas([])
+    supabase.from('unidades_serializadas').select('id,serial,local_id').eq('producto_id', p.id).eq('estado', 'disponible').eq('local_id', origen).order('id').then(({ data }) => setUnits(data || []))
+  }, [p.id, p.maneja_serial, origen])
+  const cambiarOrigen = id => { setOrigen(id); if (id === destino) setDestino(loc.locales.find(l => l.id !== id)?.id) }
+  const [guardar, pending] = useAction(async () => {
+    setErr('')
+    if (!origen || !destino || origen === destino) return setErr('Elige un local de origen y uno de destino diferentes.')
+    if (p.maneja_serial ? !elegidas.length : (!Number.isInteger(cant) || cant < 1)) return setErr(p.maneja_serial ? 'Elige los equipos que vas a trasladar.' : 'Escribe cuántas unidades vas a trasladar.')
+    if (!p.maneja_serial && cant > disponible) return setErr(`En ${loc.nombre(origen)} solo hay ${unidades(disponible)}.`)
+    const { error } = await supabase.rpc('trasladar_inventario', { p_producto_id: p.id, p_origen: origen, p_destino: destino, p_cantidad: p.maneja_serial ? null : cant, p_unidades: p.maneja_serial ? elegidas : null, p_motivo: motivo.trim() || null })
+    if (error) return setErr(mensajeError(error))
+    const n = p.maneja_serial ? elegidas.length : cant
+    toast(`${unidades(n)} trasladadas a ${loc.nombre(destino)}`); onSaved()
+  })
+  const n = p.maneja_serial ? elegidas.length : cant
+  return <Modal title="Trasladar entre locales" subtitle={p.nombre} className="experience-sheet" keyboardAware onClose={onClose} footer={<div className="action-grid"><button type="button" className="btn sec" onClick={onClose}>Cancelar</button><button type="button" className="btn" disabled={pending || !n} onClick={guardar}>{pending ? 'Trasladando…' : `Trasladar ${unidades(n)}`}</button></div>}>
+    <ErrorBox text={err} />
+    <div className="loc-stock">{loc.locales.map(l => <div key={l.id} className={'loc-stock-cell' + (l.id === origen ? ' mio' : '')}><small>{l.nombre}</small><b className={stocks[l.id] ? '' : 'cero'}>{unidades(stocks[l.id] || 0)}</b></div>)}</div>
+    <div className="loc-ruta" style={{ marginTop: 14 }}>
+      <Select label="Sale de" value={origen || ''} onChange={e => cambiarOrigen(Number(e.target.value))}>{loc.locales.map(l => <option key={l.id} value={l.id}>{l.nombre} ({stocks[l.id] || 0})</option>)}</Select>
+      <span className="loc-ruta-flecha" aria-hidden="true"><I n="swap" /></span>
+      <Select label="Llega a" value={destino || ''} onChange={e => setDestino(Number(e.target.value))}>{loc.locales.filter(l => l.id !== origen).map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</Select>
+    </div>
+    {p.maneja_serial ? <><span className="cu-label">Equipos en {loc.nombre(origen)}</span>
+      {units === null ? <Loader filas={2} /> : units.length === 0 ? <p className="text-sm text-muted">No hay equipos disponibles en este local.</p> : <div className="loc-units">{units.map(u => { const on = elegidas.includes(u.id); return <label key={u.id} className={'loc-unit' + (on ? ' on' : '')}><input type="checkbox" checked={on} onChange={() => setElegidas(x => on ? x.filter(i => i !== u.id) : [...x, u.id])} /><span className="mono">{u.serial}</span></label> })}</div>}
+    </> : <section className="cu-qty" style={{ marginTop: 6 }}>
+      <span className="cu-label">¿Cuántas unidades?</span>
+      <div className="cu-step">
+        <button type="button" aria-label="Menos" disabled={cant <= 1} onClick={() => setCant(x => Math.max(1, x - 1))}>−</button>
+        <input inputMode="numeric" value={cant} onChange={e => setCant(Math.max(0, Number(e.target.value.replace(/\D/g, '')) || 0))} aria-label="Cantidad a trasladar" />
+        <button type="button" aria-label="Más" disabled={cant >= disponible} onClick={() => setCant(x => x + 1)}>+</button>
+      </div>
+    </section>}
+    <Input label="Motivo (opcional)" placeholder="Ej: pedido de un cliente" value={motivo} onChange={e => setMotivo(e.target.value)} />
   </Modal>
 }

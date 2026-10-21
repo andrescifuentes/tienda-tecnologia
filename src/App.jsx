@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import { PageSkeleton } from './components/ui'
+import CajaAutomatica from './components/CajaAutomatica'
 import Login from './pages/Login'
 import Inicio from './pages/Inicio'
 
@@ -24,7 +25,7 @@ const Registro = lazy(() => import('./pages/Registro'))
 const FacturaPublica = lazy(() => import('./pages/FacturaPublica'))
 
 function Privada({ children, ...p }) {
-  return <ProtectedRoute {...p}><Suspense fallback={<PageSkeleton />}>{children}</Suspense></ProtectedRoute>
+  return <ProtectedRoute {...p}><CajaAutomatica /><Suspense fallback={<PageSkeleton />}>{children}</Suspense></ProtectedRoute>
 }
 
 export default function App() {

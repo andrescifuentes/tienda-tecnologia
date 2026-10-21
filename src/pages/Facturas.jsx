@@ -4,6 +4,8 @@ import ModuleBanner from '../components/ModuleBanner'
 import AppShell, { ThemeToggle } from '../components/AppShell'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useLocales } from '../lib/locales'
+import LocalSelector from '../components/LocalSelector'
 import { Brand } from '../components/TechVisuals'
 import { I } from '../components/InvIcons'
 import FacturaDetalle from '../components/FacturaDetalle'
@@ -24,20 +26,23 @@ export default function Facturas() {
   const [previo, setPrevio] = useState(null)
   const [ver, setVer] = useState(params.get('factura') ? Number(params.get('factura')) : null)
   const [tick, setTick] = useState(0)
-  const sel = SELECT_FACTURA + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)')
+  const loc = useLocales(perfil)
+  const local = esAdmin ? loc.filtro : null
+  const etiquetaLocal = f => loc.habilitado && local == null && f.local_id != null ? { ...f, _local: loc.nombre(f.local_id) } : f
+  const sel = SELECT_FACTURA + (loc.habilitado ? 'local_id,' : '') + (isDemoMode ? 'perfiles(nombre)' : 'perfiles!facturas_vendedor_id_fkey(nombre)')
 
   useEffect(() => {
     let vivo = true
     setDatos(null)
     ;(async () => {
       const [ini, fin] = rango(periodo, ym)
-      let qq = consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, sel).order('fecha', { ascending: false }).limit(periodo === 'todo' ? 2000 : 1000)
+      let qq = consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, local }, sel).order('fecha', { ascending: false }).limit(periodo === 'todo' ? 2000 : 1000)
       if (ini) qq = qq.gte('fecha', ini)
       const { data } = await qq
       if (vivo) setDatos((data || []).filter((f) => !fin || new Date(f.fecha) < new Date(fin)))
     })()
     return () => { vivo = false }
-  }, [periodo, tick, esAdmin, perfil.id]) // eslint-disable-line
+  }, [periodo, tick, esAdmin, perfil.id, local, loc.habilitado]) // eslint-disable-line
 
   useEffect(() => {
     let vivo = true
@@ -46,11 +51,11 @@ export default function Facturas() {
     const [ini, fin] = rango(periodo, periodo === 'anio' ? (Number(ym.slice(0, 4)) - 1) + ym.slice(4) : prevYm(ym))
     const c = new Date(); if (periodo === 'anio') c.setFullYear(c.getFullYear() - 1); else c.setMonth(c.getMonth() - 1)
     const corte = c < new Date(fin) ? c : new Date(fin)
-    consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id }, 'total,estado,fecha,devoluciones(total_devuelto)').gte('fecha', ini).then(({ data }) => {
+    consultarFacturasVisibles(supabase, { esAdmin, perfilId: perfil.id, local }, 'total,estado,fecha,devoluciones(total_devuelto)').gte('fecha', ini).then(({ data }) => {
       if (vivo) setPrevio((data || []).filter((f) => f.estado !== 'anulada' && new Date(f.fecha) < corte).reduce((a, f) => a + neto(f), 0))
     })
     return () => { vivo = false }
-  }, [periodo, tick, esAdmin, perfil.id]) // eslint-disable-line
+  }, [periodo, tick, esAdmin, perfil.id, local]) // eslint-disable-line
 
   const resumen = useMemo(() => {
     const ok = (datos || []).filter((f) => f.estado !== 'anulada')
@@ -85,8 +90,9 @@ export default function Facturas() {
 
   return (
     <div className="admin-premium admin-invoices"><AppShell title="Facturas" header={header}>
+      {esAdmin && <LocalSelector loc={loc} />}
       <section className="fv-summary">
-        <p className="fv-sum-label">Ventas · {etiqueta}</p>
+        <p className="fv-sum-label">Ventas · {etiqueta}{local != null ? ' · ' + loc.nombre(local) : ''}</p>
         <p className="fv-sum-total">{datos ? money(resumen.total) : '—'}</p>
         {datos && resumen.serie && <Bolsa serie={resumen.serie} previo={previo} total={resumen.total} anual={periodo === 'anio'} />}
         <div className="fv-range" role="tablist" aria-label="Periodo">
@@ -119,7 +125,7 @@ export default function Facturas() {
       <div className="fv-sec-head"><h3>Últimas facturas</h3></div>
       {!datos ? <Loader /> : ultimas.length === 0 ? <Empty text="Aún no hay facturas" description={`No hay ventas en ${etiqueta.toLowerCase()}.`} /> : (
         <div className="fv-list">
-          {ultimas.map((f, i) => <FacturaCard key={f.id} f={f} index={i} conFecha onClick={() => setVer(f.id)} />)}
+          {ultimas.map((f, i) => <FacturaCard key={f.id} f={etiquetaLocal(f)} index={i} conFecha onClick={() => setVer(f.id)} />)}
         </div>
       )}
       <button type="button" className="fv-history-btn" onClick={() => navigate('/facturas/historial')}>

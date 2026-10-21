@@ -33,12 +33,12 @@ async function withInvoiceCustomers(client,invoices,signal){
  for(let offset=0;offset<ids.length;offset+=100){const batch=ids.slice(offset,offset+100),rows=await operation('clientes',()=>readFinancialRows(()=>client.from('clientes').select('id,nombre').in('id',batch).order('id'),signal));for(const customer of rows)customers.set(String(customer.id),customer)}
  return invoices.map(f=>needsName(f)?{...f,clientes:customers.get(String(f.cliente_id))||null}:f)
 }
-export async function loadNetInvoices(client,{period,auth,signal}){
+export async function loadNetInvoices(client,{period,auth,signal,local=null}){
  const baseTable=invoiceTable(client,auth,false),netTable=invoiceTable(client,auth,true)
- const range=query=>(!auth.esAdmin&&auth.perfilId?query.eq('vendedor_id',auth.perfilId):query).gte('fecha',period.ini+'T00:00:00-05:00').lte('fecha',period.fin+'T23:59:59.999999-05:00').order('id')
+ const range=query=>(local!=null?query.eq('local_id',local):query),range0=query=>range(!auth.esAdmin&&auth.perfilId?query.eq('vendedor_id',auth.perfilId):query).gte('fecha',period.ini+'T00:00:00-05:00').lte('fecha',period.fin+'T23:59:59.999999-05:00').order('id')
  const [baseResult,netResult]=await Promise.allSettled([
-  operation(baseTable,()=>readFinancialRows(()=>range(client.from(baseTable).select(auth.esAdmin?'*':invoiceFields)),signal)),
-  operation(netTable,()=>readFinancialRows(()=>range(client.from(netTable).select(netFields)),signal)),
+  operation(baseTable,()=>readFinancialRows(()=>range0(client.from(baseTable).select(auth.esAdmin?'*':invoiceFields)),signal)),
+  operation(netTable,()=>readFinancialRows(()=>range0(client.from(netTable).select(netFields)),signal)),
  ])
  if(baseResult.status==='rejected')throw baseResult.reason
  // Read snapshots when present without requiring a column absent in older deployments.
@@ -59,14 +59,15 @@ export async function loadNetInvoices(client,{period,auth,signal}){
  for(const refund of refunds){if(!invoiceIds.has(String(refund.factura_id))||!finiteAmount(refund.total_devuelto))throw financeFailure('devoluciones',{code:'INVALID_REFUND',message:'La devolución no se pudo relacionar con su factura.'});totals.set(String(refund.factura_id),(totals.get(String(refund.factura_id))||0)+Number(refund.total_devuelto))}
  return withInvoiceCustomers(client,invoices.map(f=>({...f,total_neto:Number(f.total)-(totals.get(String(f.id))||0)})),signal)
 }
-export async function loadFinancePeriod(client,{period,demo=false,auth={},signal}){
+export async function loadFinancePeriod(client,{period,demo=false,auth={},signal,local=null}){
+ const porLocal=query=>local!=null?query.eq('local_id',local):query
  return withDeadline(async abort=>{
-  const detailPromise=loadNetInvoices(client,{period,auth,signal:abort}).then(invoices=>({invoices,invoiceError:null}),invoiceError=>({invoices:[],invoiceError}))
+  const detailPromise=loadNetInvoices(client,{period,auth,signal:abort,local}).then(invoices=>({invoices,invoiceError:null}),invoiceError=>({invoices:[],invoiceError}))
   const [movements,team,summary,purchases,detail]=await Promise.all([
-   operation('movimientos',()=>readFinancialRows(()=>client.from('movimientos').select('*').gte('fecha',period.ini).lte('fecha',period.fin).order('fecha',{ascending:false}).order('id',{ascending:false}),abort)),
-   operation('ventas_por_empleado',async()=>requireData(await cancellableQuery(client.rpc('ventas_por_empleado',{p_desde:period.ini,p_hasta:period.fin}),abort))),
-   demo?operation('resumen_dashboard',async()=>requireData(await cancellableQuery(client.rpc('resumen_dashboard',{p_desde:period.ini,p_hasta:period.fin}),abort))):null,
-   operation('compras',()=>readFinancialRows(()=>client.from('compras').select('id,fecha,total,numero_documento,forma_pago,estado,proveedores(nombre)').eq('estado','recibida').gte('fecha',period.ini).lte('fecha',period.fin).order('fecha',{ascending:false}).order('id'),abort)),
+   operation('movimientos',()=>readFinancialRows(()=>porLocal(client.from('movimientos').select('*')).gte('fecha',period.ini).lte('fecha',period.fin).order('fecha',{ascending:false}).order('id',{ascending:false}),abort)),
+   operation('ventas_por_empleado',async()=>requireData(await cancellableQuery(client.rpc('ventas_por_empleado',{p_desde:period.ini,p_hasta:period.fin,...(local!=null?{p_local_id:local}:{})}),abort))),
+   demo?operation('resumen_dashboard',async()=>requireData(await cancellableQuery(client.rpc('resumen_dashboard',{p_desde:period.ini,p_hasta:period.fin,...(local!=null?{p_local_id:local}:{})}),abort))):null,
+   operation('compras',()=>readFinancialRows(()=>porLocal(client.from('compras').select('id,fecha,total,numero_documento,forma_pago,estado,proveedores(nombre)')).eq('estado','recibida').gte('fecha',period.ini).lte('fecha',period.fin).order('fecha',{ascending:false}).order('id'),abort)),
    detailPromise,
   ])
   if(!Array.isArray(team)||team.some(r=>!finiteAmount(r.total_vendido))||movements.some(m=>!finiteAmount(m.monto))||purchases.some(p=>!finiteAmount(p.total)))throw financeFailure('resumen financiero',{code:'INVALID_AMOUNT',message:'El servidor no devolvió importes válidos.'})

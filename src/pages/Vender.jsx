@@ -26,6 +26,9 @@ import '../styles/sale-quantity.css'
 import '../styles/inventory-units.css'
 import MoneyInput from '../components/MoneyInput'
 import { obtenerConsumidorFinal, esConsumidorFinal, notaVenta } from '../lib/consumidorFinal'
+import { useLocales, cargarStockLocales } from '../lib/locales'
+import { LocalTag } from '../components/LocalSelector'
+import '../styles/locales.css'
 import TransferenciaQR, { MedioLogo } from '../components/TransferenciaQR'
 import { registerInvoiceTransferMethod } from '../lib/transferMethods'
 
@@ -89,7 +92,12 @@ export default function Vender() {
   const [categoria, setCategoriaRaw] = useState('Todos'); const [marca, setMarca] = useState('Todas'); const [hojaMarca, setHojaMarca] = useState(false); const [hojaCat, setHojaCat] = useState(false)
   const setCategoria = (c) => { setCategoriaRaw(c); setMarca('Todas') }; const [refresh, setRefresh] = useState(0)
   const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get('q') || '')
-  const [res, setRes] = useState([])
+  const [resRaw, setRes] = useState([])
+  // Locales: el vendedor vende en su local; si allí no hay, puede vender del otro local
+  const loc = useLocales(perfil)
+  const [localElegido, setLocalElegido] = useState(draft.localVenta || null)
+  const ventaLocal = loc.multi ? (esAdmin && loc.locales.some(l => l.id === localElegido) ? localElegido : loc.localVenta) : null
+  const [stockLoc, setStockLoc] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [verCatalogo, setVerCatalogo] = useState(false)
   const [extras, setExtras] = useState(false)
@@ -163,18 +171,36 @@ export default function Vender() {
       let qq = supabase.from('productos_venta').select('*').order('nombre').limit(200)
       if (s) qq = qq.or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,codigo_barras.ilike.%${s}%,marca.ilike.%${s}%`)
       const { data } = await qq
-      setRes(data || []); setCargando(false)
+      const sl = loc.multi ? await cargarStockLocales(supabase, (data || []).map(p => p.id)) : null
+      setStockLoc(sl); setRes(data || []); setCargando(false)
     }, 250)
     return () => clearTimeout(t)
-  }, [q, refresh])
+  }, [q, refresh, loc.multi])
+  // Stock que se puede vender: el de este local o, si aquí no hay, el del local que más tenga
+  const decorar = p => {
+    if (!loc.multi || !stockLoc) return p
+    const stocks = stockLoc[p.id] || {}, aqui = stocks[ventaLocal] || 0
+    const otro = loc.locales.filter(l => l.id !== ventaLocal).map(l => [l.id, stocks[l.id] || 0]).sort((a, b) => b[1] - a[1])[0] || [null, 0]
+    const base = { ...p, _stocks: stocks, _total: p.stock }
+    if (p.maneja_serial) return { ...base, _origen: aqui > 0 || !otro[1] ? ventaLocal : otro[0] }
+    if (aqui > 0 || !otro[1]) return { ...base, stock: aqui, _origen: ventaLocal }
+    return { ...base, stock: otro[1], _origen: otro[0] }
+  }
+  const res = useMemo(() => resRaw.map(decorar), [resRaw, stockLoc, ventaLocal, loc]) // eslint-disable-line react-hooks/exhaustive-deps
+  const origenDe = i => i.unidad?.local_id ?? i.producto._origen ?? ventaLocal
+  const esOtroLocal = i => loc.multi && origenDe(i) != null && origenDe(i) !== ventaLocal
+  function cambiarLocalVenta(id) {
+    if (carrito.length) return toast('Vacía el carrito para cambiar el local de la venta')
+    setLocalElegido(Number(id))
+  }
 
-  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({carrito,cliente,sinDatos,metodo,descuento,notas,seller,requestId})) } catch { /* Draft does not block checkout. */ } }, [carrito,cliente,sinDatos,metodo,descuento,notas,seller,requestId,draftKey])
+  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({carrito,cliente,sinDatos,metodo,descuento,notas,seller,requestId,localVenta:localElegido})) } catch { /* Draft does not block checkout. */ } }, [carrito,cliente,sinDatos,metodo,descuento,notas,seller,requestId,localElegido,draftKey])
   useEffect(() => {
     if (!draft.carrito?.length) return
     let live = true
     supabase.from('productos_venta').select('*').in('id', draft.carrito.map(i=>i.producto.id)).then(({data,error})=>{
       if (!live || error) return
-      setCarrito(items=>items.map(i=>({...i,producto:(data||[]).find(p=>p.id===i.producto.id)||{...i.producto,activo:false,stock:0}})))
+      setCarrito(items=>items.map(i=>{const f=(data||[]).find(p=>p.id===i.producto.id);return {...i,producto:f?(i.producto._origen!=null?{...f,_origen:i.producto._origen,_stocks:i.producto._stocks,stock:Math.min(f.stock,i.producto.stock)}:f):{...i.producto,activo:false,stock:0}}}))
     })
     return () => { live=false }
   }, [draft])
@@ -185,7 +211,8 @@ export default function Vender() {
     if (p.maneja_serial) {
       const { data } = await supabase.from('unidades_serializadas').select('*').eq('producto_id', p.id).eq('estado', 'disponible').order('id')
       const usadas = carrito.map((i) => i.unidad?.id)
-      const libres = (data || []).filter((u) => !usadas.includes(u.id))
+      // Primero las unidades de este local
+      const libres = (data || []).filter((u) => !usadas.includes(u.id)).sort((a, b) => (a.local_id === ventaLocal ? 0 : 1) - (b.local_id === ventaLocal ? 0 : 1))
       if (libres.length === 0) return toast('No hay unidades disponibles')
       setUnidades(libres); setSerialDe(p); return
     }
@@ -200,15 +227,15 @@ export default function Vender() {
   function agregarUnidad(u) {
     if (!cartEditable()) return
     const especial = precioDet != null && precioDet !== serialDe.precio_venta ? { precio: precioDet } : {}
-    setCarrito((c) => c.some(i=>i.unidad?.id===u.id) ? c : [...c, { key: 'u' + u.id, producto: serialDe, cantidad: 1, unidad: u, ...especial }])
+    setCarrito((c) => c.some(i=>i.unidad?.id===u.id) ? c : [...c, { key: 'u' + u.id, producto: { ...serialDe, _origen: u.local_id ?? serialDe._origen }, cantidad: 1, unidad: u, ...especial }])
     setSerialDe(null); toast('Agregado con serial ' + u.serial)
   }
   async function alEscanear(codigo) {
     setScan(false)
     const { data } = await supabase.from('productos_venta').select('*').or(`codigo_barras.eq.${limpiarBusqueda(codigo)},codigo.eq.${limpiarBusqueda(codigo)}`).limit(1)
-    if (data?.[0]) return agregar(data[0])
+    if (data?.[0]) return agregar(res.find(x => x.id === data[0].id) || decorar(data[0]))
     // ¿es un serial?
-    const { data: u } = await supabase.from('unidades_serializadas').select('id,serial,estado,producto_id').eq('serial', codigo.trim()).maybeSingle()
+    const { data: u } = await supabase.from('unidades_serializadas').select(loc.multi ? 'id,serial,estado,producto_id,local_id' : 'id,serial,estado,producto_id').eq('serial', codigo.trim()).maybeSingle()
     if (u && u.estado === 'disponible') {
       const { data: p } = await supabase.from('productos_venta').select('*').eq('id', u.producto_id).maybeSingle()
       if (p) { setSerialDe(p); return agregarUnidadDirecto(p, u) }
@@ -218,7 +245,7 @@ export default function Vender() {
   function agregarUnidadDirecto(p, u) {
     if (!cartEditable()) return
     if (carrito.some((i) => i.unidad?.id === u.id)) return
-    setCarrito((c) => [...c, { key: 'u' + u.id, producto: p, cantidad: 1, unidad: u }]); setSerialDe(null)
+    setCarrito((c) => [...c, { key: 'u' + u.id, producto: { ...decorar(p), _origen: u.local_id ?? decorar(p)._origen }, cantidad: 1, unidad: u }]); setSerialDe(null)
   }
 
   const subtotal = useMemo(() => carrito.reduce((a, i) => a + i.producto.precio_venta * i.cantidad, 0), [carrito])
@@ -280,10 +307,10 @@ export default function Vender() {
       }
       for (const value of [descuento,subtotal,total,...carrito.flatMap(i => [i.producto.precio_venta,i.producto.precio_compra ?? 0])]) if (monetaryError(value)) return setErr(monetaryError(value))
       if (carrito.some(i => !Number.isInteger(i.cantidad) || i.cantidad <= 0 || i.cantidad > i.producto.stock || i.producto.activo === false)) return setErr('Revisa el carrito: un producto está desactivado o no tiene stock suficiente. Reduce su cantidad o quítalo.')
-      const items = carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.unidad ? 1 : i.cantidad, ...(i.unidad ? { unidad_id: i.unidad.id } : {}), descuento: (i.producto.precio_venta - precioDe(i)) * (i.unidad ? 1 : i.cantidad), ...(isDemoMode ? { precio_unitario: i.producto.precio_venta } : {}) }))
+      const items = carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.unidad ? 1 : i.cantidad, ...(i.unidad ? { unidad_id: i.unidad.id } : {}), ...(loc.multi ? { local_id: origenDe(i) } : {}), descuento: (i.producto.precio_venta - precioDe(i)) * (i.unidad ? 1 : i.cantidad), ...(isDemoMode ? { precio_unitario: i.producto.precio_venta } : {}) }))
       const medio = metodo === 'transferencia' ? medioRef.current : null
       attempt = { ...createSaleAttempt({ id: requestId, actorId: perfil.id, admin: esAdmin, mode: isDemoMode ? 'demo' : supabase.idempotentSales ? 'secure' : 'legacy', total,
-        args: { p_cliente_id: clienteVenta?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notaVenta(clienteVenta, notas), ...(isDemoMode ? { p_total_confirmado: total, p_vendedor_id: esAdmin ? seller : undefined } : {}) } }),
+        args: { p_cliente_id: clienteVenta?.id ?? null, p_metodo_pago: metodo, p_items: items, p_descuento: desc, p_notas: notaVenta(clienteVenta, notas), ...(loc.multi ? { p_local_id: ventaLocal } : {}), ...(isDemoMode ? { p_total_confirmado: total, p_vendedor_id: esAdmin ? seller : undefined } : {}) } }),
         medioTransferencia: medio ? { id: medio.id, nombre: medio.nombre } : null }
       try { rememberAttempt(attempt) }
       catch { return setErr('No se pudo proteger el estado de esta venta. Habilita el almacenamiento del navegador y reintenta; no se envió ningún cobro.') }
@@ -341,12 +368,12 @@ export default function Vender() {
     return <AnimatedCard index={index} key={p.id} className={'pos-tile' + (n ? ' in' : '') + (agotado ? ' out' : '')}>
       <button type="button" className="pos-tile-img" aria-label={`Ver ${p.nombre}`} onClick={() => abrir(p)}>
         <ProductThumbnail product={p} />
-        {agotado ? <span className="pos-flag out">Agotado</span> : libre <= p.stock_min ? <span className="pos-flag low">Últimas {libre}</span> : null}
+        {agotado ? <span className="pos-flag out">Agotado</span> : loc.multi && p._origen !== ventaLocal && !p.maneja_serial ? <span className="pos-flag otro">En {loc.nombre(p._origen)}</span> : libre <= p.stock_min ? <span className="pos-flag low">Últimas {libre}</span> : null}
         {n > 0 && <span key={n} className="pos-qty-badge">{n}</span>}
       </button>
       <div className="pos-tile-body" onClick={() => abrir(p)}>
         <b className="pos-name">{p.nombre ? p.nombre.charAt(0).toUpperCase() + p.nombre.slice(1) : ''}</b>
-        <span className="pos-meta">{p.marca || 'Genérica'}{!agotado && <> · {libre} disp.</>}</span>
+        <span className="pos-meta">{p.marca || 'Genérica'}{!agotado && <> · {libre} disp.{loc.multi && p._origen !== ventaLocal && !p.maneja_serial ? ' allá' : ''}</>}</span>
         <span className="pos-price">{money(p.precio_venta)}</span>
         {agotado ? <span className="pos-add off">Sin stock</span> : n > 0 ? <div className="pos-step" role="group" aria-label={`Cantidad de ${p.nombre}`} onClick={e => e.stopPropagation()}>
           <button type="button" aria-label={`Disminuir ${p.nombre}`} onClick={() => disminuir(p)}>−</button>
@@ -377,6 +404,7 @@ export default function Vender() {
         </button>
       )}>
       {vipCard}
+      {loc.multi && <div className="loc-venta"><I n="store" /><span>Vendiendo en <b>{loc.nombre(ventaLocal)}</b></span>{esAdmin && <select aria-label="Local de la venta" value={ventaLocal || ''} onChange={e => cambiarLocalVenta(e.target.value)}>{loc.locales.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</select>}</div>}
 
       <div className="inv-search">
         <label className="inv-search-box"><I n="search" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="¿Qué vas a vender hoy?" aria-label="Buscar producto" />{q && <button type="button" className="inv-scan" aria-label="Limpiar búsqueda" onClick={() => setQ('')}>✕</button>}</label>
@@ -444,10 +472,12 @@ export default function Vender() {
           <div className="pos-detail-box">
             <div><span>Precio</span><b className="gold">{precioDet != null ? <><s className="pos-old-price">{money(p.precio_venta)}</s> {money(precioDet)}</> : money(p.precio_venta)}</b></div>
             {libre > 0 && <button type="button" className="pos-price-btn" onClick={() => setPrecioEdit({ detalle: p, actual: precioDet ?? p.precio_venta })}><I n="tag" />{precioDet != null ? 'Cambiar precio especial' : 'Dar precio especial o descuento'}</button>}
-            <div><span>Disponibles</span><b className={libre <= 0 ? 'bad' : libre <= p.stock_min ? 'warn' : 'good'}>{libre} {libre === 1 ? 'unidad' : 'unidades'}</b></div>
+            <div><span>Disponibles{loc.multi && !p.maneja_serial && p._origen != null ? ' en ' + loc.nombre(p._origen) : ''}</span><b className={libre <= 0 ? 'bad' : libre <= p.stock_min ? 'warn' : 'good'}>{libre} {libre === 1 ? 'unidad' : 'unidades'}</b></div>
             {n > 0 && <div><span>Ya en la venta</span><b>{n}</b></div>}
             <div><span>Código</span><b className="mono">{p.codigo}</b></div>
           </div>
+          {loc.multi && <div className="loc-stock" aria-label="Stock por local">{loc.locales.map(l => { const n2 = p._stocks?.[l.id] || 0; return <div key={l.id} className={'loc-stock-cell' + (l.id === ventaLocal ? ' mio' : '')}><small>{l.nombre}{l.id === ventaLocal ? ' · aquí' : ''}</small><b className={n2 ? '' : 'cero'}>{n2} {n2 === 1 ? 'unidad' : 'unidades'}</b></div> })}</div>}
+          {loc.multi && libre > 0 && !p.maneja_serial && p._origen !== ventaLocal && <p className="loc-aviso"><I n="store" /><span>No hay en {loc.nombre(ventaLocal)}. Puedes venderlo: se descuenta del inventario de <b>{loc.nombre(p._origen)}</b>. Coordina la entrega con ese local.</span></p>}
           {libre > 0 && libre <= p.stock_min && <p className="pos-detail-note warn"><I n="warn" />Quedan pocas unidades de este producto.</p>}
         </Modal>
       })()}
@@ -462,7 +492,7 @@ export default function Vender() {
       {serialDe && (
         <Modal title={`Serial · ${serialDe.nombre}`} subtitle="Selecciona una unidad disponible" className="experience-sheet serial-picker-sheet" keyboardAware onClose={() => setSerialDe(null)}>
           <div className="serial-product"><ProductThumbnail product={serialDe}/><span><b>{serialDe.nombre}</b><small>{unidades.length} unidades disponibles</small></span></div>
-          <div className="serial-list">{unidades.map((u) => <button type="button" key={u.id} className="row serial-option" onClick={() => agregarUnidad(u)}><span className="serial-mark"><Icon name="scan"/></span><span className="flex-1"><small>{serialDe.tipo_serial === 'imei' ? 'IMEI' : 'SERIAL / IMEI'}</small><b>{u.serial}</b>{[u.atributos?.color, u.atributos?.capacidad].some(Boolean) && <small className="serial-attrs">{[u.atributos.color, u.atributos.capacidad].filter(Boolean).join(' · ')}</small>}<Badge tone="good">Disponible</Badge></span><span className="serial-select">Elegir <span aria-hidden="true">›</span></span></button>)}</div>
+          <div className="serial-list">{unidades.map((u) => <button type="button" key={u.id} className="row serial-option" onClick={() => agregarUnidad(u)}><span className="serial-mark"><Icon name="scan"/></span><span className="flex-1"><small>SERIAL / IMEI</small><b>{u.serial}</b>{[u.atributos?.color, u.atributos?.capacidad].some(Boolean) && <small className="serial-attrs">{[u.atributos.color, u.atributos.capacidad].filter(Boolean).join(' · ')}</small>}<Badge tone="good">Disponible</Badge>{loc.multi && u.local_id != null && <LocalTag nombre={u.local_id === ventaLocal ? loc.nombre(u.local_id) + ' · aquí' : 'En ' + loc.nombre(u.local_id)} tono={u.local_id === ventaLocal ? '' : 'otro'} />}</span><span className="serial-select">Elegir <span aria-hidden="true">›</span></span></button>)}</div>
         </Modal>
       )}
 
@@ -484,7 +514,7 @@ export default function Vender() {
           {carrito.map((i) => (
             <div key={i.key} className="pos-line">
               <ProductThumbnail product={i.producto} />
-              <div className="pos-line-txt"><b>{i.producto.nombre}</b><small>{i.unidad && <>Serial {i.unidad.serial} · </>}<button type="button" className={'pos-line-price' + (i.precio != null ? ' special' : '')} disabled={!!saleAttempt} aria-label={'Cambiar precio de ' + i.producto.nombre} onClick={() => setPrecioEdit({ linea: i, actual: precioDe(i) })}>{i.precio != null && <s>{money(i.producto.precio_venta)}</s>}{money(precioDe(i))} c/u<I n="pencil" /></button></small>
+              <div className="pos-line-txt"><b>{i.producto.nombre}</b>{esOtroLocal(i) && <LocalTag nombre={'Sale de ' + loc.nombre(origenDe(i))} tono="otro" />}<small>{i.unidad && <>Serial {i.unidad.serial} · </>}<button type="button" className={'pos-line-price' + (i.precio != null ? ' special' : '')} disabled={!!saleAttempt} aria-label={'Cambiar precio de ' + i.producto.nombre} onClick={() => setPrecioEdit({ linea: i, actual: precioDe(i) })}>{i.precio != null && <s>{money(i.producto.precio_venta)}</s>}{money(precioDe(i))} c/u<I n="pencil" /></button></small>
                 <div className="pos-line-ctrl">{!i.unidad ? <div className="pos-step sm"><button type="button" aria-label="Disminuir" onClick={() => i.cantidad <= 1 ? quitar(i) : cambiarCant(i, i.cantidad - 1)}>−</button><output>{i.cantidad}</output><button type="button" aria-label="Aumentar" disabled={i.cantidad >= i.producto.stock} onClick={() => cambiarCant(i, i.cantidad + 1)}>+</button></div> : <span />}<b className="pos-line-total">{money(precioDe(i)*i.cantidad)}</b></div>
               </div>
               <button className="pos-line-x" aria-label={`Quitar ${i.producto.nombre}`} onClick={() => quitar(i)}><I n="trash" /></button>
@@ -492,6 +522,7 @@ export default function Vender() {
           ))}
           </div>
 
+          {carrito.some(esOtroLocal) && <p className="loc-aviso"><I n="store" /><span>Esta venta lleva productos de otro local. Se descuentan del inventario de <b>{[...new Set(carrito.filter(esOtroLocal).map(i => loc.nombre(origenDe(i))))].join(' y ')}</b> y la venta queda en {loc.nombre(ventaLocal)}.</span></p>}
           <div className="pos-step-head"><span className="pos-step-n">2</span><h4>Datos del cliente</h4>{!listoCliente && <span className="pos-req">Obligatorio</span>}</div>
           {cliente ? <div className="pos-client in-sheet sel">
             <span className="pos-client-av">{cliente.nombre.split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</span>
